@@ -1,0 +1,20 @@
+#!/usr/bin/perl -w
+use strict;
+
+## The args to supply to build are the same as passed to this
+## programme and are the same for each build
+my @args = @ARGV;
+my $args = join(" ", @args);
+
+## Find all subdirectories with a Cargo.toml, those need to be built
+my ($dir) = $0 =~ /^(.+)\/[^\/]+/;
+my @dirs = map{s/\/[^\/]+$//; $_} `find $dir  -maxdepth 2 -name "Cargo.toml"`;
+    
+my $cwd = `pwd`;
+chomp $cwd;
+foreach my $dir (@dirs) {
+    print "Building in $dir\n";
+    chdir($dir) or die "$!: $dir";
+    print `cargo build $args`;
+    chdir($cwd) or die "$!: $cwd";
+}

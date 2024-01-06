@@ -1,0 +1,15 @@
+#!/usr/bin/perl -w
+use strict;
+
+
+## Find all subdirectories with a Cargo.toml, those need to be built
+my ($dir) = $0 =~ /^(.+)\/[^\/]+/;
+my @dirs = map{s/\/[^\/]+$//; $_} `find $dir  -maxdepth 2 -name "Cargo.toml"`;
+my $cwd = `pwd`;
+chomp $cwd;
+foreach my $dir (@dirs) {
+    print "Cleaning in $dir\n";
+    chdir($dir) or die "$!: $dir";
+    print `cargo clean`;
+    chdir($cwd) or die "$!: $cwd";
+}
