@@ -11,6 +11,7 @@ pub enum MidiError {
     // The call to the system's MIDI failed.
     OsFailure(String),
     BadMidiDevice(String),
+    BadName(String),
 }
 
 /// Convert a named device: "<Client name>:<Port Name>" to a port:
@@ -20,9 +21,29 @@ fn name_to_numeric(_name: &str) -> String {
 }
 
 /// Depending on `aconnect` from ALSA, get the raw output
-fn raw_aconnect() -> Result<String, MidiError> {
+fn raw_aconnect_l() -> Result<String, MidiError> {
+    raw_aconnect_cmds(vec!["-l"])
+}
+
+/// Make a connections
+fn raw_connect(lhs:&str, rhs:&str) -> Result<(), MidiError>{
+    _ = raw_aconnect_cmds(vec![lhs, rhs])?;
+    Ok(())
+}
+
+fn raw_disconnect(lhs:&str, rhs:&str) -> Result<(), MidiError>{
+    _ = raw_aconnect_cmds(vec!["-d", lhs, rhs])?;
+    Ok(())
+}
+
+fn raw_aconnect_cmds(cmds:Vec<&str>) -> Result<String, MidiError> {
     use std::process::Command;
-    let output = match Command::new("aconnect").arg("-l").output() {
+    let mut command:Command = Command::new("aconnect");
+    command.args(cmds);
+
+    let output = match command.output() {
+	// Executes the command as a child process, waiting for it to
+	// finish and collecting all of its output.
         Ok(o) => o,
         Err(err) => return Err(MidiError::OsFailure(format!("{err}"))),
     };
@@ -35,18 +56,34 @@ fn raw_aconnect() -> Result<String, MidiError> {
     return Ok(stdout);
 }
 
-pub fn connect(_lhs: &str, _rhs: &str) -> Result<(), MidiError> {
-    unimplemented!();
+
+/// Connect two devices.
+pub fn connect(lhs: &str, rhs: &str) -> Result<(), MidiError> {
+    // Check both devices exist
+    let devices:Vec<String> = list_devices()?;
+    if let None = devices.iter().find(|&x| x == lhs) {
+	return Err(MidiError::BadName(lhs.to_string()));
+    }
+    if let None = devices.iter().find(|&x| x == rhs) {
+	return Err(MidiError::BadName(rhs.to_string()));
+    }
+    Ok(raw_connect(lhs, rhs)?)
 }
 
-pub fn disconnect(_lhs: &str, _rhs: &str) -> Result<(), MidiError> {
-    unimplemented!();
+pub fn disconnect(lhs: &str, rhs: &str) -> Result<(), MidiError> {
+    // Check both devices exist
+    let devices:Vec<String> = list_devices()?;
+    if let None = devices.iter().find(|&x| x == lhs) {
+	return Err(MidiError::BadName(lhs.to_string()));
+    }
+    if let None = devices.iter().find(|&x| x == rhs) {
+	return Err(MidiError::BadName(rhs.to_string()));
+    }
+    Ok(raw_disconnect(lhs, rhs)?)
+
 }
 
 pub fn list_connections(_device: &str) -> Result<Vec<String>, MidiError> {
-    unimplemented!();
-}
-pub fn list_devices() -> Result<Vec<String>, MidiError> {
     // client 0: 'System' [type=kernel]
     //     0 'Timer           '
     //         Connecting To: 142:0
@@ -64,8 +101,11 @@ pub fn list_devices() -> Result<Vec<String>, MidiError> {
     //         Connected From: 0:1, 0:0
     // client 143: 'PipeWire-RT-Event' [type=user,pid=1018]
     //     0 'input           '
+    unimplemented!();
+}
+pub fn list_devices() -> Result<Vec<String>, MidiError> {
     let mut result:Vec<String> = vec!{};
-    let binding = raw_aconnect()?;
+    let binding = raw_aconnect_l()?;
     let lines: Vec<&str> = binding.lines().collect();
     let mut client: String = "".to_string();
     for line in lines {
@@ -86,7 +126,7 @@ pub fn list_devices() -> Result<Vec<String>, MidiError> {
         }
         // Might be port defition.  E.g:
 	//     0 'Launchpad X LPX DAW In'
-	
+
         if let Some(start) = line.find('\'') {
 	    let port_num = line[0..start].trim();
 	    if let Err(_) = port_num.parse::<usize>(){
@@ -118,7 +158,7 @@ mod tests {
     }
     #[test]
     fn test_raw_aconnect() {
-        let connect = raw_aconnect().unwrap();
+        let connect = raw_aconnect_l().unwrap();
         println!("{connect}");
         assert!(connect.len() != 0);
     }
