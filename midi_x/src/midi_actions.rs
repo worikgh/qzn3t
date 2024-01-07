@@ -114,6 +114,10 @@ fn map_midi_ports(input: &str) -> HashMap<(u8, u8), String> {
 pub fn connect(lhs: &str, rhs: &str) -> Result<(), MidiError> {
     // Check both devices exist
     let devices: Vec<String> = list_devices()?;
+    if lhs.starts_with("LpxCtl:colour_port") {
+	eprintln!("in disconnect for '{lhs}' / '{rhs}'");
+	eprintln!("Devices: {devices:?}");
+    }
     if let None = devices.iter().find(|&x| x == lhs) {
         return Err(MidiError::BadName(lhs.to_string()));
     }
@@ -137,7 +141,7 @@ pub fn disconnect(lhs: &str, rhs: &str) -> Result<(), MidiError> {
 
 /// List all connections to the client named in `client`. (`client`
 /// does not include port.  utput does)
-pub fn list_connections(client: &str) -> Result<Vec<String>, MidiError> {
+pub fn list_connections(client: &str) -> Result<Vec<(String, String)>, MidiError> {
     let binding = raw_aconnect_l()?;
     let lines: Vec<&str> = binding.lines().collect();
 
@@ -153,7 +157,7 @@ pub fn list_connections(client: &str) -> Result<Vec<String>, MidiError> {
 
     // The current port.  Not always set
     let mut current_port: Option<String> = None;
-    let mut result: Vec<String> = Vec::new();
+    let mut result: Vec<(String, String)> = Vec::new();
     for line in lines {
         if line.starts_with("client ") {
             if found {
@@ -201,12 +205,9 @@ pub fn list_connections(client: &str) -> Result<Vec<String>, MidiError> {
             // First collect all devices and
             for pair in connected_to_num.iter() {
                 let device: &str = device_map.get(pair).unwrap();
-                result.push(format!(
-                    "{}:{} => {}",
-                    client,
-                    current_port.as_ref().unwrap(),
-                    device.to_string()
-                ));
+                let lhs = format!("{}:{}", client, current_port.as_ref().unwrap(),);
+                let rhs = device.to_string();
+                result.push((lhs, rhs));
             }
         }
     }
