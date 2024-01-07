@@ -1,5 +1,5 @@
-extern crate midir;
 extern crate jack;
+extern crate midir;
 extern crate serde;
 extern crate symphonia;
 use jack::{Client, ClosureProcessHandler, Control};
@@ -80,7 +80,10 @@ fn main() {
     for SampleDescr { path, note } in samples_descr {
         // Create a media source. Note that the MediaSource trait is
         // automatically implemented for File, among other types.
-        let file = Box::new(File::open(Path::new(path.as_str())).unwrap());
+        let file = Box::new(match File::open(Path::new(path.as_str())) {
+            Ok(f) => f,
+            Err(err) => panic!("{err}: Failed to open {path}"),
+        });
 
         // Create the media source stream using the boxed media source from above.
         let mss = MediaSourceStream::new(file, Default::default());
@@ -265,14 +268,18 @@ fn main() {
                     let velocity = message[2];
                     if velocity != 0 {
                         // NoteOn
-			// eprintln!("Message: {message:?}");
+                        // eprintln!("Message: {message:?}");
                         if let Some(sample) =
                             sample_data.iter().find(|s| s.note == message[1])
                         {
-			    // Get the volume as a f32 fraction
-			    let volume:f32 = message[2] as f32 / 127.0;
+                            // Get the volume as a f32 fraction
+                            let volume: f32 = message[2] as f32 / 127.0;
                             for f in sample.data.iter() {
-                                senders.get(idx).unwrap().send(*f * volume).unwrap();
+                                senders
+                                    .get(idx)
+                                    .unwrap()
+                                    .send(*f * volume)
+                                    .unwrap();
                             }
 
                             idx += 1;
