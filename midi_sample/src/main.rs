@@ -12,6 +12,8 @@ use std::path::Path;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use std::thread;
+use std::time::Duration;
 use symphonia::core::audio::{SampleBuffer, SignalSpec};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error;
@@ -211,7 +213,7 @@ fn main() {
     let mut port = client.register_port("output", jack::AudioOut);
 
     // Activate the Jack client and start the audio processing thread
-    let as_client = client
+    let _as_client = client
         .activate_async(
             (),
             ClosureProcessHandler::new(
@@ -292,8 +294,12 @@ fn main() {
         )
         .unwrap();
     // Wait for the user to press enter to exit
-    eprintln!("Press enter to exit...");
-    let _ = std::io::stdin().read_line(&mut String::new());
-    // Deactivate the Jack client and stop the audio processing thread
-    as_client.deactivate().unwrap();
+    // eprintln!("Press enter to exit...");
+    // let _ = std::io::stdin().read_line(&mut String::new());
+    // // Deactivate the Jack client and stop the audio processing thread
+    // as_client.deactivate().unwrap();
+    loop{
+	thread::sleep(Duration::from_secs(1_000));
+    }
 }
+
