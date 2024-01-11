@@ -13,13 +13,13 @@ mod section;
 
 use crate::midir::os::unix::VirtualOutput;
 use crate::section::Section;
-use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};  
+use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 use std::env;
 use std::error::Error;
 use std::fs::File;
+use std::io::prelude::*;
 use std::result::Result;
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::io::prelude::*;
 
 /// Initialise a vector of `Section` from a file.
 fn load_sections(filename: &str) -> Result<Vec<Section>, Box<dyn Error>> {
@@ -32,7 +32,7 @@ fn load_sections(filename: &str) -> Result<Vec<Section>, Box<dyn Error>> {
     Ok(result)
 }
 
-// Get a MIDI port that has a name containing `keyword` 
+// Get a MIDI port that has a name containing `keyword`
 fn get_midi_port<T: midir::MidiIO>(midi_io: &T, keyword: &str) -> Option<T::Port> {
     for port in midi_io.ports() {
         let name = match midi_io.port_name(&port) {
@@ -74,9 +74,7 @@ fn get_midi_in(
     Ok(result)
 }
 
-
 fn main() -> Result<(), Box<dyn Error>> {
-
     // The only argument is a configuration file
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -87,11 +85,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialise the collection of `Section` from the file. (See `section.rs`)
     let sections: Vec<Section> = load_sections(filename)?;
 
-
     // The channel to send MIDI messages, received from the LPX in the
     // MidiInputConnection, here to the main thread
-    let (tx, rx): (Sender<[u8; 3]>, Receiver<[u8; 3]>) =
-	mpsc::channel::<[u8; 3]>();
+    let (tx, rx): (Sender<[u8; 3]>, Receiver<[u8; 3]>) = mpsc::channel::<[u8; 3]>();
 
     // Connect to the LPX to receive pad press events.  `f` is the
     // function that handles input MIDI and sends them back to themain
@@ -103,9 +99,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             tx.send(m3).unwrap();
         }
     };
-    // The port stays open as long as `_in` is in scope 
+    // The port stays open as long as `_in` is in scope
     let _in = get_midi_in("read_input", f, tx.clone())?;
-    
+
     // Create an output port to the LPX for sending it colour.
     let mut colour_port: MidiOutputConnection = get_midi_out("colour_port")?;
 
@@ -117,17 +113,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let make_colour = |section: &Section, colour: [u8; 3]| -> Vec<u8> {
-	// Buid the MIDI command that sets the colours of all the pads
-	// in a section (they are all the same colour - part of what
-	// defines a section).  One long MIDI sysex message that sets
-	// many pads in one command
-	
-	// "LED lighting SysEx message" programmer's mabual page 15
+        // Buid the MIDI command that sets the colours of all the pads
+        // in a section (they are all the same colour - part of what
+        // defines a section).  One long MIDI sysex message that sets
+        // many pads in one command
+
+        // "LED lighting SysEx message" programmer's mabual page 15
         let mut colour_message: Vec<u8> = vec![240, 0, 32, 41, 2, 12, 3];
-        let pads: Vec<u8> = section.pads();
+        let pads: Vec<u8> = section.pads().to_vec();
         for pad in pads.iter() {
             colour_message.push(3); // RGB colour
-            colour_message.push(*pad); // Pad index 
+            colour_message.push(*pad); // Pad index
             colour_message.extend(colour.to_vec()); // RGB tripple
         }
         colour_message.push(247); // End message
@@ -150,17 +146,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     // they will be
     let midi_out: MidiOutput = MidiOutput::new("LpxCtlNote")?;
     let port_name = "port";
-    let mut midi_note_out_port: MidiOutputConnection =
-	midi_out.create_virtual(port_name)?;
+    let mut midi_note_out_port: MidiOutputConnection = midi_out.create_virtual(port_name)?;
 
     let midi_out: MidiOutput = MidiOutput::new("LpxCtlCtl")?;
     let port_name = "port";
-    let mut midi_ctl_out_port: MidiOutputConnection =
-	midi_out.create_virtual(port_name)?;
+    let mut midi_ctl_out_port: MidiOutputConnection = midi_out.create_virtual(port_name)?;
     eprintln!("2 Virtual MIDI Output port 'LpxCtlNote:{port_name}' is open");
     eprintln!("3 Virtual MIDI Output port 'LpxCtlCtl:{port_name}' is open");
 
-    // Main loop.  
+    // Main loop.
     loop {
         let message: [u8; 3] = match rx.recv() {
             Ok(m) => m,
@@ -179,16 +173,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
                     // Send out the note
                     let velocity = message[2];
-                    let message: [u8; 3] = [message[0],
-					    section.midi_note,
-					    velocity];
+                    let message: [u8; 3] = [message[0], section.midi_note, velocity];
                     midi_note_out_port.send(&message)?;
 
                     if velocity > 0 {
                         // Note on
                         // Set colour of section to "active_colour"
-                        let active_colour = make_colour(section,
-							section.active_colour);
+                        let active_colour = make_colour(section, section.active_colour);
                         colour_port.send(&active_colour).unwrap();
                     } else {
                         // Not off
