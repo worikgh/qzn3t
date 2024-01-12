@@ -26,10 +26,10 @@ It is a JSON file.
 An array of JSON Objects.  Each object, is a `Section` has the
 following properties:
 
-* pad: Number (int).  11 - 88.  Top left of the section
+* pads: Number[] (u8).  11 - 88.  Pads in the section
 * main_colour: [Number, Number, Number] ([usize;3]) RGB colour.  Each
-  in range 0-127, each unique for every section
+  in range 0-127
 * active_colour: [Number, Number, Number] ([usize;3]) RGB colour.
   Each in range 0-127
 * midi_note: The note to attach note-on and note-off MIDI events to.
-  It is unique for every section
+  
