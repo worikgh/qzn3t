@@ -168,7 +168,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         if message[0] == 144 {
             // All MIDI notes from LPX start with 144, for initial
             // noteon and noteoff
-            let _velocity = message[2];
 
             // Find the section the pad is in
             let pad: u8 = message[1];
@@ -187,7 +186,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         let active_colour = make_colour(section, section.active_colour);
                         colour_port.send(&active_colour).unwrap();
                     } else {
-                        // Not off
+                        // Note off
                         // Restore the colour
                         let main_colour = make_colour(section, section.main_colour);
                         colour_port.send(&main_colour).unwrap();
