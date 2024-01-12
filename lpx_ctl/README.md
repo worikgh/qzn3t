@@ -4,11 +4,10 @@ Group and light up LEDs on LPX Novation, and output MIDI signals - all pads in a
 
 ## Sections - Colour and Note
 
-* Defined  by index of top left pad, width, and height.
-  * Implies can only rectangular sections.
-  * **TODO** Define sections using sets of pads also to allow arbitrary, even discontinuous, sections
+* Defined using sets of pads. Allows arbitrary, even discontinuous, sections
 * All the pads in a section have the same propertie (colours and MIDI note)
 * No section can intersect with another, each pad is in at most one section
+* There can be one section with no defined pads. It is the default for pads not included
 
 ### Properties of a Section
 
