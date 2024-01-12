@@ -8,7 +8,7 @@
 //! ["Programmer's Manual" ](https://fael-downloads-prod.focusrite.com/customer/prod/s3fs-public/downloads/Launchpad%20X%20-%20Programmers%20Reference%20Manual.pdf)
 extern crate midir;
 extern crate serde;
-mod lpx_ctl_error;
+// mod lpx_ctl_error;
 mod section;
 
 use crate::midir::os::unix::VirtualOutput;
@@ -22,14 +22,19 @@ use std::result::Result;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 /// Initialise a vector of `Section` from a file.
-fn load_sections(filename: &str) -> Result<Vec<Section>, Box<dyn Error>> {
-    let mut file = File::open(filename)?;
+fn load_sections(filename: &str) -> Option<Vec<Section>> {
+    let mut file = match File::open(filename) {
+	Ok(f) => f,
+	Err(err) => panic!("{err}"),
+    };
     let mut content = String::new();
-    file.read_to_string(&mut content)?;
+    match file.read_to_string(&mut content) {
+	Ok(_) => (),
+	Err(err) => panic!("{err}"),
+    };
 
     // Creatre the sections from the file
-    let result: Vec<Section> = Section::parse_json(&content)?;
-    Ok(result)
+   Section::parse_json(&content)
 }
 
 // Get a MIDI port that has a name containing `keyword`
@@ -83,7 +88,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let filename = &args[1];
 
     // Initialise the collection of `Section` from the file. (See `section.rs`)
-    let sections: Vec<Section> = load_sections(filename)?;
+    let sections: Vec<Section> = load_sections(filename).expect("Failed to load sections");
 
     // The channel to send MIDI messages, received from the LPX in the
     // MidiInputConnection, here to the main thread
