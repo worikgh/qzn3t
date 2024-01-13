@@ -33,8 +33,29 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
 	Err(err) => panic!("{err}"),
     };
 
-    // Creatre the sections from the file
-   Section::parse_json(&content)
+    // Create the sections from the file
+    let mut sections:Vec<Section> = Section::parse_json(&content).expect("Failed parsing JSON");
+    // If there is a default section with no pads put all unincluded pads in it
+    if let Some(index) = sections.iter().position(|x| x.pads.is_empty()) {
+
+	// Collect all pads mentioned so far
+	let mut pads_here: Vec<u8> = sections.iter().flat_map(|x| x.pads.clone()).collect();
+	if pads_here.len() < 64 {
+	    // Need the default
+	    pads_here.sort();
+	    // Check each row for missing pads and add them to default
+	    for r in 1..=8 {
+		let pads:Vec<&u8> = pads_here.iter().filter(|x| *x / 10 == r).collect();
+		for c in 1..=8  {
+		    let pad = r * 10 + c;
+		    if !pads.iter().any(|x| x == &&pad){
+			sections[index].pads.push(pad);
+		    }
+		}
+	    }
+	}
+    }
+    Some(sections)
 }
 
 // Get a MIDI port that has a name containing `keyword`
@@ -171,27 +192,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             // Find the section the pad is in
             let pad: u8 = message[1];
-            for section in sections.iter() {
-                if section.pad_in(pad) {
-                    // got the section for a pad
 
-                    // Send out the note
-                    let velocity = message[2];
-                    let message: [u8; 3] = [message[0], section.midi_note, velocity];
-                    midi_note_out_port.send(&message)?;
+	    
+	    if let Some(section) = sections.iter().find(|x| x.pad_in(pad)){
+                // got the section for a pad
 
-                    if velocity > 0 {
-                        // Note on
-                        // Set colour of section to "active_colour"
-                        let active_colour = make_colour(section, section.active_colour);
-                        colour_port.send(&active_colour).unwrap();
-                    } else {
-                        // Note off
-                        // Restore the colour
-                        let main_colour = make_colour(section, section.main_colour);
-                        colour_port.send(&main_colour).unwrap();
-                    }
+                // Send out the note
+                let velocity = message[2];
+                let message: [u8; 3] = [message[0], section.midi_note, velocity];
+                midi_note_out_port.send(&message)?;
+
+                if velocity > 0 {
+                    // Note on
+                    // Set colour of section to "active_colour"
+                    let active_colour = make_colour(section, section.active_colour);
+                    colour_port.send(&active_colour).unwrap();
+                } else {
+                    // Note off
+                    // Restore the colour
+                    let main_colour = make_colour(section, section.main_colour);
+                    colour_port.send(&main_colour).unwrap();
                 }
+		continue;
             }
         } else if message[0] == 176 {
             // A control signal

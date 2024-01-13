@@ -1,0 +1,8 @@
+127 0 0 red
+46 47 48 teal
+0  0 127 blue
+0  127 0 green
+section1 red teal 60 [78, 77, 42, 88]
+section2 teal blue 53 [11, 12, 13, 21, 22, 23]
+section3 blue green 54 [44,45, 46, 54, 55, 56, 64, 65, 66]
+default blue red 55 []

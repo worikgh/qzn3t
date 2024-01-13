@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[allow(unused)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Section {
-    pads: Vec<u8>, // 11-88
+    pub pads: Vec<u8>, // 11-88
     pub main_colour: [u8; 3],
     pub active_colour: [u8; 3],
     pub midi_note: u8,
@@ -55,7 +55,6 @@ impl Section {
     }
 
     // Check that a `pad` is valid
-    #[allow(dead_code)]
     fn valid_pad(pad: u8) -> bool {
         (11..=88).contains(&pad) && pad % 10 != 0 && pad % 10 != 9
     }
@@ -72,10 +71,10 @@ impl Section {
 	    true
 	}else{
 	    eprintln!("Too many ({default_section_count}) default sections");
-	    false
+	    return false
 	};
         // No intersections
-        let mut b = true;
+        let b = true;
         for i in 0..(sections.len() - 1) {
             for j in (i + 1)..sections.len() {
                 if sections[i].intersect(&sections[j]) {
@@ -83,7 +82,7 @@ impl Section {
                         "section intersection: Sections:\n\t{}\n\t{}",
                         sections[i], sections[j]
                     );
-                    b = false;
+                    return false;
                 }
             }
         }
@@ -121,6 +120,7 @@ impl Section {
     }
 
     pub fn parse_json(input: &str) -> Option<Vec<Section>>{
+	//eprintln!("Parse:{input}");
         let result: Vec<Section> = match 
 	    serde_json::from_str(input){
 		Ok(r) => r,
@@ -129,8 +129,7 @@ impl Section {
         match Self::check_sections(&result) {
             true => Some(result),
             false => {
-		eprintln!("Sections check failed");
-		None
+		panic!("Sections check failed")
 	    },
         }
     }
