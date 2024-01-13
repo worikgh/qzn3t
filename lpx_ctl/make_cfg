@@ -1,0 +1,29 @@
+#!/usr/bin/perl -w
+use strict;
+
+# Input consists of three parts:
+# (1) Colour definitions: <r> <g> <b> <name>
+# <r>, <g>, <b> in 0..127
+# <name> is a label
+# E.g: 127 0 0 red
+#      46 47 48 teal
+#       0  0 127 blue
+#
+# (2) Section definitions
+# <section name> <colour name main> <colour name active> <MIDI>
+# E.g: section1 red 60
+#      section2 teal 53
+#      default blue 54
+# All section and colour labels must have no spaces
+#
+# Section pads:
+# <section name> <zero or more pads>
+# E.g: section1 11 12 13 21 22 23
+# E.g: default
+# Output is a JSON file to configure lpx_ctl
+# {
+#  "pads": [<zero or more pad indexes>],
+#  "main_colour":[0, 0, 127],
+#  "active_colour":[0, 127, 0],
+#  "midi_note": 60
+# }
