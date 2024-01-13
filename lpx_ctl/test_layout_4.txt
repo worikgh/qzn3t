@@ -1,0 +1,124 @@
+255 255 255 White
+127 0 0 Red
+0 127 0 Green
+0 0 127 Blue
+127 127 0 Yellow
+127 0 127 Magenta
+0 127 127 Cyan
+127 64 0 Orange
+0 127 64 Lime
+64 0 127 Plum
+127 64 64 Salmon
+64 127 64 Chartreuse
+64 64 127 Indigo
+127 127 64 Khaki
+127 64 127 Orchid
+64 127 127 Turquoise
+32 32 32 Charcoal
+64 64 64 Gray
+96 96 96 Silver
+127 127 127 LightGray
+32 4 0 Maroon
+8 32 4 ForestGreen
+4 0 32 Navy
+32 32 0 Olive
+32 0 32 Purple
+0 32 32 Teal
+12 12 12 JetBlack
+84 48 40 Mocha
+48 84 40 ChartreuseGreen
+48 40 84 DeepPurple
+84 48 48 Coral
+40 84 48 SpringGreen
+48 48 84 RoyalBlue
+84 84 48 Golden
+84 48 84 MexicanPink
+48 84 84 Aqua
+20 20 20 Gunmetal
+48 48 48 DimGray
+72 72 72 DimGrey
+96 96 96 DarkGray
+40 8 0 Brown
+8 40 8 DarkGreen
+8 0 40 DarkBlue
+40 40 8 DarkOlive
+40 8 40 DarkPurple
+8 40 40 DarkCyan
+24 24 24 VeryDarkGray
+8 8 8 VeryBlack
+84 60 50 AntiqueBrass
+60 84 50 LimeGreen
+60 50 84 ShadowPurple
+84 60 60 PersianRed
+50 84 60 DarkSpringGreen
+60 60 84 Ebony
+84 84 60 DarkGold
+84 60 84 Pink
+60 84 84 MediumAquamarine
+0 0 0 XXXX
+
+s1 White XXXX 20 [11]
+s2 Red XXXX 21 [12]
+s3 Green XXXX 22 [13]
+s4 Blue XXXX 23 [14]
+s5 Yellow XXXX 24 [15]
+s6 Magenta XXXX 25 [16]
+s7 Cyan XXXX 26 [17]
+s8 Orange XXXX 27 [18]
+s9 Lime XXXX 28 [21]
+s10 Plum XXXX 29 [22]
+s11 Salmon XXXX 30 [23]
+s12 Chartreuse XXXX 31 [24]
+s13 Indigo XXXX 32 [25]
+s14 Khaki XXXX 33 [26]
+s15 Orchid XXXX 34 [27]
+s16 Turquoise XXXX 35 [28]
+s17 Charcoal XXXX 36 [31]
+s18 Gray XXXX 37 [32]
+s19 Silver XXXX 38 [33]
+s20 LightGray XXXX 39 [34]
+s21 Maroon XXXX 40 [35]
+s22 ForestGreen XXXX 41 [36]
+s23 Navy XXXX 42 [37]
+s24 Olive XXXX 43 [38]
+s25 Purple XXXX 44 [41]
+s26 Teal XXXX 45 [42]
+s27 JetBlack XXXX 46 [43]
+s28 Mocha XXXX 47 [44]
+s29 ChartreuseGreen XXXX 48 [45]
+s30 DeepPurple XXXX 49 [46]
+s31 Coral XXXX 50 [47]
+s32 SpringGreen XXXX 51 [48]
+s33 RoyalBlue XXXX 52 [51]
+s34 Golden XXXX 53 [52]
+s35 MexicanPink XXXX 54 [53]
+s36 Aqua XXXX 55 [54]
+s37 Gunmetal XXXX 56 [55]
+s38 DimGray XXXX 57 [56]
+s39 DimGrey XXXX 58 [57]
+s40 DarkGray XXXX 59 [58]
+s41 Brown XXXX 60 [61]
+s42 DarkGreen XXXX 61 [62]
+s43 DarkBlue XXXX 62 [63]
+s44 DarkOlive XXXX 63 [64]
+s45 DarkPurple XXXX 64 [65]
+s46 DarkCyan XXXX 65 [66]
+s47 VeryDarkGray XXXX 66 [67]
+s48 VeryBlack XXXX 67 [68]
+s49 AntiqueBrass XXXX 68 [71]
+s50 LimeGreen XXXX 69 [72]
+s51 ShadowPurple XXXX 70 [73]
+s52 PersianRed XXXX 71 [74]
+s53 DarkSpringGreen XXXX 72 [75]
+s54 Ebony XXXX 73 [76]
+s55 DarkGold XXXX 74 [77]
+s56 Pink XXXX 75 [78]
+s57 MediumAquamarine XXXX 76 [81]
+# s58 Lavender XXXX 77 [82]
+# s59 Cocoa XXXX 78 [83]
+# s60 CaribbeanBlue XXXX 79 [84]
+# s61 LightBrown XXXX 80 [85]
+# s62 CeladonGreen XXXX 81 [86]
+# s63 StormGray XXXX 82 [87]
+# s64 PalePink XXXX 83 [88]
+default Ebony Ebony 84 []
