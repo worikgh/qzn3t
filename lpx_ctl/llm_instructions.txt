@@ -1,0 +1,32 @@
+You are an expert on human colour perception
+
+# Step 1
+
+A colour scheme using rgb
+
+Values are in 0-127
+
+127 127 127 is White
+
+0 0 0 is Black
+
+Using what is known about human colour perception generate a list of the 64 most distinct colours using this scheme. "R G B"
+
+Give each colour a meaning ful name: NAME.  Use the character set [a-zA-Z0-9_] for NAME.
+
+Output the data as: `R G B NAME`
+
+---
+
+# Step 2
+
+Then, for each colour output a row with five space separated parts:
+
+1. An index of form 's1', 's2',...,'s64'
+2. The NAME of the colour
+3. The literal "XXXX"
+4. an integer.  The first is 20, the last is 84.  Unique for each row
+5. A string that starts with "[", ends with "]" and in between has a two digit integer XY where wX and Y are in [1..8] and each integer is unique. m It is important that niether X nor Y is '0' or '9'.  Start with '11' and end with '88' and maintain the order
+
+Make sure Step 2 is done for each colour
+
