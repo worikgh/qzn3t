@@ -37,6 +37,8 @@ my $ln = 0;
 while(my $line = <$cfg_fh>){
     $ln++;
     chomp $line;
+    $line =~ /^\s*$/ and next;
+    $line =~ /^\s*\#/ and next;
     if($line =~ /^(\d+)\s+(\d+)\s+(\d+)\s+(\w+)\s*$/){
 	$colours{$4} and die "$4 defined twice"; 
 	$colours{$4} = [$1, $2, $3];
@@ -55,7 +57,8 @@ print "[\n";
 my @sects = ();
 foreach my $sec (sort keys %section_definitions){
     my @pads = @{$section_definitions{$sec}->[0]};
-    my $main_colour = "[".join(", ", @{$colours{$section_definitions{$sec}->[1]}})."]";
+    my $array_ref = $colours{$section_definitions{$sec}->[1]};
+    my $main_colour = "[".join(", ", @{$array_ref})."]";
     my $active_colour = "[".join(", ", @{$colours{$section_definitions{$sec}->[2]}})."]";
     my $midi_note = $section_definitions{$sec}->[3];
     my $sect =  "{\n". "\t\"pads\": [" . join(",", @pads)."],\n". "\t\"main_colour\":$main_colour,\n". "\t\"active_colour\":$active_colour,\n". "\t\"midi_note\":$midi_note\n". "}\n";
