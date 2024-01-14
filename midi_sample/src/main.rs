@@ -2,10 +2,12 @@ extern crate jack;
 extern crate midir;
 extern crate serde;
 extern crate symphonia;
+use jack::ClientStatus;
 use jack::{Client, ClosureProcessHandler, Control};
 use midir::{MidiInput, MidiInputConnection};
 use serde::Deserialize;
 use std::env;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -62,8 +64,19 @@ fn process_samples_json(
         .expect("Failed to read file");
 
     // Convert JSON
-    let config: Config = serde_json::from_str(&contents)?;
-
+    let mut config: Config = match serde_json::from_str(&contents) {
+	Ok(s) => s,
+	Err(err) => panic!("{err}: Processing JSON"),
+    };
+    let path = Path::new(file_path);
+    let directory_path = path.parent().unwrap().display();
+    let binding = directory_path.to_string();
+    let directory_path = binding.as_str();
+    for p in config.samples_descr.iter_mut() {
+	p.path  = directory_path.to_string() +"/" + p.path.as_str();
+	eprintln!("p.path: {}", p.path);
+    }
+    
     Ok(config.samples_descr)
 }
 
@@ -206,10 +219,12 @@ fn main() {
     }
 
     // Create the Jack client
-    let (client, _status) =
+    let (client, status) =
         Client::new("MidiSampleQzn3t", jack::ClientOptions::NO_START_SERVER)
             .unwrap();
-
+    if status != ClientStatus::empty() {
+	panic!("Failed");
+    }
     let mut port = client.register_port("output", jack::AudioOut);
 
     // Activate the Jack client and start the audio processing thread
