@@ -5,21 +5,21 @@ Group and light up LEDs on LPX Novation, and output MIDI signals - all pads in a
 ## Sections - Colour and Note
 
 * Defined using sets of pads. Allows arbitrary, even discontinuous, sections
-* All the pads in a section have the same propertie (colours and MIDI note)
+* All the pads in a section have the same properties (colours and MIDI note)
 * No section can intersect with another, each pad is in at most one section
-* There can be one section with no defined pads. It is the default for pads not included
+* There can be, at most, one section with no defined pads. It is the default for pads not included
 
 ### Properties of a Section
 
-* Main Colour: Each section has a unique main colour
-* Active Colour: Each section has an "active" colour.  When any pad in
-  the section is pressed (has issued an "on" but not an "off" MIDI
-  signal) the section  is the active colour.
+* Main Colour: Each section has a main colour that is displayed when the pad is not pressed. 
+* Active Colour: Each section has an "active" colour.  When any pad in the section is pressed (has issued an "on" but not an "off" MIDI signal) the section  is the active colour.
 * MIDI Note - the note to output
+
+Two sections can have the same colours and or notes, but hey are still independant of each other.
 
 ## Input
 
-The definition of the oad patern is in a file that is the first argument: `lpx_ctl <Pattern File>`
+The definition of the sections is in a file that is the first argument: `lpx_ctl <Section File>`
 
 It is a JSON file.
 
