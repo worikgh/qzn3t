@@ -1,7 +1,7 @@
 #!/usr/bin/perl -w
 use strict;
 
-# Input consists of three parts:
+# Input consists of two parts:
 # (1) Colour definitions: <r> <g> <b> <name>
 # <r>, <g>, <b> in 0..127
 # <name> is a label
@@ -24,6 +24,10 @@ use strict;
 #  "active_colour":[0, 127, 0],
 #  "midi_note": 60
 # }
+#
+# A special entry: `MIDI_ADJ <N>` where `N` is an integer added to
+# every MIDI note above
+
 my $cfg_fn = shift or die;
 
 -r $cfg_fn or die "$! Cannot read $cfg_fn";
@@ -31,6 +35,9 @@ my $cfg_fn = shift or die;
 
 my %colours = ();
 my %section_definitions = ();
+
+# For scaling MIDI
+my $midi_adj = 0;
 
 open(my $cfg_fh, $cfg_fn) or die $!;
 my $ln = 0;
@@ -44,10 +51,14 @@ while(my $line = <$cfg_fh>){
 	$colours{$4} = [$1, $2, $3];
 	next;
     }
-    if($line =~ /^(\w+)\s+(\w+)\s+(\w+)\s+(\d+)\s+\[([\d+,\s+]*)\]\s*$/){
+    if($line =~ /^([\-\w]+)\s+(\w+)\s+(\w+)\s+(\d+)\s+\[([\d+,\s+]*)\]\s*$/){
 	defined $section_definitions{$1} and die "$1 is defined section twice";
 	my @pads = split(/,\s+?/, $5);
-	$section_definitions{$1} = [\@pads, $2, $3, $4];
+	$section_definitions{$1} = [\@pads, $2, $3, $4 + $midi_adj];
+	next;
+    }
+    if($line =~ /^\s*MIDI_ADJ\s*(-?\d+)\s*$/){
+	$midi_adj = $1;
 	next;
     }
     die "$ln: $line";
@@ -65,9 +76,6 @@ foreach my $sec (sort keys %section_definitions){
     push (@sects , $sect);
 }
 
-
-
 print join(",", @sects);
 print "]\n";
-
 
