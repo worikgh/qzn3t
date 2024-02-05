@@ -7,7 +7,6 @@ use jack::{Client, ClosureProcessHandler, Control};
 use midir::{MidiInput, MidiInputConnection};
 use serde::Deserialize;
 use std::env;
-use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -65,18 +64,18 @@ fn process_samples_json(
 
     // Convert JSON
     let mut config: Config = match serde_json::from_str(&contents) {
-	Ok(s) => s,
-	Err(err) => panic!("{err}: Processing JSON"),
+        Ok(s) => s,
+        Err(err) => panic!("{err}: Processing JSON"),
     };
     let path = Path::new(file_path);
     let directory_path = path.parent().unwrap().display();
     let binding = directory_path.to_string();
     let directory_path = binding.as_str();
     for p in config.samples_descr.iter_mut() {
-	p.path  = directory_path.to_string() +"/" + p.path.as_str();
-	eprintln!("p.path: {}", p.path);
+        p.path = directory_path.to_string() + "/" + p.path.as_str();
+        eprintln!("p.path: {}", p.path);
     }
-    
+
     Ok(config.samples_descr)
 }
 
@@ -219,11 +218,16 @@ fn main() {
     }
 
     // Create the Jack client
-    let (client, status) =
-        Client::new("MidiSampleQzn3t", jack::ClientOptions::NO_START_SERVER)
-            .unwrap();
+    let (client, status) = match Client::new(
+        "MidiSampleQzn3t",
+        jack::ClientOptions::NO_START_SERVER,
+    ) {
+        Ok(a) => a,
+        Err(err) => panic!("Err: {err}"),
+    };
+
     if status != ClientStatus::empty() {
-	panic!("Failed");
+        panic!("Failed");
     }
     let mut port = client.register_port("output", jack::AudioOut);
 
@@ -313,8 +317,7 @@ fn main() {
     // let _ = std::io::stdin().read_line(&mut String::new());
     // // Deactivate the Jack client and stop the audio processing thread
     // as_client.deactivate().unwrap();
-    loop{
-	thread::sleep(Duration::from_secs(1_000));
+    loop {
+        thread::sleep(Duration::from_secs(1_000));
     }
 }
-
