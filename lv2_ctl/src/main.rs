@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io;
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Hash, Debug, Ord, PartialOrd)]
 enum Lv2Type {
     Plugin,
     ReverbPlugin,
@@ -34,11 +34,21 @@ enum Lv2Type {
     Project,
     Other(String),
 }
-#[derive(Debug)]
+
+#[derive(PartialEq, Debug, PartialOrd)]
+struct ControlPortProperties {
+    min: f64,
+    max: f64,
+    default: f64,
+    logarithmic: bool,
+}
+
+//#[derive(, Eq, Hash, Ord,)]
+#[derive(PartialEq, Debug, PartialOrd)]
 enum PortType {
     Input,
     Output,
-    Control,
+    Control(ControlPortProperties),
     Audio,
     AtomPort,
     Other(String),
@@ -47,13 +57,13 @@ enum PortType {
 #[derive(Debug)]
 struct Port {
     name: String,
+    types: Vec<PortType>,
     index: usize,
-    style: Vec<PortType>,
 }
 
 #[derive(Debug)]
 struct Lv2 {
-    style: Vec<Lv2Type>,
+    types: HashSet<Lv2Type>,
     ports: Vec<Port>,
     name: String,
 }
@@ -64,27 +74,56 @@ struct Lv2Datum {
     predicate: String,
     object: String,
 }
+
+/// Unicode constants for display
+const LESSEQ: &str = "\u{2a7d}"; // <=
+const LOG: &str = "\u{33d2}"; // log
+
+impl fmt::Display for ControlPortProperties {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}{} {LESSEQ} {}  {LESSEQ} {}",
+            if self.logarithmic {
+                format!["{LOG} "]
+            } else {
+                "".to_string()
+            },
+            self.min,
+            self.default,
+            self.max,
+        )
+    }
+}
+impl fmt::Display for PortType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PortType::Input => write!(f, "Input"),
+            PortType::Output => write!(f, "Output"),
+            PortType::Control(properties) => write!(f, "Control({})", properties),
+            PortType::Audio => write!(f, "Audio"),
+            PortType::AtomPort => write!(f, "AtomPort"),
+            PortType::Other(s) => write!(f, "Other({})", s),
+        }
+    }
+}
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let port_types: Vec<String> = self.types.iter().map(|t| format!("{}", t)).collect();
+        write!(
+            f,
+            "Port {}: {} [{}]",
+            self.index,
+            self.name,
+            port_types.join(", "),
+        )
+    }
+}
 impl fmt::Display for Lv2Datum {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}", self.subject, self.predicate, self.object)
     }
 }
-impl fmt::Display for Port {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {}: {}",
-            self.index,
-            self.name,
-            self.style
-                .iter()
-                .map(|s| format!("{s:?}"))
-                .collect::<Vec<String>>()
-                .join(", ")
-        )
-    }
-}
-
 impl fmt::Display for Lv2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -94,12 +133,41 @@ impl fmt::Display for Lv2 {
             self.ports
                 .iter()
                 .fold("".to_string(), |a, b| format!("{}\n\t{}", a, b)),
-            self.style
+            self.types
                 .iter()
                 .fold("".to_string(), |a, b| format!("{}\n\t{:?}", a, b))
         )
     }
 }
+
+// Filter Lv2Datum by predicate
+fn predicate_filter<'a, T: Iterator<Item = &'a &'a Lv2Datum>>(
+    i: T,
+    filter: &'a str,
+) -> Vec<&'a &'a Lv2Datum> {
+    //Vec<&'a &'a Lv2Datum> {
+    i.filter(|l| l.predicate == filter)
+        .collect::<Vec<&'a &'a Lv2Datum>>()
+}
+
+/// For strings start `"1.0"^^<htt...` And the first quoted part
+/// (1.0) is wanted.  Panic if invalid string passed
+fn remove_quotes<'a>(inp: &'a str) -> &'a str {
+    let i = inp[1..].find('"').unwrap() + 1;
+    &inp[1..i]
+}
+
+/// Numbers for control ports are in the data often without a decimal
+/// point.  This takes a LV2 object string and extracts the number.
+/// Or panics.
+fn number(object: &str) -> f64 {
+    let b = remove_quotes(object);
+    match b.find(|c| c != '.' && c != '+') {
+        Some(_) => b.parse::<f64>().expect(format!("Failed: {b}").as_str()),
+        None => b.parse::<isize>().expect(format!("Failed: {b}").as_str()) as f64,
+    }
+}
+
 fn main() -> std::io::Result<()> {
     let mut simulators: Vec<Lv2> = Vec::new();
 
@@ -167,18 +235,18 @@ fn main() -> std::io::Result<()> {
                 });
             // println!("{name} {} {} {}", l.subject, l.predicate, l.object);
             // Collect all types
-            let style: Vec<Lv2Type> = plugin_data
+            let types: HashSet<Lv2Type> = plugin_data
                 .iter()
                 .filter(|lv| lv.predicate == "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>")
                 .collect::<Vec<&&Lv2Datum>>()
                 .iter()
-                .map(|l| {
-                    let i = l.object.find('#').unwrap();
-                    let j = l.object.rfind('>').unwrap();
-                    match &l.object.as_str()[(i + 1)..j] {
+                .map(|lv| {
+                    let i = lv.object.find('#').unwrap();
+                    let j = lv.object.rfind('>').unwrap();
+                    match &lv.object.as_str()[(i + 1)..j] {
                         "Plugin" => Lv2Type::Plugin,
                         "ReverbPlugin" => Lv2Type::ReverbPlugin,
-			"ChorusPlugin" => Lv2Type::ChorusPlugin,
+                        "ChorusPlugin" => Lv2Type::ChorusPlugin,
                         "FlangerPlugin" => Lv2Type::FlangerPlugin,
                         "PhaserPlugin" => Lv2Type::PhaserPlugin,
                         "WaveshaperPlugin" => Lv2Type::WaveshaperPlugin,
@@ -234,7 +302,6 @@ fn main() -> std::io::Result<()> {
                         // :Vec<Vec<Port>> `p`
                         // is a String and the subject of the lines that
                         // define this port.  Make a Vec<Port> here
-			println!("Port: {p}");
                         let l = lv2_data
                             .iter()
                             .filter(|&x| &x.subject == p)
@@ -246,9 +313,35 @@ fn main() -> std::io::Result<()> {
                             .collect::<Vec<&&Lv2Datum>>()
                             .iter()
                             .fold(String::new(), |a, b| {
-				println!("Name: '{a}' + '{}'", b.object);
-				a + b.object.as_str()
-			    });
+                                // println!("Name: '{a}' + '{}'", b.object);
+                                a + remove_quotes(b.object.as_str())
+                            });
+
+                        let min: f64 =
+                            predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
+                                .iter()
+                                .fold(0.0, |a, b| a + number(&b.object.as_str()));
+                        let max: f64 = l
+                            .iter()
+                            .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
+                            .collect::<Vec<&&Lv2Datum>>()
+                            .iter()
+                            .fold(0.0, |a, b| a + number(b.object.as_str()));
+                        let default: f64 =
+                            predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#default>")
+                                .iter()
+                                .fold(0.0, |a, b| a + number(b.object.as_str()));
+                        let logarithmic: bool = predicate_filter(
+                            l.iter(),
+                            "<http://lv2plug.in/ns/lv2core#portProperty>",
+                        )
+                        .iter()
+                        .filter(|lv| {
+                            lv.object == "<http://lv2plug.in/ns/ext/port-props#logarithmic>"
+                        })
+                        .collect::<Vec<&&&Lv2Datum>>()
+                        .len()
+                            > 0;
                         let index: usize = l
                             .iter()
                             .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#index>")
@@ -258,10 +351,13 @@ fn main() -> std::io::Result<()> {
                                 let b2 = b.object.as_str()[1..].to_string();
                                 let i = b2.find('"').expect("{b2}");
                                 let b2 = b2.as_str()[..i].to_string();
-                                let b2 = b2.as_str().parse::<usize>().unwrap();
+                                let b2 = b2
+                                    .as_str()
+                                    .parse::<usize>()
+                                    .expect(format!("{b2}").as_str());
                                 a + b2
                             });
-                        let style: Vec<PortType> = l
+                        let types: Vec<PortType> = l
                             .iter()
                             .filter(|l| {
                                 l.predicate == "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
@@ -278,7 +374,12 @@ fn main() -> std::io::Result<()> {
                                     // Audio,
                                     // Other(String),
                                     "InputPort" => PortType::Input,
-                                    "ControlPort" => PortType::Control,
+                                    "ControlPort" => PortType::Control(ControlPortProperties {
+                                        min,
+                                        max,
+                                        default,
+                                        logarithmic,
+                                    }),
                                     "OutputPort" => PortType::Output,
                                     "AudioPort" => PortType::Audio,
                                     "AtomPort" => PortType::AtomPort,
@@ -286,12 +387,14 @@ fn main() -> std::io::Result<()> {
                                 }
                             })
                             .collect();
-                        Port { name, index, style }
+                        Port { name, index, types }
                     })
                     .collect::<Vec<Port>>();
             };
-            // eprintln!("Simulator: {name}");
-            simulators.push(Lv2 { style, ports, name });
+            if name.len() > 0 {
+                let lv2 = Lv2 { types, ports, name };
+                simulators.push(lv2);
+            }
         }
     }
     for s in simulators.iter() {
