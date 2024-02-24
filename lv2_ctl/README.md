@@ -11,8 +11,9 @@ An experiment
 Use `serdi` from the [serd](https://gitlab.com/drobilla/serd) project to get a list of all the LV2 simulators and their data
 
 ```bash
-find /usr/lib/lv2/ -name "*.ttl"  -exec perl -e '$z = shift; $z =~ /\/([^\/]+)\.lv2\/[^\/]+\.ttl/ or die $z; print `./serdi  -p $1 $z `;' {} \; > lv2.dat`
+find /usr/lib/lv2/ -name "*.ttl"  | perl -e '$p = 0; while($z = <>){chomp $z;  print `./serdi  -p $p $z`;$p++}' > /tmp/lv2.dat
 ```
+
 
 ### Example
 
