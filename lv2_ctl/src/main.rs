@@ -66,6 +66,7 @@ struct Lv2 {
     types: HashSet<Lv2Type>,
     ports: Vec<Port>,
     name: String,
+    url:String,
 }
 /// Stores all the data required to run LV2 simulators
 #[derive(PartialEq, PartialOrd)]
@@ -128,8 +129,9 @@ impl fmt::Display for Lv2 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}{}{}",
+            "{}: {}{}{}",
             self.name,
+	    self.url,
             self.ports
                 .iter()
                 .fold("".to_string(), |a, b| format!("{}\n\t{}", a, b)),
@@ -391,8 +393,9 @@ fn main() -> std::io::Result<()> {
                     })
                     .collect::<Vec<Port>>();
             };
+	    let url = l.subject.as_str()[1..(l.subject.len() - 1)].to_string();
             if name.len() > 0 {
-                let lv2 = Lv2 { types, ports, name };
+                let lv2 = Lv2 { url, types, ports, name };
                 simulators.push(lv2);
             }
         }
