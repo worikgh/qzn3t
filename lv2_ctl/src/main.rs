@@ -1,7 +1,51 @@
+///App code taken from https://ratatui.rs/tutorials/counter-app/
+use app::App;
+use color_eyre::{
+    eyre::{bail, WrapErr},
+    Result,
+};
+
+// fn main() -> Result<()> {
+//     errors::install_hooks()?;
+//     let mut terminal = tui::init()?;
+//     App::default().run(&mut terminal)?;
+//     tui::restore()?;
+//     Ok(())
+// }
 use core::fmt;
-use std::collections::HashMap;
+use crossterm::{
+    cursor::{Hide, Show},
+    event::{
+        self, poll, read, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent,
+        KeyEventKind,
+    },
+    execute,
+    terminal::{
+        disable_raw_mode, enable_raw_mode, window_size, EnterAlternateScreen, LeaveAlternateScreen,
+        WindowSize,
+    },
+};
+use ratatui::{
+    prelude::*,
+    symbols::border,
+    widgets::{block::*, *},
+};
+use run_executable::{run_executable, trunc_vec_0};
 use std::collections::HashSet;
+use std::fs::OpenOptions;
 use std::io;
+use std::io::stdout;
+use std::io::Write;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
+use std::{collections::HashMap, time::Duration};
+use tui_input::backend::crossterm as backend;
+use tui_input::backend::crossterm::EventHandler;
+use tui_input::Input;
+mod app;
+mod run_executable;
+mod errors;
+mod tui;
 
 #[derive(PartialEq, Eq, Hash, Debug, Ord, PartialOrd)]
 enum Lv2Type {
@@ -66,7 +110,7 @@ struct Lv2 {
     types: HashSet<Lv2Type>,
     ports: Vec<Port>,
     name: String,
-    url:String,
+    url: String,
 }
 /// Stores all the data required to run LV2 simulators
 #[derive(PartialEq, PartialOrd)]
@@ -131,7 +175,7 @@ impl fmt::Display for Lv2 {
             f,
             "{}: {}{}{}",
             self.name,
-	    self.url,
+            self.url,
             self.ports
                 .iter()
                 .fold("".to_string(), |a, b| format!("{}\n\t{}", a, b)),
@@ -170,7 +214,54 @@ fn number(object: &str) -> f64 {
     }
 }
 
+// fn readline() -> String {
+//     let mut input = String::new();
+//     let mut _ch = 0;
+
+//     loop {
+//         _ch = getch();
+
+//         if _ch == KEY_ENTER || _ch == '\n' as i32 {
+//             break;
+//         } else {
+//             addch(_ch as u32);
+//             input.push(_ch as u8 as char);
+//         }
+//     }
+
+//     input
+// }
+// fn println(line: &str, row: i32) {
+//     mvprintw(row, 0, line);
+// }
+// fn getstr_blocking() -> Result<String, &'static str> {
+//     let mut input = String::new();
+//     let ch = getch();
+
+//     if ch == ERR {
+//         return Err("No input");
+//     } else {
+//         input.push(ch as u8 as char);
+//     }
+//     loop {
+// 	match getch()  {
+//             ERR => 		break,
+// 	    ch32 => input.push(ch32 as u8 as char),
+// 	}
+//     }
+
+//     Ok(input)
+// }
 fn main() -> std::io::Result<()> {
+    errors::install_hooks().expect("Installing error hooks");
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open("/tmp/output.txt")
+        .expect("Failed to open file");
+
+    file.write_all(b"Hello, world!\n")?;
+
     let mut simulators: Vec<Lv2> = Vec::new();
 
     // Store processed plugins so only get procerssed once
@@ -393,16 +484,169 @@ fn main() -> std::io::Result<()> {
                     })
                     .collect::<Vec<Port>>();
             };
-	    let url = l.subject.as_str()[1..(l.subject.len() - 1)].to_string();
+            let url = l.subject.as_str()[1..(l.subject.len() - 1)].to_string();
             if name.len() > 0 {
-                let lv2 = Lv2 { url, types, ports, name };
+                let lv2 = Lv2 {
+                    url,
+                    types,
+                    ports,
+                    name,
+                };
                 simulators.push(lv2);
             }
         }
     }
-    for s in simulators.iter() {
-        println!("{s}");
+    // for s in simulators.iter() {
+    //     println!("{s}");
+    // }
+    // println!("Found {} simulators", simulators.len());
+
+    // Run the mod-host sub-process
+    // pub fn run_executable(path: &str, input_rx: Receiver<Vec<u8>>, output_tx: Sender<Vec<u8>>) {
+    let (input_tx, input_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
+    let (output_tx, output_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
+
+    // Spawn the run_executable function in a separate thread
+    let mod_host_th = thread::spawn(move || {
+        run_executable(
+            "/home/puppy/mod-host/mod-host",
+            &vec!["-i", "-n"],
+            input_rx,
+            output_tx,
+        );
+    });
+
+    // Ensure mod-host is going
+    let resp = match output_rx.recv() {
+        Ok(t) => t,
+        Err(err) => panic!("{err}: Waiting for mod-host"),
+    };
+
+    let resp = trunc_vec_0(resp);
+    eprintln!("resp.len(): {}", resp.len());
+    let resp = match String::from_utf8(resp) {
+        Ok(s) => s,
+        Err(err) => panic!("{err} Cannot translate resppone"),
+    };
+    // const MOD_HOST: &str = "mod-host> ";
+    const MOD_HOST: &str = "mod-host>";
+    let resp = resp.as_str().trim();
+    if resp != MOD_HOST {
+        panic!("Unknown response: '{resp}'/'{MOD_HOST}'");
     }
-    println!("Found {} simulators", simulators.len());
+
+    // // Send a command
+    // input_tx
+    //     .send(b"add http://guitarix.sourceforge.net/plugins/gx_redeye#chump 1\n".to_vec())
+    //     .unwrap();
+    // // Start interacting with the user
+    // let resp = match output_rx.recv() {
+    //     Ok(t) => t,
+    //     Err(err) => panic!("{err}: Waiting for mod-host"),
+    // };
+    // let resp = trunc_vec_0(resp);
+
+    // let resp = match String::from_utf8(resp) {
+    //     Ok(s) => s,
+    //     Err(err) => panic!("{err} Cannot translate resppone"),
+    // };
+    // println!("Got {resp}");
+
+    // Start user interface
+
+    // Initialize the terminal
+    let mut terminal = tui::init()?;
+
+    const PROMPT: &str = "mod-gui> ";
+    let wind_sz: WindowSize = window_size().unwrap();
+    let input = format!("{PROMPT}");
+    let mut input: Input = input.into();
+    // backend::write(&mut stdout, input.value(), input.cursor(), (0, 0), 15)?;
+    // stdout.flush()?;
+
+    let mut row = 3; // Row to write responses to
+    let mut _command: String = "".to_string();
+
+    let app_result = App::default().run(&mut terminal);
+    tui::restore()?;    
+    loop {
+        let is_event: bool = match poll(Duration::from_secs(0)) {
+            Ok(t) => t,
+            Err(err) => {
+                eprintln!("{err}: Failed poll");
+                break;
+            }
+        };
+        if is_event {
+            let event = read()?;
+
+            if let Ok(data) = output_rx.try_recv() {
+                let data = trunc_vec_0(data);
+                let s = String::from_utf8(trunc_vec_0(data)).unwrap();
+                let s = format!("Received from mod-host: {s}\n");
+                file.write_all(s.as_bytes()).unwrap();
+                for i in s.lines() {
+                    // backend::write(&mut stdout, i, 0, (0, row), wind_sz.columns)?;
+                    row += 1;
+                }
+//                stdout.flush()?;
+            }
+
+            if let Event::Key(KeyEvent { code, .. }) = event {
+                match code {
+                    KeyCode::Esc => {
+                        break;
+                    }
+                    KeyCode::Enter => {
+                        // Got a line
+                        _command = input.to_string().as_str()[PROMPT.len()..].to_string();
+                        input = input.with_value(PROMPT.to_string());
+
+                        // backend::write(
+                        //     &mut stdout,
+                        //     input.value(),
+                        //     input.cursor(),
+                        //     (0, 0),
+                        //     wind_sz.columns,
+                        // )?;
+
+                        // backend::write(
+                        //     &mut stdout,
+                        //     _command.as_str(),
+                        //     input.cursor(),
+                        //     (0, 2),
+                        //     wind_sz.columns,
+                        // )?;
+                        // stdout.flush()?;
+
+                        // Send command to mod-host
+                        input_tx.send(_command.as_bytes().to_vec()).unwrap();
+                        let s = format!("Sent to mod-host: {_command}\n");
+                        file.write_all(s.as_bytes()).unwrap();
+                    }
+                    _ => {
+                        if input.handle_event(&event).is_some() {
+                            // backend::write(
+                            //     &mut stdout,
+                            //     input.value(),
+                            //     input.cursor(),
+                            //     (0, 0),
+                            //     wind_sz.columns,
+                            // )?;
+                            // stdout.flush()?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // execute!(stdout, Show, LeaveAlternateScreen, DisableMouseCapture)?;
+    disable_raw_mode()?;
+    println!("{}", input);
+
+    // Close the file
+    drop(file);
+    mod_host_th.join().expect("Joining mod-host thread");
+
     Ok(())
 }
