@@ -214,44 +214,6 @@ fn number(object: &str) -> f64 {
     }
 }
 
-// fn readline() -> String {
-//     let mut input = String::new();
-//     let mut _ch = 0;
-
-//     loop {
-//         _ch = getch();
-
-//         if _ch == KEY_ENTER || _ch == '\n' as i32 {
-//             break;
-//         } else {
-//             addch(_ch as u32);
-//             input.push(_ch as u8 as char);
-//         }
-//     }
-
-//     input
-// }
-// fn println(line: &str, row: i32) {
-//     mvprintw(row, 0, line);
-// }
-// fn getstr_blocking() -> Result<String, &'static str> {
-//     let mut input = String::new();
-//     let ch = getch();
-
-//     if ch == ERR {
-//         return Err("No input");
-//     } else {
-//         input.push(ch as u8 as char);
-//     }
-//     loop {
-// 	match getch()  {
-//             ERR => 		break,
-// 	    ch32 => input.push(ch32 as u8 as char),
-// 	}
-//     }
-
-//     Ok(input)
-// }
 fn main() -> std::io::Result<()> {
     errors::install_hooks().expect("Installing error hooks");
     let mut file = OpenOptions::new()
