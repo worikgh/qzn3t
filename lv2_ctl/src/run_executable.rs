@@ -33,7 +33,7 @@ pub fn run_executable(
     input_rx: Receiver<Vec<u8>>,
     output_tx: Sender<Vec<u8>>,
 ) {
-    eprintln!("Run executable: {path} {args:?}");
+    // eprintln!("Run executable: {path} {args:?}");
     let mut command = Command::new(path);
     for arg in args {
         command.arg(arg);
