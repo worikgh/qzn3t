@@ -13,11 +13,8 @@ use lv2::Lv2Type;
 use crate::lv2::ModHostController;
 mod app;
 mod run_executable;
-mod errors;
-mod tui;
 mod lv2;
 fn main() -> std::io::Result<()> {
-    errors::install_hooks().expect("Installing error hooks");
     let mut file = OpenOptions::new()
         .write(true)
         .create(true)

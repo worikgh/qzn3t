@@ -26,13 +26,13 @@ const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
 
 #[derive(Copy, Clone)]
 enum Status {
-    Todo,
-    Completed,
+    Active,
+    Ready,
 }
 
 struct TodoItem<'a> {
-    todo: &'a str,
-    info: &'a str,
+    name: &'a str,
+    kind: &'a str,
     status: Status,
 }
 
@@ -89,19 +89,19 @@ fn restore_terminal() -> color_eyre::Result<()> {
 
 impl App<'_> {
     pub fn new<'b>(mod_host_controller:&'b ModHostController) -> App<'b> {
-	// if let Err(err) =  init_error_hooks() {
-	//     eprintln!("{err}: Initialising error hooks");
-	// }
+	if let Err(err) =  init_error_hooks() {
+	    eprintln!("{err}: Initialising error hooks");
+	}
 	    
         App {
 	    mod_host_controller,
             items: StatefulList::with_items([
-                ("Rewrite everything with Rust!", "I can't hold my inner voice. He tells me to rewrite the complete universe with Rust", Status::Todo),
-                ("Rewrite all of your tui apps with Ratatui", "Yes, you heard that right. Go and replace your tui with Ratatui.", Status::Completed),
-                ("Pet your cat", "Minnak loves to be pet by you! Don't forget to pet and give some treats!", Status::Todo),
-                ("Walk with your dog", "Max is bored, go walk with him!", Status::Todo),
-                ("Pay the bills", "Pay the train subscription!!!", Status::Completed),
-                ("Refactor list example", "If you see this info that means I completed this task!", Status::Completed),
+                ("Rewrite everything with Rust!", "I can't hold my inner voice. He tells me to rewrite the complete universe with Rust", Status::Active),
+                ("Rewrite all of your tui apps with Ratatui", "Yes, you heard that right. Go and replace your tui with Ratatui.", Status::Ready),
+                ("Pet your cat", "Minnak loves to be pet by you! Don't forget to pet and give some treats!", Status::Active),
+                ("Walk with your dog", "Max is bored, go walk with him!", Status::Active),
+                ("Pay the bills", "Pay the train subscription!!!", Status::Ready),
+                ("Refactor list example", "If you see this info that means I completed this task!", Status::Ready),
             ]),
         }
     }
@@ -110,8 +110,8 @@ impl App<'_> {
     fn change_status(&mut self) {
         if let Some(i) = self.items.state.selected() {
             self.items.items[i].status = match self.items.items[i].status {
-                Status::Completed => Status::Todo,
-                Status::Todo => Status::Completed,
+                Status::Ready => Status::Active,
+                Status::Active => Status::Ready,
             }
         }
     }
@@ -253,8 +253,8 @@ impl App<'_> {
         // We get the info depending on the item's state.
         let info = if let Some(i) = self.items.state.selected() {
             match self.items.items[i].status {
-                Status::Completed => "✓ DONE: ".to_string() + self.items.items[i].info,
-                Status::Todo => "TODO: ".to_string() + self.items.items[i].info,
+                Status::Ready => "✓ DONE: ".to_string() + self.items.items[i].kind,
+                Status::Active => "TODO: ".to_string() + self.items.items[i].kind,
             }
         } else {
             "Nothing to see here...".to_string()
@@ -350,9 +350,9 @@ impl TodoItem<'_> {
             _ => ALT_ROW_COLOR,
         };
         let line = match self.status {
-            Status::Todo => Line::styled(format!(" ☐ {}", self.todo), TEXT_COLOR),
-            Status::Completed => Line::styled(
-                format!(" ✓ {}", self.todo),
+            Status::Active => Line::styled(format!(" ☐ {}", self.name), TEXT_COLOR),
+            Status::Ready => Line::styled(
+                format!(" ✓ {}", self.name),
                 (COMPLETED_TEXT_COLOR, bg_color),
             ),
         };
@@ -364,8 +364,8 @@ impl TodoItem<'_> {
 impl<'a> From<&(&'a str, &'a str, Status)> for TodoItem<'a> {
     fn from((todo, info, status): &(&'a str, &'a str, Status)) -> Self {
         Self {
-            todo,
-            info,
+            name: todo,
+            kind: info,
             status: *status,
         }
     }
