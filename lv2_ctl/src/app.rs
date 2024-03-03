@@ -323,7 +323,6 @@ impl App<'_> {
 }
 
 impl StatefulList {
-
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {

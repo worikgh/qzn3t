@@ -43,40 +43,6 @@ fn main() -> std::io::Result<()> {
 
     // Start user interface
     App::run(&mod_host_controller).expect("Running app");
-
-    // let mut mod_host_resp = "".to_string();
-    // // Enforce twenty frames a second from this loop
-    // let target_fps = 20;
-    // let target_frame_time = time::Duration::from_secs(1) / target_fps;
-
-    // loop {
-    //     // Note the time at the top of th eloop, and sleep at the
-    //     // bottom to keep the looping speed constant
-    //     let start_time = time::Instant::now();
-
-    // 	let latest = mod_host_controller.get_data_nb()?;
-    // 	if latest.len() == 0 && mod_host_resp.len() != 0 {
-    // 	    // There is some data from mod-host, but it has stopped sending any.
-    // 	    if mod_host_resp == "bye" {
-    // 		// Mod-host has quit
-    // 		break;
-    // 	    }
-    // 	    // Output response.  To stdout for now.  Soon send to UI
-    // 	    print!("{mod_host_resp}");
-    // 	    mod_host_resp = "".to_string();
-    // 	}else {
-    // 	    if latest.len() != 0 {
-    // 		// Got some more response
-    // 		mod_host_resp += latest.as_str();
-    // 	    }
-    // 	}
-    //     // enforce duration
-    //     let elapsed_time = start_time.elapsed();
-    //     if elapsed_time < target_frame_time {
-    //         thread::sleep(target_frame_time - elapsed_time);
-    //     }
-    // }
-    // Close the file
     drop(file);
     mod_host_controller
         .mod_host_th
