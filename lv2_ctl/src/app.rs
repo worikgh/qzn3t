@@ -5,7 +5,7 @@
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
-use crate::lv2::{Lv2Type, ModHostController, Lv2};
+use crate::lv2::{Lv2, ModHostController};
 use std::{error::Error, io, io::stdout};
 
 use color_eyre::config::HookBuilder;
@@ -94,21 +94,22 @@ impl App<'_> {
             .simulators
             .iter()
             .map(|s| {
-                s.types
-                    .iter()
-                    .filter(|&t| *t != Lv2Type::Plugin) // They are all 'Plugin"
-                    .fold("".to_string(), |a, b| {
-                        format!(
-                            "{a}{}{:?}",
-                            if a.as_str() == "" {
-                                // Beginning of string
-                                ""
-                            } else {
-                                "/"
-                            },
-                            b
-                        )
-                    })
+		s.name.clone()
+                // s.types
+                //     .iter()
+                //     .filter(|&t| *t != Lv2Type::Plugin) // They are all 'Plugin"
+                //     .fold("".to_string(), |a, b| {
+                //         format!(
+                //             "{a}{}{:?}",
+                //             if a.as_str() == "" {
+                //                 // Beginning of string
+                //                 ""
+                //             } else {
+                //                 "/"
+                //             },
+                //             b
+                //         )
+                //     })
             })
             .collect();
 
@@ -220,14 +221,12 @@ impl Widget for &mut App<'_> {
 }
 
 impl App<'_> {
-
-    fn render_lv2(&self, lv2:&Lv2 ) -> String {
-	format!("{lv2}")
+    fn render_lv2(&self, lv2: &Lv2) -> String {
+        format!("{lv2}")
     }
 
     fn render_title(&self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new("Ratatui List Example")
-            .bold()
+        Paragraph::new("Qzn3t Lv2 Control")
             .centered()
             .render(area, buf);
     }
@@ -238,7 +237,7 @@ impl App<'_> {
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
             .bg(TODO_HEADER_BG)
-            .title("TODO List")
+            .title("LV2 Simulators")
             .title_alignment(Alignment::Center);
         let inner_block = Block::default()
             .borders(Borders::NONE)
@@ -286,7 +285,7 @@ impl App<'_> {
             //     Status::Ready => "✓ DONE: ".to_string(),
             //     Status::Active => "TODO: ".to_string(),
             // }
-	    self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
+            self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
         } else {
             "Nothing to see here...".to_string()
         };
@@ -296,7 +295,7 @@ impl App<'_> {
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
             .bg(TODO_HEADER_BG)
-            .title("TODO Info")
+            .title("Details")
             .title_alignment(Alignment::Center);
         let inner_info_block = Block::default()
             .borders(Borders::NONE)

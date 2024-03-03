@@ -63,7 +63,7 @@ enum PortType {
 }
 
 #[derive(Debug)]
-struct Port {
+pub struct Port {
     name: String,
     types: Vec<PortType>,
     index: usize,
@@ -72,9 +72,9 @@ struct Port {
 #[derive(Debug)]
 pub struct Lv2 {
     pub types: HashSet<Lv2Type>,
-    ports: Vec<Port>,
-    name: String,
-    url: String,
+    pub ports: Vec<Port>,
+    pub name: String,
+    pub url: String,
 }
 
 #[derive(Debug)]
@@ -188,10 +188,15 @@ fn predicate_filter<'a, T: Iterator<Item = &'a &'a Lv2Datum>>(
         .collect::<Vec<&'a &'a Lv2Datum>>()
 }
 
-/// For strings start `"1.0"^^<htt...` And the first quoted part
+/// For strings starting like `"1.0"^^<htt...` And the first quoted part
 /// (1.0) is wanted.  Panic if invalid string passed
 fn remove_quotes(inp: &str) -> &str {
-    let i = inp[1..].find('"').unwrap() + 1;
+    // The first character is a quote.  Thence the string intil the
+    // next quote
+    let i = inp[1..] // Exclude the first quote
+	.find('"') // Find the next
+	.expect("Removing quotes from {inp}.  i:{i}") // Unwrap it
+	+ 1; // Why this?
     &inp[1..i]
 }
 
@@ -250,28 +255,32 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
     let mut simulators: Vec<Lv2> = vec![];
     for l in lv2_data.iter() {
         if &l.object == "<http://lv2plug.in/ns/lv2core#Plugin>" {
+            // Examine this because it is a plugin.
+
             if !processed.insert(&l.subject) {
-                // Thi ssubject has been processed
+                // This subject has been processed
                 continue;
             }
-            // Collect all data for this plugin
+
+            // It is a plugin that has not been processed yet
+
+            // Collect all data for this plugin identified by `subject`
             let plugin_data: Vec<&Lv2Datum> = lv2_data
                 .iter()
                 .filter(|lv| lv.subject == l.subject)
                 .collect();
+
             // Get name
-            // http://usefulinc.com/ns/doap#name>
             let name = plugin_data
                 .iter()
                 .filter(|lv| lv.predicate == "<http://usefulinc.com/ns/doap#name>")
                 .collect::<Vec<&&Lv2Datum>>()
                 .iter()
                 .fold("".to_string(), |a, &b| {
-                    // println!("Fold {a} + {}/{}", b.object, &b.object.as_str()[1..(b.object.len() - 1)]);
                     a + &b.object.as_str()[1..(b.object.len() - 1)]
                 });
-            // println!("{name} {} {} {}", l.subject, l.predicate, l.object);
-            // Collect all types
+
+            // Collect all types for this plugin.  Will probably be two or three
             let types: HashSet<Lv2Type> = plugin_data
                 .iter()
                 .filter(|lv| lv.predicate == "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>")
@@ -314,6 +323,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                 })
                 .collect();
 
+            // The ports.  These will be control ports and audio I/O ports
             let ports: Vec<Port>;
             {
                 // Collect all the subject names of ports for this simulator
@@ -338,12 +348,10 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                     .iter()
                     .map(|p| {
                         // :Vec<Vec<Port>> `p`
-                        // is a String and the subject of the lines that
-                        // define this port.  Make a Vec<Port> here
-                        let l = lv2_data
-                            .iter()
-                            .filter(|&x| &x.subject == p)
-                            .collect::<Vec<&Lv2Datum>>();
+
+                        let l: Vec<&Lv2Datum> =
+                            lv2_data.iter().filter(|&x| &x.subject == p).collect();
+
                         // `l` is the set of tripples that define this port
                         let name: String = l
                             .iter()
