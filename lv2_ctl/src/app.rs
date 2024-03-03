@@ -5,17 +5,16 @@
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
-use crate::lv2::ModHostController;
+use crate::lv2::{Lv2Type, ModHostController};
 use std::{error::Error, io, io::stdout};
 
 use color_eyre::config::HookBuilder;
 use crossterm::{
-    
     event::{self, Event, KeyCode, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use ratatui::{prelude::*, style::palette::tailwind, widgets::*,};
+use ratatui::{prelude::*, style::palette::tailwind, widgets::*};
 
 const TODO_HEADER_BG: Color = tailwind::BLUE.c950;
 const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
@@ -30,15 +29,14 @@ enum Status {
     Ready,
 }
 
-struct TodoItem<'a> {
-    name: &'a str,
-    kind: &'a str,
+struct Lv2Simulator {
+    name: String, // Cannot be a reference because it is bvuild from an enum
     status: Status,
 }
 
-struct StatefulList<'a> {
+struct StatefulList {
     state: ListState,
-    items: Vec<TodoItem<'a>>,
+    items: Vec<Lv2Simulator>,
     last_selected: Option<usize>,
 }
 
@@ -49,13 +47,13 @@ struct StatefulList<'a> {
 /// Check the event handling at the bottom to see how to change the state on incoming events.
 /// Check the drawing logic for items on how to specify the highlighting style for selected items.
 pub struct App<'a> {
-    mod_host_controller:&'a ModHostController,
-    items: StatefulList<'a>,
+    mod_host_controller: &'a ModHostController,
+    items: StatefulList,
 }
 
-impl Drop for App<'_>{
-    fn drop(&mut self){
-	restore_terminal().expect("Restore terminal");
+impl Drop for App<'_> {
+    fn drop(&mut self) {
+        restore_terminal().expect("Restore terminal");
     }
 }
 fn init_error_hooks() -> color_eyre::Result<()> {
@@ -88,21 +86,45 @@ fn restore_terminal() -> color_eyre::Result<()> {
 }
 
 impl App<'_> {
-    pub fn new<'b>(mod_host_controller:&'b ModHostController) -> App<'b> {
-	if let Err(err) =  init_error_hooks() {
-	    eprintln!("{err}: Initialising error hooks");
-	}
-	    
+    pub fn new(mod_host_controller: &ModHostController) -> App {
+        if let Err(err) = init_error_hooks() {
+            eprintln!("{err}: Initialising error hooks");
+        }
+        let types: Vec<String> = mod_host_controller
+            .simulators
+            .iter()
+            .map(|s| {
+                s.types
+                    .iter()
+                    .filter(|&t| *t != Lv2Type::Plugin) // They are all 'Plugin"
+                    .fold("".to_string(), |a, b| {
+                        format!(
+                            "{a}{}{:?}",
+                            if a.as_str() == "" {
+                                // Beginning of string
+                                ""
+                            } else {
+                                "/"
+                            },
+                            b
+                        )
+                    })
+            })
+            .collect();
+
         App {
-	    mod_host_controller,
-            items: StatefulList::with_items([
-                ("Rewrite everything with Rust!", "I can't hold my inner voice. He tells me to rewrite the complete universe with Rust", Status::Active),
-                ("Rewrite all of your tui apps with Ratatui", "Yes, you heard that right. Go and replace your tui with Ratatui.", Status::Ready),
-                ("Pet your cat", "Minnak loves to be pet by you! Don't forget to pet and give some treats!", Status::Active),
-                ("Walk with your dog", "Max is bored, go walk with him!", Status::Active),
-                ("Pay the bills", "Pay the train subscription!!!", Status::Ready),
-                ("Refactor list example", "If you see this info that means I completed this task!", Status::Ready),
-            ]),
+            mod_host_controller,
+            items: StatefulList {
+                state: ListState::default(),
+                last_selected: None,
+                items: types
+                    .iter()
+                    .map(|t| Lv2Simulator {
+                        name: t.clone(),
+                        status: Status::Ready,
+                    })
+                    .collect(),
+            },
         }
     }
 
@@ -126,20 +148,20 @@ impl App<'_> {
 }
 
 impl App<'_> {
-    pub fn run(mod_host_controller:&ModHostController)  -> Result<(), Box<dyn Error>> {
-	// init_error_hooks()?;
-	let terminal = init_terminal()?;
-	let mut app = App::new(&mod_host_controller);
-	app._run(terminal).expect("Calling _run");
+    pub fn run(mod_host_controller: &ModHostController) -> Result<(), Box<dyn Error>> {
+        // init_error_hooks()?;
+        let terminal = init_terminal()?;
+        let mut app = App::new(mod_host_controller);
+        app._run(terminal).expect("Calling _run");
 
-	restore_terminal()?;
+        restore_terminal()?;
 
-	Ok(())
-    }	
-	
-    pub fn _run(&mut self,  mut terminal: Terminal<impl Backend>) -> io::Result<()> {
-	// init_error_hooks().expect("App::run error hooks");
-	    
+        Ok(())
+    }
+
+    pub fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
+        // init_error_hooks().expect("App::run error hooks");
+
         loop {
             self.draw(&mut terminal)?;
 
@@ -148,11 +170,13 @@ impl App<'_> {
                     use KeyCode::*;
                     match key.code {
                         Char('q') | Esc => {
-			    self.mod_host_controller.input_tx.send(b"quit\n".to_vec()).expect("Send quit to mod-host");
-			    
-			    
-			    return Ok(())
-			},
+                            self.mod_host_controller
+                                .input_tx
+                                .send(b"quit\n".to_vec())
+                                .expect("Send quit to mod-host");
+
+                            return Ok(());
+                        }
                         Char('h') | Left => self.items.unselect(),
                         Char('j') | Down => self.items.next(),
                         Char('k') | Up => self.items.previous(),
@@ -253,8 +277,8 @@ impl App<'_> {
         // We get the info depending on the item's state.
         let info = if let Some(i) = self.items.state.selected() {
             match self.items.items[i].status {
-                Status::Ready => "✓ DONE: ".to_string() + self.items.items[i].kind,
-                Status::Active => "TODO: ".to_string() + self.items.items[i].kind,
+                Status::Ready => "✓ DONE: ".to_string(),
+                Status::Active => "TODO: ".to_string(),
             }
         } else {
             "Nothing to see here...".to_string()
@@ -298,14 +322,7 @@ impl App<'_> {
     }
 }
 
-impl StatefulList<'_> {
-    fn with_items<'a>(items: [(&'a str, &'a str, Status); 6]) -> StatefulList<'a> {
-        StatefulList {
-            state: ListState::default(),
-            items: items.iter().map(TodoItem::from).collect(),
-            last_selected: None,
-        }
-    }
+impl StatefulList {
 
     fn next(&mut self) {
         let i = match self.state.selected() {
@@ -343,7 +360,7 @@ impl StatefulList<'_> {
     }
 }
 
-impl TodoItem<'_> {
+impl Lv2Simulator {
     fn to_list_item(&self, index: usize) -> ListItem {
         let bg_color = match index % 2 {
             0 => NORMAL_ROW_COLOR,
@@ -361,11 +378,10 @@ impl TodoItem<'_> {
     }
 }
 
-impl<'a> From<&(&'a str, &'a str, Status)> for TodoItem<'a> {
-    fn from((todo, info, status): &(&'a str, &'a str, Status)) -> Self {
+impl From<&(String, Status)> for Lv2Simulator {
+    fn from((name, status): &(String, Status)) -> Self {
         Self {
-            name: todo,
-            kind: info,
+            name: name.clone(),
             status: *status,
         }
     }

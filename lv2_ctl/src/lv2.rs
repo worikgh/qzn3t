@@ -1,14 +1,14 @@
+use crate::run_executable::{run_executable, trunc_vec_0};
+use core::fmt;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::io;
+use std::io::Lines;
+use std::io::Result;
 /// Process LV2 descriptions and simulators
 use std::io::StdinLock;
-use std::io::Lines;
-use core::fmt;
-use std::io::Result;
-use std::io;
-use std::collections::HashSet;
-use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, Sender, };
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
-use crate::run_executable::{run_executable, trunc_vec_0};
 
 #[derive(PartialEq, Eq, Hash, Debug, Ord, PartialOrd, Clone)]
 pub enum Lv2Type {
@@ -80,29 +80,27 @@ pub struct Lv2 {
 #[derive(Debug)]
 /// Interface to mod-host
 pub struct ModHostController {
-    pub simulators:Vec<Lv2>,
-    pub mod_host_th:thread::JoinHandle<()>,
-    pub input_tx:Sender<Vec<u8>>, // Send data to mod-host
-    pub output_rx:Receiver<Vec<u8>>, // Get data from mod-host
-    
+    pub simulators: Vec<Lv2>,
+    pub mod_host_th: thread::JoinHandle<()>,
+    pub input_tx: Sender<Vec<u8>>,    // Send data to mod-host
+    pub output_rx: Receiver<Vec<u8>>, // Get data from mod-host
 }
 
 impl ModHostController {
-
     /// Get a response from mod-host if one is available.  Will not
     /// block.  Will return what is available.  May not be a complete
     /// response
     pub fn get_data_nb(&self) -> Result<String> {
-	let resp = match self.output_rx.recv() {
+        let resp = match self.output_rx.recv() {
             Ok(t) => t,
-            Err(err) =>  return Err(io::Error::new(io::ErrorKind::Other, err.to_string())),
-	};
+            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err.to_string())),
+        };
 
-	let resp = trunc_vec_0(resp);
-	match String::from_utf8(resp) {
+        let resp = trunc_vec_0(resp);
+        match String::from_utf8(resp) {
             Ok(s) => Ok(s),
-            Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string()))
-	}
+            Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
+        }
     }
 }
 
@@ -192,7 +190,7 @@ fn predicate_filter<'a, T: Iterator<Item = &'a &'a Lv2Datum>>(
 
 /// For strings start `"1.0"^^<htt...` And the first quoted part
 /// (1.0) is wanted.  Panic if invalid string passed
-fn remove_quotes<'a>(inp: &'a str) -> &'a str {
+fn remove_quotes(inp: &str) -> &str {
     let i = inp[1..].find('"').unwrap() + 1;
     &inp[1..i]
 }
@@ -203,11 +201,11 @@ fn remove_quotes<'a>(inp: &'a str) -> &'a str {
 fn number(object: &str) -> f64 {
     let b = remove_quotes(object);
     match b.find(|c| c != '.' && c != '+') {
-        Some(_) => b.parse::<f64>().expect(format!("Failed: {b}").as_str()),
-        None => b.parse::<isize>().expect(format!("Failed: {b}").as_str()) as f64,
+        Some(_) => b.parse::<f64>().expect("Failed parsing b"),
+        None => b.parse::<isize>().expect("Failed parsing b") as f64,
     }
 }
-pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
+pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> {
     let mut lv2_data: Vec<Lv2Datum> = vec![];
     let mut subject_store: HashMap<String, usize> = HashMap::new();
     let mut predicate_store: HashMap<String, usize> = HashMap::new();
@@ -249,7 +247,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
     let mut processed: HashSet<&String> = HashSet::new();
 
     // Keep track of the simulators to put into the result
-    let mut simulators:Vec<Lv2> = vec!();
+    let mut simulators: Vec<Lv2> = vec![];
     for l in lv2_data.iter() {
         if &l.object == "<http://lv2plug.in/ns/lv2core#Plugin>" {
             if !processed.insert(&l.subject) {
@@ -309,7 +307,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
                         "DelayPlugin" => Lv2Type::DelayPlugin,
                         "DistortionPlugin" => Lv2Type::DistortionPlugin,
                         "Class" => Lv2Type::Class,
-			"EnvelopePlugin" => Lv2Type::EnvelopePlugin,
+                        "EnvelopePlugin" => Lv2Type::EnvelopePlugin,
                         "Project" => Lv2Type::Project,
                         x => Lv2Type::Other(x.to_string()),
                     }
@@ -360,7 +358,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
                         let min: f64 =
                             predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
                                 .iter()
-                                .fold(0.0, |a, b| a + number(&b.object.as_str()));
+                                .fold(0.0, |a, b| a + number(b.object.as_str()));
                         let max: f64 = l
                             .iter()
                             .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
@@ -371,7 +369,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
                             predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#default>")
                                 .iter()
                                 .fold(0.0, |a, b| a + number(b.object.as_str()));
-                        let logarithmic: bool = predicate_filter(
+                        let logarithmic: bool = !predicate_filter(
                             l.iter(),
                             "<http://lv2plug.in/ns/lv2core#portProperty>",
                         )
@@ -380,8 +378,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
                             lv.object == "<http://lv2plug.in/ns/ext/port-props#logarithmic>"
                         })
                         .collect::<Vec<&&&Lv2Datum>>()
-                        .len()
-                            > 0;
+                        .is_empty();
                         let index: usize = l
                             .iter()
                             .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#index>")
@@ -391,10 +388,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
                                 let b2 = b.object.as_str()[1..].to_string();
                                 let i = b2.find('"').expect("{b2}");
                                 let b2 = b2.as_str()[..i].to_string();
-                                let b2 = b2
-                                    .as_str()
-                                    .parse::<usize>()
-                                    .expect(format!("{b2}").as_str());
+                                let b2 = b2.as_str().parse::<usize>().expect("{b2} not a usize");
                                 a + b2
                             });
                         let types: Vec<PortType> = l
@@ -432,7 +426,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
                     .collect::<Vec<Port>>();
             };
             let url = l.subject.as_str()[1..(l.subject.len() - 1)].to_string();
-            if name.len() > 0 {
+            if !name.is_empty() {
                 let lv2 = Lv2 {
                     url,
                     types,
@@ -454,7 +448,7 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
     let (output_tx, output_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
 
     // Spawn the run_executable function in a separate thread
-    let mod_host_th:thread::JoinHandle<()> = thread::spawn(move || {
+    let mod_host_th: thread::JoinHandle<()> = thread::spawn(move || {
         run_executable(
             "/home/puppy/mod-host/mod-host",
             &vec!["-i", "-n"],
@@ -462,23 +456,23 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
             output_tx,
         );
     });
-    let result = ModHostController{
-	mod_host_th,
-	simulators,
-	input_tx,
-	output_rx,
+    let result = ModHostController {
+        mod_host_th,
+        simulators,
+        input_tx,
+        output_rx,
     };
     {
-	// Ensure mod-host is going.  This is taking a gamble.  The
-	// gamble is that we will getthe whole response all at once.
-	let resp = result.get_data_nb()?;
-	// const MOD_HOST: &str = "mod-host> ";
-	const MOD_HOST: &str = "mod-host>";
-	let resp = resp.as_str().trim();
-	if resp != MOD_HOST {
+        // Ensure mod-host is going.  This is taking a gamble.  The
+        // gamble is that we will getthe whole response all at once.
+        let resp = result.get_data_nb()?;
+        // const MOD_HOST: &str = "mod-host> ";
+        const MOD_HOST: &str = "mod-host>";
+        let resp = resp.as_str().trim();
+        if resp != MOD_HOST {
             panic!("Unknown response: '{resp}'.  Not: '{MOD_HOST}'");
-	}
-	println!("Channel working: {resp}");
+        }
+        println!("Channel working: {resp}");
     }
     Ok(result)
     // // Send a command
@@ -497,5 +491,4 @@ pub fn get_lv2_controller(lines:Lines<StdinLock>) -> Result<ModHostController>{
     //     Err(err) => panic!("{err} Cannot translate resppone"),
     // };
     // println!("Got {resp}");
-
 }

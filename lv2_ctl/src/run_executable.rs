@@ -7,9 +7,8 @@ use std::{thread, time};
 pub fn trunc_vec_0(resp: Vec<u8>) -> Vec<u8> {
     let mut i = resp.as_slice().iter();
     let n = i.position(|&x| x == 0); //.unwrap_or(resp.len());
-    let n = n.unwrap_or(resp.len()) as usize;
-    let res = resp[..n].to_vec();
-    res
+    let n = n.unwrap_or(resp.len());
+    resp[..n].to_vec()
 }
 
 /// Cannot to a blocking read on the ChildStdout.  Can do a blocking
