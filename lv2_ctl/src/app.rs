@@ -5,7 +5,7 @@
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
-use crate::lv2::{Lv2Type, ModHostController};
+use crate::lv2::{Lv2Type, ModHostController, Lv2};
 use std::{error::Error, io, io::stdout};
 
 use color_eyre::config::HookBuilder;
@@ -30,14 +30,14 @@ enum Status {
 }
 
 struct Lv2Simulator {
-    name: String, // Cannot be a reference because it is bvuild from an enum
+    name: String, // Cannot be a reference because it is built from an enum
     status: Status,
 }
 
 struct StatefulList {
-    state: ListState,
+    state: ListState, // Ratatui object
     items: Vec<Lv2Simulator>,
-    last_selected: Option<usize>,
+    last_selected: Option<usize>, // The line that is selected
 }
 
 /// This struct holds the current state of the app. In particular, it has the `items` field which is
@@ -177,7 +177,8 @@ impl App<'_> {
 
                             return Ok(());
                         }
-                        Char('h') | Left => self.items.unselect(),
+                        Char('h') => (),
+                        Left => self.items.unselect(),
                         Char('j') | Down => self.items.next(),
                         Char('k') | Up => self.items.previous(),
                         Char('l') | Right | Enter => self.change_status(),
@@ -219,6 +220,11 @@ impl Widget for &mut App<'_> {
 }
 
 impl App<'_> {
+
+    fn render_lv2(&self, lv2:&Lv2 ) -> String {
+	format!("{lv2}")
+    }
+
     fn render_title(&self, area: Rect, buf: &mut Buffer) {
         Paragraph::new("Ratatui List Example")
             .bold()
@@ -276,10 +282,11 @@ impl App<'_> {
     fn render_info(&self, area: Rect, buf: &mut Buffer) {
         // We get the info depending on the item's state.
         let info = if let Some(i) = self.items.state.selected() {
-            match self.items.items[i].status {
-                Status::Ready => "✓ DONE: ".to_string(),
-                Status::Active => "TODO: ".to_string(),
-            }
+            // match self.items.items[i].status {
+            //     Status::Ready => "✓ DONE: ".to_string(),
+            //     Status::Active => "TODO: ".to_string(),
+            // }
+	    self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
         } else {
             "Nothing to see here...".to_string()
         };
