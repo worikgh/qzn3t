@@ -82,8 +82,8 @@ pub struct Lv2 {
 pub struct ModHostController {
     pub simulators:Vec<Lv2>,
     pub mod_host_th:thread::JoinHandle<()>,
-    input_tx:Sender<Vec<u8>>, // Send data to mod-host
-    output_rx:Receiver<Vec<u8>>, // Get data from mod-host
+    pub input_tx:Sender<Vec<u8>>, // Send data to mod-host
+    pub output_rx:Receiver<Vec<u8>>, // Get data from mod-host
     
 }
 
