@@ -30,7 +30,8 @@ enum Status {
 }
 
 struct Lv2Simulator {
-    name: String, // Cannot be a reference because it is built from an enum
+    name: String, // Display name
+    _url: String, // Unique identifier
     status: Status,
 }
 
@@ -90,26 +91,12 @@ impl App<'_> {
         if let Err(err) = init_error_hooks() {
             eprintln!("{err}: Initialising error hooks");
         }
-        let types: Vec<String> = mod_host_controller
+        let types: Vec<(String, String)> = mod_host_controller
             .simulators
             .iter()
             .map(|s| {
-		s.name.clone()
-                // s.types
-                //     .iter()
-                //     .filter(|&t| *t != Lv2Type::Plugin) // They are all 'Plugin"
-                //     .fold("".to_string(), |a, b| {
-                //         format!(
-                //             "{a}{}{:?}",
-                //             if a.as_str() == "" {
-                //                 // Beginning of string
-                //                 ""
-                //             } else {
-                //                 "/"
-                //             },
-                //             b
-                //         )
-                //     })
+		(s.name.clone(),
+		s.url.clone())
             })
             .collect();
 
@@ -121,8 +108,9 @@ impl App<'_> {
                 items: types
                     .iter()
                     .map(|t| Lv2Simulator {
-                        name: t.clone(),
+                        name: t.0.clone(),
                         status: Status::Ready,
+			_url: t.1.clone(),
                     })
                     .collect(),
             },
@@ -146,9 +134,7 @@ impl App<'_> {
     fn go_bottom(&mut self) {
         self.items.state.select(Some(self.items.items.len() - 1))
     }
-}
 
-impl App<'_> {
     pub fn run(mod_host_controller: &ModHostController) -> Result<(), Box<dyn Error>> {
         // init_error_hooks()?;
         let terminal = init_terminal()?;
@@ -383,11 +369,12 @@ impl Lv2Simulator {
     }
 }
 
-impl From<&(String, Status)> for Lv2Simulator {
-    fn from((name, status): &(String, Status)) -> Self {
+impl From<&(String, String, Status)> for Lv2Simulator {
+    fn from((name, url, status): &(String, String, Status)) -> Self {
         Self {
             name: name.clone(),
             status: *status,
+	    _url:url.clone(),
         }
     }
 }
