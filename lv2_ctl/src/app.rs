@@ -41,6 +41,11 @@ struct StatefulList {
     last_selected: Option<usize>, // The line that is selected
 }
 
+enum AppState {
+    List,    // Listing all simulators
+    Command, // Interacting with mod-host
+}
+
 /// This struct holds the current state of the app. In particular, it has the `items` field which is
 /// a wrapper around `ListState`. Keeping track of the items state let us render the associated
 /// widget with its state and have access to features such as natural scrolling.
@@ -50,6 +55,7 @@ struct StatefulList {
 pub struct App<'a> {
     mod_host_controller: &'a ModHostController,
     items: StatefulList,
+    app_state: AppState,
 }
 
 impl Drop for App<'_> {
@@ -94,13 +100,11 @@ impl App<'_> {
         let types: Vec<(String, String)> = mod_host_controller
             .simulators
             .iter()
-            .map(|s| {
-		(s.name.clone(),
-		s.url.clone())
-            })
+            .map(|s| (s.name.clone(), s.url.clone()))
             .collect();
 
         App {
+            app_state: AppState::List,
             mod_host_controller,
             items: StatefulList {
                 state: ListState::default(),
@@ -110,7 +114,7 @@ impl App<'_> {
                     .map(|t| Lv2Simulator {
                         name: t.0.clone(),
                         status: Status::Ready,
-			_url: t.1.clone(),
+                        _url: t.1.clone(),
                     })
                     .collect(),
             },
@@ -166,11 +170,15 @@ impl App<'_> {
                         }
                         Char('h') => (),
                         Left => self.items.unselect(),
-                        Char('j') | Down => self.items.next(),
-                        Char('k') | Up => self.items.previous(),
-                        Char('l') | Right | Enter => self.change_status(),
+                        Down => self.items.next(),
+                        Up => self.items.previous(),
+                        Right | Enter => self.change_status(),
                         Char('g') => self.go_top(),
                         Char('G') => self.go_bottom(),
+
+                        // Function keys for setting modes
+                        F(1) => self.app_state = AppState::List,
+                        F(2) => self.app_state = AppState::Command,
                         _ => {}
                     }
                 }
@@ -199,31 +207,37 @@ impl App<'_> {
 
         self.render_title(header_area, buf);
         self.render_todo(upper_item_list_area, buf);
-        self.render_info(lower_item_list_area, buf);
+        self.render_details(lower_item_list_area, buf);
         self.render_footer(footer_area, buf);
-    }	
+    }
+
+    fn render_command_area(&mut self, area: Rect, buf: &mut Buffer) {
+        // Create a space for header, todo list and the footer.
+        let vertical = Layout::vertical([
+            Constraint::Length(2),
+            Constraint::Min(0),
+            Constraint::Length(3),
+        ]);
+        let [header_area, rest_area, footer_area] = vertical.areas(area);
+
+        // Create two chunks with equal vertical screen space. One for the list and the other for
+        // the info block.
+        let vertical = Layout::vertical([Constraint::Percentage(25), Constraint::Percentage(75)]);
+        let [upper_item_list_area, lower_item_list_area] = vertical.areas(rest_area);
+
+        self.render_title(header_area, buf);
+        self.render_todo(upper_item_list_area, buf);
+        self.render_details(lower_item_list_area, buf);
+        self.render_footer(footer_area, buf);
+    }
 }
 
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-	self.render_list(area, buf);
-        // // Create a space for header, todo list and the footer.
-        // let vertical = Layout::vertical([
-        //     Constraint::Length(2),
-        //     Constraint::Min(0),
-        //     Constraint::Length(2),
-        // ]);
-        // let [header_area, rest_area, footer_area] = vertical.areas(area);
-
-        // // Create two chunks with equal vertical screen space. One for the list and the other for
-        // // the info block.
-        // let vertical = Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]);
-        // let [upper_item_list_area, lower_item_list_area] = vertical.areas(rest_area);
-
-        // self.render_title(header_area, buf);
-        // self.render_todo(upper_item_list_area, buf);
-        // self.render_info(lower_item_list_area, buf);
-        // self.render_footer(footer_area, buf);
+        match self.app_state {
+            AppState::List => self.render_list(area, buf),
+            AppState::Command => self.render_command_area(area, buf),
+        };
     }
 }
 
@@ -285,7 +299,7 @@ impl App<'_> {
         StatefulWidget::render(items, inner_area, buf, &mut self.items.state);
     }
 
-    fn render_info(&self, area: Rect, buf: &mut Buffer) {
+    fn render_details(&self, area: Rect, buf: &mut Buffer) {
         // We get the info depending on the item's state.
         let info = if let Some(i) = self.items.state.selected() {
             // match self.items.items[i].status {
@@ -327,11 +341,17 @@ impl App<'_> {
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        Paragraph::new(
-            "\nUse ↓↑ to move, ← to unselect, → to change status, g/G to go top/bottom.",
-        )
-        .centered()
-        .render(area, buf);
+        match self.app_state {
+            AppState::List => Paragraph::new(
+                "Use ↓↑ to move, ← to unselect, → to change status, g/G to go top/bottom.\nAny other character to send instructions",
+            ),
+	    AppState::Command => Paragraph::new(
+                "Use ↓↑ to move, ← to unselect, → to change status.\nAny other characters fol to send instructions <Enter> to send",
+            )
+        }
+	.centered()
+	    .render(area, buf)
+	;
     }
 }
 
@@ -395,7 +415,7 @@ impl From<&(String, String, Status)> for Lv2Simulator {
         Self {
             name: name.clone(),
             status: *status,
-	    _url:url.clone(),
+            _url: url.clone(),
         }
     }
 }
