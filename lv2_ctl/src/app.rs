@@ -6,15 +6,16 @@
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
 use crate::lv2::{Lv2, ModHostController};
-use std::{error::Error, io, io::stdout};
-
 use color_eyre::config::HookBuilder;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyEventKind},
+    event::{self, Event, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
 use ratatui::{prelude::*, style::palette::tailwind, widgets::*};
+use std::thread;
+use std::time::{Duration, Instant};
+use std::{error::Error, io, io::stdout};
 
 const TODO_HEADER_BG: Color = tailwind::BLUE.c950;
 const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
@@ -140,9 +141,9 @@ impl App<'_> {
     }
 
     pub fn run(mod_host_controller: &ModHostController) -> Result<(), Box<dyn Error>> {
-        // init_error_hooks()?;
         let terminal = init_terminal()?;
         let mut app = App::new(mod_host_controller);
+	eprintln!(" yak shaving");
         app._run(terminal).expect("Calling _run");
 
         restore_terminal()?;
@@ -153,36 +154,50 @@ impl App<'_> {
     pub fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
         // init_error_hooks().expect("App::run error hooks");
 
+        let target_fps = 60; // 400 is about the limit on Raspberry Pi 5
+        let frame_time = Duration::from_secs(1) / target_fps as u32;
         loop {
+            let start_time = Instant::now();
+
             self.draw(&mut terminal)?;
+            if event::poll(Duration::from_secs(0)).expect("Polling for event") {
+                match event::read() {
+                    Ok(Event::Key(key)) => {
+                        // if key == Event::Key(_){
+                        use KeyCode::*;
+                        match key.code {
+                            Char('q') | Esc => {
+                                self.mod_host_controller
+                                    .input_tx
+                                    .send(b"quit\n".to_vec())
+                                    .expect("Send quit to mod-host");
 
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    use KeyCode::*;
-                    match key.code {
-                        Char('q') | Esc => {
-                            self.mod_host_controller
-                                .input_tx
-                                .send(b"quit\n".to_vec())
-                                .expect("Send quit to mod-host");
+                                return Ok(());
+                            }
+                            Char('h') => (),
+                            Left => self.items.unselect(),
+                            Down => self.items.next(),
+                            Up => self.items.previous(),
+                            Right | Enter => self.change_status(),
+                            Char('g') => self.go_top(),
+                            Char('G') => self.go_bottom(),
 
-                            return Ok(());
+                            // Function keys for setting modes
+                            F(1) => self.app_state = AppState::List,
+                            F(2) => self.app_state = AppState::Command,
+                            _ => {}
                         }
-                        Char('h') => (),
-                        Left => self.items.unselect(),
-                        Down => self.items.next(),
-                        Up => self.items.previous(),
-                        Right | Enter => self.change_status(),
-                        Char('g') => self.go_top(),
-                        Char('G') => self.go_bottom(),
-
-                        // Function keys for setting modes
-                        F(1) => self.app_state = AppState::List,
-                        F(2) => self.app_state = AppState::Command,
-                        _ => {}
                     }
-                }
+                    Err(err) => panic!("{err}: Reading event"),
+                    x => panic!("Error reading event: {x:?}"),
+                };
             }
+            let elapsed_time = Instant::now() - start_time;
+            if elapsed_time < frame_time {
+                thread::sleep(frame_time - elapsed_time);
+            }else{
+		eprintln!("Timing error: {elapsed_time:?}/{frame_time:?}");
+	    }
         }
     }
 
@@ -337,28 +352,24 @@ impl App<'_> {
     }
 
     fn render_command_area(&self, area: Rect, buf: &mut Buffer) {
-
         // We show the list item's info under the list in this paragraph
         let outer_info_block = Block::default()
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
             .bg(TODO_HEADER_BG)
             .title("LVC Control")
+            .bold()
             .title_alignment(Alignment::Center);
         // let inner_info_block = Block::default()
         //     .borders(Borders::NONE)
         //     .bg(NORMAL_ROW_COLOR)
         //     .padding(Padding::horizontal(1));
 
-        // // This is a similar process to what we did for list. outer_info_area will be used for
-        // // header inner_info_area will be used for the list info.
         let outer_info_area = area;
         // let inner_info_area = outer_info_block.inner(outer_info_area);
 
         // We can render the header. Inner info will be rendered later
         outer_info_block.render(outer_info_area, buf);
-
-
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
