@@ -2,7 +2,7 @@
 use app::App;
 
 use lv2::get_lv2_controller;
- use std::io;
+use std::io;
 use std::io::Lines;
 use std::io::StdinLock;
 
@@ -11,7 +11,6 @@ mod app;
 mod lv2;
 mod run_executable;
 fn main() -> std::io::Result<()> {
-
     let lines: Lines<StdinLock> = io::stdin().lines();
     let mod_host_controller: ModHostController = get_lv2_controller(lines)?;
 

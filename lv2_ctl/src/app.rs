@@ -211,7 +211,7 @@ impl App<'_> {
         self.render_footer(footer_area, buf);
     }
 
-    fn render_command_area(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_command(&mut self, area: Rect, buf: &mut Buffer) {
         // Create a space for header, todo list and the footer.
         let vertical = Layout::vertical([
             Constraint::Length(2),
@@ -227,7 +227,7 @@ impl App<'_> {
 
         self.render_title(header_area, buf);
         self.render_todo(upper_item_list_area, buf);
-        self.render_details(lower_item_list_area, buf);
+        self.render_command_area(lower_item_list_area, buf);
         self.render_footer(footer_area, buf);
     }
 }
@@ -236,7 +236,7 @@ impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.app_state {
             AppState::List => self.render_list(area, buf),
-            AppState::Command => self.render_command_area(area, buf),
+            AppState::Command => self.render_command(area, buf),
         };
     }
 }
@@ -302,10 +302,6 @@ impl App<'_> {
     fn render_details(&self, area: Rect, buf: &mut Buffer) {
         // We get the info depending on the item's state.
         let info = if let Some(i) = self.items.state.selected() {
-            // match self.items.items[i].status {
-            //     Status::Ready => "✓ DONE: ".to_string(),
-            //     Status::Active => "TODO: ".to_string(),
-            // }
             self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
         } else {
             "Nothing to see here...".to_string()
@@ -338,6 +334,31 @@ impl App<'_> {
 
         // We can now render the item info
         info_paragraph.render(inner_info_area, buf);
+    }
+
+    fn render_command_area(&self, area: Rect, buf: &mut Buffer) {
+
+        // We show the list item's info under the list in this paragraph
+        let outer_info_block = Block::default()
+            .borders(Borders::NONE)
+            .fg(TEXT_COLOR)
+            .bg(TODO_HEADER_BG)
+            .title("LVC Control")
+            .title_alignment(Alignment::Center);
+        // let inner_info_block = Block::default()
+        //     .borders(Borders::NONE)
+        //     .bg(NORMAL_ROW_COLOR)
+        //     .padding(Padding::horizontal(1));
+
+        // // This is a similar process to what we did for list. outer_info_area will be used for
+        // // header inner_info_area will be used for the list info.
+        let outer_info_area = area;
+        // let inner_info_area = outer_info_block.inner(outer_info_area);
+
+        // We can render the header. Inner info will be rendered later
+        outer_info_block.render(outer_info_area, buf);
+
+
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
