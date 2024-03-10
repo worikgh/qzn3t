@@ -20,6 +20,7 @@ use std::{error::Error, io, io::stdout};
 const TODO_HEADER_BG: Color = tailwind::BLUE.c950;
 const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
 const ALT_ROW_COLOR: Color = tailwind::SLATE.c900;
+const STATIC_TEXT_FG: Color = tailwind::WHITE;
 const SELECTED_TEXT_FG: Color = tailwind::RED.c600;
 const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
 const TEXT_COLOR: Color = tailwind::SLATE.c200;
@@ -33,6 +34,7 @@ enum Status {
 }
 
 /// Representation in the TUI of the LV2 simulator.
+#[derive(Clone)]
 struct Lv2Simulator {
     // LV2 details
     name: String, // Display name
@@ -52,6 +54,32 @@ struct Lv2StatefulList {
     last_selected: Option<usize>, // The line that is selected
 }
 
+impl Lv2StatefulList {
+    /// Create a Lv2Statefullist from a vector of name, url pairs.
+    fn new(types: &[(String, String)]) -> Lv2StatefulList {
+        Lv2StatefulList {
+            state: ListState::default(),
+            last_selected: None,
+            items: types
+                .iter()
+                .map(|t| Lv2Simulator {
+                    name: t.0.clone(),
+                    status: Status::Unticked,
+                    _url: t.1.clone(),
+                })
+                .collect(),
+        }
+    }
+    /// An empty list
+    fn empty() -> Lv2StatefulList {
+        Lv2StatefulList {
+            state: ListState::default(),
+            items: vec![],
+            last_selected: None,
+        }
+    }
+}
+
 enum AppState {
     List,    // Listing all simulators
     Command, // Interacting with mod-host
@@ -65,7 +93,14 @@ enum AppState {
 /// Check the drawing logic for items on how to specify the highlighting style for selected items.
 pub struct App<'a> {
     mod_host_controller: &'a ModHostController,
-    lv2_list: Lv2StatefulList,
+
+    // Maintain the view for the first screen.  Which simulators are
+    // "ticked"
+    lv2_stateful_list: Lv2StatefulList,
+
+    // Maintain the view for the second screen of ticked simulators
+    lv2_ticked_list: Lv2StatefulList,
+
     app_state: AppState,
 }
 
@@ -108,6 +143,8 @@ impl App<'_> {
         if let Err(err) = init_error_hooks() {
             eprintln!("{err}: Initialising error hooks");
         }
+
+        // Vec<(name, url)>
         let types: Vec<(String, String)> = mod_host_controller
             .simulators
             .iter()
@@ -117,50 +154,77 @@ impl App<'_> {
         App {
             app_state: AppState::List,
             mod_host_controller,
-            lv2_list: Lv2StatefulList {
-                state: ListState::default(),
-                last_selected: None,
-                items: types
-                    .iter()
-                    .map(|t| Lv2Simulator {
-                        name: t.0.clone(),
-                        status: Status::Unticked,
-                        _url: t.1.clone(),
-                    })
-                    .collect(),
-            },
+            lv2_ticked_list: Lv2StatefulList::empty(),
+            lv2_stateful_list: Lv2StatefulList::new(&types),
         }
     }
 
     /// Changes the status of the selected list item
     fn change_status(&mut self) {
-        if let Some(i) = self.lv2_list.state.selected() {
-            self.lv2_list.items[i].status = match self.lv2_list.items[i].status {
-                Status::Unticked => Status::Ticked,
-                Status::Ticked => Status::Unticked,
-            }
+        if let Some(i) = self.get_stateful_list_mut().state.selected() {
+            self.get_stateful_list_mut().items[i].status =
+                match self.get_stateful_list_mut().items[i].status {
+                    Status::Unticked => {
+                        self.lv2_ticked_list.items.insert(
+                            if i > self.lv2_ticked_list.items.len() {
+                                self.lv2_ticked_list.items.len()
+                            } else {
+                                i
+                            },
+                            self.lv2_stateful_list.items[i].clone(),
+                        );
+                        Status::Ticked
+                    }
+                    Status::Ticked => {
+                        if let Some(i) = self
+                            .lv2_ticked_list
+                            .items
+                            .iter()
+                            .position(|x| x._url == self.lv2_stateful_list.items[i]._url)
+                        {
+                            self.lv2_ticked_list.items.remove(i);
+                        }
+                        Status::Unticked
+                    }
+                }
         }
     }
 
     fn go_top(&mut self) {
-        self.lv2_list.state.select(Some(0))
+        self.get_stateful_list_mut().state.select(Some(0))
     }
 
     fn go_bottom(&mut self) {
-        self.lv2_list
-            .state
-            .select(Some(self.lv2_list.items.len() - 1))
+        let len = self.get_stateful_list().items.len();
+        self.get_stateful_list_mut().state.select(Some(len - 1))
     }
 
     pub fn run(mod_host_controller: &ModHostController) -> Result<(), Box<dyn Error>> {
         let terminal = init_terminal()?;
         let mut app = App::new(mod_host_controller);
-        eprintln!(" yak shaving");
+
         app._run(terminal).expect("Calling _run");
 
         restore_terminal()?;
 
         Ok(())
+    }
+
+    /// Get the StateFulList that is currently in view
+    fn get_stateful_list(&self) -> &Lv2StatefulList {
+        match self.app_state {
+            AppState::List => &self.lv2_stateful_list,
+            AppState::Command => &self.lv2_ticked_list,
+        }
+    }
+
+    /// Get a mutable reference to the StateFulList that is currently
+    /// in view
+    fn get_stateful_list_mut(&mut self) -> &mut Lv2StatefulList {
+        match self.app_state {
+            AppState::List => &mut self.lv2_stateful_list,
+            AppState::Command => &mut self.lv2_ticked_list,
+        }
     }
 
     pub fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
@@ -186,9 +250,11 @@ impl App<'_> {
                                 return Ok(());
                             }
                             Char('h') => (),
-                            Left => self.lv2_list.unselect(),
-                            Down => self.lv2_list.next(),
-                            Up => self.lv2_list.previous(),
+                            Left => self.get_stateful_list_mut().unselect(),
+                            Down => {
+                                self.get_stateful_list_mut().next();
+                            }
+                            Up => self.get_stateful_list_mut().previous(),
                             Right | Enter => self.change_status(),
                             Char('g') => self.go_top(),
                             Char('G') => self.go_bottom(),
@@ -199,6 +265,7 @@ impl App<'_> {
                             _ => {}
                         }
                     }
+                    Ok(Event::Resize(_, _)) => (),
                     Err(err) => panic!("{err}: Reading event"),
                     x => panic!("Error reading event: {x:?}"),
                 };
@@ -299,17 +366,15 @@ impl App<'_> {
         outer_block.render(outer_area, buf);
 
         // Iterate through all elements in the `items` and stylize them.
-        let items: Vec<ListItem> = self
-            .lv2_list
-            .items
+        let lv2_simulators: Vec<&Lv2Simulator> = self.lv2_stateful_list.items.iter().collect();
+        let items: Vec<ListItem> = lv2_simulators
             .iter()
             .enumerate()
             .filter(|&l| l.1.status == Status::Ticked)
-            .map(|(i, lv2_item)| lv2_item.to_list_item(i))
+            .map(|(i, lv2_item)| lv2_item.to_static_list_item(i))
             .collect();
-
         // Create a List from all list items and highlight the currently selected one
-        let items = List::new(items)
+        let items2 = List::new(items)
             .block(inner_block)
             .highlight_style(
                 Style::default()
@@ -323,7 +388,7 @@ impl App<'_> {
         // We can now render the item list
         // (look careful we are using StatefulWidget's render.)
         // ratatui::widgets::StatefulWidget::render as stateful_render
-        StatefulWidget::render(items, inner_area, buf, &mut self.lv2_list.state);
+        StatefulWidget::render(items2, inner_area, buf, &mut self.lv2_ticked_list.state);
     }
 
     fn render_lv2_list(&mut self, area: Rect, buf: &mut Buffer) {
@@ -348,11 +413,11 @@ impl App<'_> {
 
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> = self
-            .lv2_list
+            .lv2_stateful_list
             .items
             .iter()
             .enumerate()
-            .map(|(i, todo_item)| todo_item.to_list_item(i))
+            .map(|(i, todo_item)| todo_item.to_stateful_list_item(i))
             .collect();
 
         // Create a List from all list items and highlight the currently selected one
@@ -370,12 +435,12 @@ impl App<'_> {
         // We can now render the item list
         // (look careful we are using StatefulWidget's render.)
         // ratatui::widgets::StatefulWidget::render as stateful_render
-        StatefulWidget::render(items, inner_area, buf, &mut self.lv2_list.state);
+        StatefulWidget::render(items, inner_area, buf, &mut self.lv2_stateful_list.state);
     }
 
     fn render_details(&self, area: Rect, buf: &mut Buffer) {
         // We get the info depending on the item's state.
-        let info = if let Some(i) = self.lv2_list.state.selected() {
+        let info = if let Some(i) = self.get_stateful_list().state.selected() {
             self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
         } else {
             "Nothing to see here...".to_string()
@@ -450,13 +515,16 @@ impl Lv2StatefulList {
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-                if i >= self.items.len() - 1 {
+
+                if (i + 1) >= self.items.len() {
                     i // `next` at bottom of list has no effect
                 } else {
                     i + 1
                 }
             }
-            None => self.last_selected.unwrap_or(0),
+            None => {
+                self.last_selected.unwrap_or(0)
+            }
         };
         self.state.select(Some(i));
     }
@@ -484,7 +552,7 @@ impl Lv2StatefulList {
 }
 
 impl Lv2Simulator {
-    fn to_list_item(&self, index: usize) -> ListItem {
+    fn to_stateful_list_item(&self, index: usize) -> ListItem {
         let bg_color = match index % 2 {
             0 => NORMAL_ROW_COLOR,
             _ => ALT_ROW_COLOR,
@@ -496,6 +564,15 @@ impl Lv2Simulator {
                 (COMPLETED_TEXT_COLOR, bg_color),
             ),
         };
+        ListItem::new(line).bg(bg_color)
+    }
+    fn to_static_list_item(&self, index: usize) -> ListItem {
+        let bg_color = match index % 2 {
+            0 => NORMAL_ROW_COLOR,
+            _ => ALT_ROW_COLOR,
+        };
+        let line = Line::styled(self.name.to_string(), STATIC_TEXT_FG);
+
         ListItem::new(line).bg(bg_color)
     }
 }
