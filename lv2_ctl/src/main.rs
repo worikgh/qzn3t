@@ -8,7 +8,10 @@ use std::io::StdinLock;
 
 use crate::lv2::ModHostController;
 mod app;
+mod colours;
 mod lv2;
+mod lv2_simulator;
+mod lv2_stateful_list;
 mod run_executable;
 fn main() -> std::io::Result<()> {
     let lines: Lines<StdinLock> = io::stdin().lines();

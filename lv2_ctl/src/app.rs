@@ -5,92 +5,31 @@
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
+use crate::colours::NORMAL_ROW_COLOR;
+use crate::colours::SELECTED_STYLE_FG;
+use crate::colours::TEXT_COLOR;
+use crate::colours::TODO_HEADER_BG;
 use crate::lv2::{Lv2, ModHostController};
+use crate::lv2_simulator::Lv2Simulator;
+use crate::lv2_simulator::Status;
+use crate::lv2_stateful_list::Lv2StatefulList;
 use color_eyre::config::HookBuilder;
 use crossterm::{
     event::{self, Event, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use ratatui::{prelude::*, style::palette::tailwind, widgets::*};
+use ratatui::{prelude::*, widgets::*};
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
-
-const TODO_HEADER_BG: Color = tailwind::BLUE.c950;
-const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
-const ALT_ROW_COLOR: Color = tailwind::SLATE.c900;
-const STATIC_TEXT_FG: Color = tailwind::WHITE;
-const SELECTED_TEXT_FG: Color = tailwind::RED.c600;
-const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
-const TEXT_COLOR: Color = tailwind::SLATE.c200;
-const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
-
-#[derive(Copy, Clone, PartialEq, PartialOrd)]
-/// Right arrow changes ticked state.
-enum Status {
-    Ticked,
-    Unticked,
-}
-
-/// Representation in the TUI of the LV2 simulator.
-#[derive(Clone)]
-struct Lv2Simulator {
-    // LV2 details
-    name: String, // Display name
-    _url: String, // Unique identifier
-
-    // Status in list - (un)ticked
-    status: Status,
-}
-
-/// Display LV2 simulators and select/deselect them
-struct Lv2StatefulList {
-    // Ratatui object.  Size of List and selected item
-    state: ListState,
-
-    items: Vec<Lv2Simulator>,
-
-    last_selected: Option<usize>, // The line that is selected
-}
-
-impl Lv2StatefulList {
-    /// Create a Lv2Statefullist from a vector of name, url pairs.
-    fn new(types: &[(String, String)]) -> Lv2StatefulList {
-        Lv2StatefulList {
-            state: ListState::default(),
-            last_selected: None,
-            items: types
-                .iter()
-                .map(|t| Lv2Simulator {
-                    name: t.0.clone(),
-                    status: Status::Unticked,
-                    _url: t.1.clone(),
-                })
-                .collect(),
-        }
-    }
-    /// An empty list
-    fn empty() -> Lv2StatefulList {
-        Lv2StatefulList {
-            state: ListState::default(),
-            items: vec![],
-            last_selected: None,
-        }
-    }
-}
 
 enum AppState {
     List,    // Listing all simulators
     Command, // Interacting with mod-host
 }
 
-/// This struct holds the current state of the app. In particular, it has the `items` field which is
-/// a wrapper around `ListState`. Keeping track of the items state let us render the associated
-/// widget with its state and have access to features such as natural scrolling.
-///
-/// Check the event handling at the bottom to see how to change the state on incoming events.
-/// Check the drawing logic for items on how to specify the highlighting style for selected items.
+/// This struct holds the current state of the app. 
 pub struct App<'a> {
     mod_host_controller: &'a ModHostController,
 
@@ -99,16 +38,19 @@ pub struct App<'a> {
     lv2_stateful_list: Lv2StatefulList,
 
     // Maintain the view for the second screen of ticked simulators
-    lv2_ticked_list: Lv2StatefulList,
+    lv2_loaded_list: Lv2StatefulList,
 
     app_state: AppState,
 }
 
 impl Drop for App<'_> {
+    /// Ensure the terminal is returned whole to the user on exit
     fn drop(&mut self) {
         restore_terminal().expect("Restore terminal");
     }
 }
+
+/// Ensure the terminal is returned whole to the user on panic
 fn init_error_hooks() -> color_eyre::Result<()> {
     let (panic, error) = HookBuilder::default().into_hooks();
     let panic = panic.into_panic_hook();
@@ -124,6 +66,7 @@ fn init_error_hooks() -> color_eyre::Result<()> {
     Ok(())
 }
 
+/// Set up the terminal for being a TUI
 fn init_terminal() -> color_eyre::Result<Terminal<impl Backend>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
@@ -139,6 +82,8 @@ fn restore_terminal() -> color_eyre::Result<()> {
 }
 
 impl App<'_> {
+
+    /// Initialise the App
     pub fn new(mod_host_controller: &ModHostController) -> App {
         if let Err(err) = init_error_hooks() {
             eprintln!("{err}: Initialising error hooks");
@@ -154,37 +99,44 @@ impl App<'_> {
         App {
             app_state: AppState::List,
             mod_host_controller,
-            lv2_ticked_list: Lv2StatefulList::empty(),
+            lv2_loaded_list: Lv2StatefulList::empty(),
             lv2_stateful_list: Lv2StatefulList::new(&types),
         }
     }
 
-    /// Changes the status of the selected list item
+    /// Changes the status of the selected list item.  
     fn change_status(&mut self) {
         if let Some(i) = self.get_stateful_list_mut().state.selected() {
             self.get_stateful_list_mut().items[i].status =
                 match self.get_stateful_list_mut().items[i].status {
-                    Status::Unticked => {
-                        self.lv2_ticked_list.items.insert(
-                            if i > self.lv2_ticked_list.items.len() {
-                                self.lv2_ticked_list.items.len()
+                    Status::Unloaded => {
+                        // Set status of Lv2 to Ticked.  Put the
+                        // simulator into the list of ticked
+                        // simulators
+                        let lv2: Lv2Simulator = self.lv2_stateful_list.items[i].clone();
+                        self.lv2_loaded_list.items.insert(
+                            if i > self.lv2_loaded_list.items.len() {
+                                self.lv2_loaded_list.items.len()
                             } else {
                                 i
                             },
-                            self.lv2_stateful_list.items[i].clone(),
+                            lv2,
                         );
-                        Status::Ticked
+                        Status::Loaded
                     }
-                    Status::Ticked => {
+
+                    // Set status of Lv2 to Unticked.  Remove from the
+                    // list of ticked simulators
+                    Status::Loaded => {
                         if let Some(i) = self
-                            .lv2_ticked_list
+                            .lv2_loaded_list
                             .items
                             .iter()
-                            .position(|x| x._url == self.lv2_stateful_list.items[i]._url)
+                            .position(|x| x.url == self.lv2_stateful_list.items[i].url)
                         {
-                            self.lv2_ticked_list.items.remove(i);
+                            self.lv2_loaded_list.items.remove(i);
                         }
-                        Status::Unticked
+                        Status::Unloaded
                     }
                 }
         }
@@ -199,6 +151,7 @@ impl App<'_> {
         self.get_stateful_list_mut().state.select(Some(len - 1))
     }
 
+    /// Run the app
     pub fn run(mod_host_controller: &ModHostController) -> Result<(), Box<dyn Error>> {
         let terminal = init_terminal()?;
         let mut app = App::new(mod_host_controller);
@@ -214,7 +167,7 @@ impl App<'_> {
     fn get_stateful_list(&self) -> &Lv2StatefulList {
         match self.app_state {
             AppState::List => &self.lv2_stateful_list,
-            AppState::Command => &self.lv2_ticked_list,
+            AppState::Command => &self.lv2_loaded_list,
         }
     }
 
@@ -223,11 +176,12 @@ impl App<'_> {
     fn get_stateful_list_mut(&mut self) -> &mut Lv2StatefulList {
         match self.app_state {
             AppState::List => &mut self.lv2_stateful_list,
-            AppState::Command => &mut self.lv2_ticked_list,
+            AppState::Command => &mut self.lv2_loaded_list,
         }
     }
 
-    pub fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
+    /// The main body of the App
+    fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
         // init_error_hooks().expect("App::run error hooks");
 
         let target_fps = 60; // 400 is about the limit on Raspberry Pi 5
@@ -370,7 +324,7 @@ impl App<'_> {
         let items: Vec<ListItem> = lv2_simulators
             .iter()
             .enumerate()
-            .filter(|&l| l.1.status == Status::Ticked)
+            .filter(|&l| l.1.status == Status::Loaded)
             .map(|(i, lv2_item)| lv2_item.to_static_list_item(i))
             .collect();
         // Create a List from all list items and highlight the currently selected one
@@ -388,7 +342,7 @@ impl App<'_> {
         // We can now render the item list
         // (look careful we are using StatefulWidget's render.)
         // ratatui::widgets::StatefulWidget::render as stateful_render
-        StatefulWidget::render(items2, inner_area, buf, &mut self.lv2_ticked_list.state);
+        StatefulWidget::render(items2, inner_area, buf, &mut self.lv2_loaded_list.state);
     }
 
     fn render_lv2_list(&mut self, area: Rect, buf: &mut Buffer) {
@@ -515,16 +469,13 @@ impl Lv2StatefulList {
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-
                 if (i + 1) >= self.items.len() {
                     i // `next` at bottom of list has no effect
                 } else {
                     i + 1
                 }
             }
-            None => {
-                self.last_selected.unwrap_or(0)
-            }
+            None => self.last_selected.unwrap_or(0),
         };
         self.state.select(Some(i));
     }
@@ -548,41 +499,5 @@ impl Lv2StatefulList {
         self.last_selected = self.state.selected();
         self.state.select(None);
         *self.state.offset_mut() = offset;
-    }
-}
-
-impl Lv2Simulator {
-    fn to_stateful_list_item(&self, index: usize) -> ListItem {
-        let bg_color = match index % 2 {
-            0 => NORMAL_ROW_COLOR,
-            _ => ALT_ROW_COLOR,
-        };
-        let line = match self.status {
-            Status::Ticked => Line::styled(format!(" ☐ {}", self.name), SELECTED_TEXT_FG),
-            Status::Unticked => Line::styled(
-                format!(" ✓ {}", self.name),
-                (COMPLETED_TEXT_COLOR, bg_color),
-            ),
-        };
-        ListItem::new(line).bg(bg_color)
-    }
-    fn to_static_list_item(&self, index: usize) -> ListItem {
-        let bg_color = match index % 2 {
-            0 => NORMAL_ROW_COLOR,
-            _ => ALT_ROW_COLOR,
-        };
-        let line = Line::styled(self.name.to_string(), STATIC_TEXT_FG);
-
-        ListItem::new(line).bg(bg_color)
-    }
-}
-
-impl From<&(String, String, Status)> for Lv2Simulator {
-    fn from((name, url, status): &(String, String, Status)) -> Self {
-        Self {
-            name: name.clone(),
-            status: *status,
-            _url: url.clone(),
-        }
     }
 }
