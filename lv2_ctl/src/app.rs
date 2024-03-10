@@ -20,25 +20,35 @@ use std::{error::Error, io, io::stdout};
 const TODO_HEADER_BG: Color = tailwind::BLUE.c950;
 const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
 const ALT_ROW_COLOR: Color = tailwind::SLATE.c900;
+const SELECTED_TEXT_FG: Color = tailwind::RED.c600;
 const SELECTED_STYLE_FG: Color = tailwind::BLUE.c300;
 const TEXT_COLOR: Color = tailwind::SLATE.c200;
 const COMPLETED_TEXT_COLOR: Color = tailwind::GREEN.c500;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, PartialOrd)]
+/// Right arrow changes ticked state.
 enum Status {
-    Active,
-    Ready,
+    Ticked,
+    Unticked,
 }
 
+/// Representation in the TUI of the LV2 simulator.
 struct Lv2Simulator {
+    // LV2 details
     name: String, // Display name
     _url: String, // Unique identifier
+
+    // Status in list - (un)ticked
     status: Status,
 }
 
-struct StatefulList {
-    state: ListState, // Ratatui object
+/// Display LV2 simulators and select/deselect them
+struct Lv2StatefulList {
+    // Ratatui object.  Size of List and selected item
+    state: ListState,
+
     items: Vec<Lv2Simulator>,
+
     last_selected: Option<usize>, // The line that is selected
 }
 
@@ -55,7 +65,7 @@ enum AppState {
 /// Check the drawing logic for items on how to specify the highlighting style for selected items.
 pub struct App<'a> {
     mod_host_controller: &'a ModHostController,
-    items: StatefulList,
+    lv2_list: Lv2StatefulList,
     app_state: AppState,
 }
 
@@ -107,14 +117,14 @@ impl App<'_> {
         App {
             app_state: AppState::List,
             mod_host_controller,
-            items: StatefulList {
+            lv2_list: Lv2StatefulList {
                 state: ListState::default(),
                 last_selected: None,
                 items: types
                     .iter()
                     .map(|t| Lv2Simulator {
                         name: t.0.clone(),
-                        status: Status::Ready,
+                        status: Status::Unticked,
                         _url: t.1.clone(),
                     })
                     .collect(),
@@ -124,26 +134,28 @@ impl App<'_> {
 
     /// Changes the status of the selected list item
     fn change_status(&mut self) {
-        if let Some(i) = self.items.state.selected() {
-            self.items.items[i].status = match self.items.items[i].status {
-                Status::Ready => Status::Active,
-                Status::Active => Status::Ready,
+        if let Some(i) = self.lv2_list.state.selected() {
+            self.lv2_list.items[i].status = match self.lv2_list.items[i].status {
+                Status::Unticked => Status::Ticked,
+                Status::Ticked => Status::Unticked,
             }
         }
     }
 
     fn go_top(&mut self) {
-        self.items.state.select(Some(0))
+        self.lv2_list.state.select(Some(0))
     }
 
     fn go_bottom(&mut self) {
-        self.items.state.select(Some(self.items.items.len() - 1))
+        self.lv2_list
+            .state
+            .select(Some(self.lv2_list.items.len() - 1))
     }
 
     pub fn run(mod_host_controller: &ModHostController) -> Result<(), Box<dyn Error>> {
         let terminal = init_terminal()?;
         let mut app = App::new(mod_host_controller);
-	eprintln!(" yak shaving");
+        eprintln!(" yak shaving");
         app._run(terminal).expect("Calling _run");
 
         restore_terminal()?;
@@ -163,7 +175,6 @@ impl App<'_> {
             if event::poll(Duration::from_secs(0)).expect("Polling for event") {
                 match event::read() {
                     Ok(Event::Key(key)) => {
-                        // if key == Event::Key(_){
                         use KeyCode::*;
                         match key.code {
                             Char('q') | Esc => {
@@ -175,9 +186,9 @@ impl App<'_> {
                                 return Ok(());
                             }
                             Char('h') => (),
-                            Left => self.items.unselect(),
-                            Down => self.items.next(),
-                            Up => self.items.previous(),
+                            Left => self.lv2_list.unselect(),
+                            Down => self.lv2_list.next(),
+                            Up => self.lv2_list.previous(),
                             Right | Enter => self.change_status(),
                             Char('g') => self.go_top(),
                             Char('G') => self.go_bottom(),
@@ -195,9 +206,9 @@ impl App<'_> {
             let elapsed_time = Instant::now() - start_time;
             if elapsed_time < frame_time {
                 thread::sleep(frame_time - elapsed_time);
-            }else{
-		eprintln!("Timing error: {elapsed_time:?}/{frame_time:?}");
-	    }
+            } else {
+                eprintln!("Timing error: {elapsed_time:?}/{frame_time:?}");
+            }
         }
     }
 
@@ -221,12 +232,12 @@ impl App<'_> {
         let [upper_item_list_area, lower_item_list_area] = vertical.areas(rest_area);
 
         self.render_title(header_area, buf);
-        self.render_todo(upper_item_list_area, buf);
+        self.render_lv2_list(upper_item_list_area, buf);
         self.render_details(lower_item_list_area, buf);
         self.render_footer(footer_area, buf);
     }
 
-    fn render_command(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_selected_lv2(&mut self, area: Rect, buf: &mut Buffer) {
         // Create a space for header, todo list and the footer.
         let vertical = Layout::vertical([
             Constraint::Length(2),
@@ -241,8 +252,8 @@ impl App<'_> {
         let [upper_item_list_area, lower_item_list_area] = vertical.areas(rest_area);
 
         self.render_title(header_area, buf);
-        self.render_todo(upper_item_list_area, buf);
-        self.render_command_area(lower_item_list_area, buf);
+        self.render_lv2_list_selected(upper_item_list_area, buf);
+        self.render_control_area(lower_item_list_area, buf);
         self.render_footer(footer_area, buf);
     }
 }
@@ -251,7 +262,7 @@ impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         match self.app_state {
             AppState::List => self.render_list(area, buf),
-            AppState::Command => self.render_command(area, buf),
+            AppState::Command => self.render_selected_lv2(area, buf),
         };
     }
 }
@@ -267,7 +278,7 @@ impl App<'_> {
             .render(area, buf);
     }
 
-    fn render_todo(&mut self, area: Rect, buf: &mut Buffer) {
+    fn render_lv2_list_selected(&mut self, area: Rect, buf: &mut Buffer) {
         // We create two blocks, one is for the header (outer) and the other is for list (inner).
         let outer_block = Block::default()
             .borders(Borders::NONE)
@@ -289,7 +300,55 @@ impl App<'_> {
 
         // Iterate through all elements in the `items` and stylize them.
         let items: Vec<ListItem> = self
+            .lv2_list
             .items
+            .iter()
+            .enumerate()
+            .filter(|&l| l.1.status == Status::Ticked)
+            .map(|(i, lv2_item)| lv2_item.to_list_item(i))
+            .collect();
+
+        // Create a List from all list items and highlight the currently selected one
+        let items = List::new(items)
+            .block(inner_block)
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .add_modifier(Modifier::REVERSED)
+                    .fg(SELECTED_STYLE_FG),
+            )
+            .highlight_symbol(">")
+            .highlight_spacing(HighlightSpacing::Always);
+
+        // We can now render the item list
+        // (look careful we are using StatefulWidget's render.)
+        // ratatui::widgets::StatefulWidget::render as stateful_render
+        StatefulWidget::render(items, inner_area, buf, &mut self.lv2_list.state);
+    }
+
+    fn render_lv2_list(&mut self, area: Rect, buf: &mut Buffer) {
+        // We create two blocks, one is for the header (outer) and the other is for list (inner).
+        let outer_block = Block::default()
+            .borders(Borders::NONE)
+            .fg(TEXT_COLOR)
+            .bg(TODO_HEADER_BG)
+            .title("LV2 Simulators")
+            .title_alignment(Alignment::Center);
+        let inner_block = Block::default()
+            .borders(Borders::NONE)
+            .fg(TEXT_COLOR)
+            .bg(NORMAL_ROW_COLOR);
+
+        // We get the inner area from outer_block. We'll use this area later to render the table.
+        let outer_area = area;
+        let inner_area = outer_block.inner(outer_area);
+
+        // We can render the header in outer_area.
+        outer_block.render(outer_area, buf);
+
+        // Iterate through all elements in the `items` and stylize them.
+        let items: Vec<ListItem> = self
+            .lv2_list
             .items
             .iter()
             .enumerate()
@@ -311,12 +370,12 @@ impl App<'_> {
         // We can now render the item list
         // (look careful we are using StatefulWidget's render.)
         // ratatui::widgets::StatefulWidget::render as stateful_render
-        StatefulWidget::render(items, inner_area, buf, &mut self.items.state);
+        StatefulWidget::render(items, inner_area, buf, &mut self.lv2_list.state);
     }
 
     fn render_details(&self, area: Rect, buf: &mut Buffer) {
         // We get the info depending on the item's state.
-        let info = if let Some(i) = self.items.state.selected() {
+        let info = if let Some(i) = self.lv2_list.state.selected() {
             self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
         } else {
             "Nothing to see here...".to_string()
@@ -351,7 +410,7 @@ impl App<'_> {
         info_paragraph.render(inner_info_area, buf);
     }
 
-    fn render_command_area(&self, area: Rect, buf: &mut Buffer) {
+    fn render_control_area(&self, area: Rect, buf: &mut Buffer) {
         // We show the list item's info under the list in this paragraph
         let outer_info_block = Block::default()
             .borders(Borders::NONE)
@@ -387,12 +446,12 @@ impl App<'_> {
     }
 }
 
-impl StatefulList {
+impl Lv2StatefulList {
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
                 if i >= self.items.len() - 1 {
-                    0
+                    i // `next` at bottom of list has no effect
                 } else {
                     i + 1
                 }
@@ -406,7 +465,7 @@ impl StatefulList {
         let i = match self.state.selected() {
             Some(i) => {
                 if i == 0 {
-                    self.items.len() - 1
+                    0 // `previous` at top of list has no effect
                 } else {
                     i - 1
                 }
@@ -431,13 +490,12 @@ impl Lv2Simulator {
             _ => ALT_ROW_COLOR,
         };
         let line = match self.status {
-            Status::Active => Line::styled(format!(" ☐ {}", self.name), TEXT_COLOR),
-            Status::Ready => Line::styled(
+            Status::Ticked => Line::styled(format!(" ☐ {}", self.name), SELECTED_TEXT_FG),
+            Status::Unticked => Line::styled(
                 format!(" ✓ {}", self.name),
                 (COMPLETED_TEXT_COLOR, bg_color),
             ),
         };
-
         ListItem::new(line).bg(bg_color)
     }
 }
