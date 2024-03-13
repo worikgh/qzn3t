@@ -1,3 +1,4 @@
+use std::sync::mpsc::TryRecvError;
 use crate::run_executable::{run_executable, trunc_vec_0};
 use core::fmt;
 use std::collections::HashMap;
@@ -82,15 +83,18 @@ pub struct Lv2 {
 pub struct ModHostController {
     pub simulators: Vec<Lv2>,
     pub mod_host_th: thread::JoinHandle<()>,
+    // pub data_th: thread::JoinHandle<()>,
     pub input_tx: Sender<Vec<u8>>,    // Send data to mod-host
     pub output_rx: Receiver<Vec<u8>>, // Get data from mod-host
 }
 
 impl ModHostController {
-    /// Get a response from mod-host if one is available.  Will not
-    /// block.  Will return what is available.  May not be a complete
-    /// response
-    pub fn get_data_nb(&self) -> Result<String> {
+
+    
+
+    /// Get a response from mod-host if one is available.  Will block
+    /// until some is available.  
+    pub fn get_data(&self) -> Result<String> {
         let resp = match self.output_rx.recv() {
             Ok(t) => t,
             Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err.to_string())),
@@ -102,6 +106,29 @@ impl ModHostController {
             Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
         }
     }
+    /// Get a response from mod-host if one is available.  Will not block
+    /// and returns Ok(None) if no data availale
+    pub fn try_get_data(&self) -> Result<Option<String>> {
+        match self.output_rx.try_recv() {
+            Ok(t) =>  {
+		// Got some data
+		let resp = trunc_vec_0(t);
+		match String::from_utf8(resp) {
+		    Ok(s) => Ok(Some(s)),
+		    Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
+		}
+	    }
+,
+	    Err(err) => match err {
+		// No data available
+		TryRecvError::Empty => Ok(None),
+
+		// Something bad
+		TryRecvError::Disconnected => Err(io::Error::new(io::ErrorKind::Other, err.to_string())),
+	    }
+        }
+    }
+
 }
 
 /// Stores all the data required to run LV2 simulators
@@ -464,6 +491,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
             output_tx,
         );
     });
+    
     let result = ModHostController {
         mod_host_th,
         simulators,
@@ -473,7 +501,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
     {
         // Ensure mod-host is going.  This is taking a gamble.  The
         // gamble is that we will getthe whole response all at once.
-        let resp = result.get_data_nb()?;
+        let resp = result.get_data()?;
         // const MOD_HOST: &str = "mod-host> ";
         const MOD_HOST: &str = "mod-host>";
         let resp = resp.as_str().trim();

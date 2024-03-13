@@ -29,15 +29,19 @@ enum AppState {
     Command, // Interacting with mod-host
 }
 
-/// This struct holds the current state of the app. 
+/// This struct holds the current state of the app.
 pub struct App<'a> {
+
+    // Data from mod-host
+    buffer: String,
+
     mod_host_controller: &'a ModHostController,
 
     // Maintain the view for the first screen.  Which simulators are
-    // "ticked"
+    // "loaded"
     lv2_stateful_list: Lv2StatefulList,
 
-    // Maintain the view for the second screen of ticked simulators
+    // Maintain the view for the second screen of loaded simulators
     lv2_loaded_list: Lv2StatefulList,
 
     app_state: AppState,
@@ -82,7 +86,6 @@ fn restore_terminal() -> color_eyre::Result<()> {
 }
 
 impl App<'_> {
-
     /// Initialise the App
     pub fn new(mod_host_controller: &ModHostController) -> App {
         if let Err(err) = init_error_hooks() {
@@ -97,6 +100,7 @@ impl App<'_> {
             .collect();
 
         App {
+	    buffer:"".to_string(),
             app_state: AppState::List,
             mod_host_controller,
             lv2_loaded_list: Lv2StatefulList::empty(),
@@ -110,10 +114,16 @@ impl App<'_> {
             self.get_stateful_list_mut().items[i].status =
                 match self.get_stateful_list_mut().items[i].status {
                     Status::Unloaded => {
-                        // Set status of Lv2 to Ticked.  Put the
-                        // simulator into the list of ticked
+                        // Set status of Lv2 to Loaded.  Put the
+                        // simulator into the list of loaded
                         // simulators
                         let lv2: Lv2Simulator = self.lv2_stateful_list.items[i].clone();
+                        let cmd = format!("add {} {}\n", lv2.url, lv2.mh_id);
+			eprintln!("cmd: {cmd}");
+                        self.mod_host_controller
+                            .input_tx
+                            .send(cmd.as_bytes().to_vec())
+                            .expect("Send to mod-host");
                         self.lv2_loaded_list.items.insert(
                             if i > self.lv2_loaded_list.items.len() {
                                 self.lv2_loaded_list.items.len()
@@ -122,11 +132,11 @@ impl App<'_> {
                             },
                             lv2,
                         );
-                        Status::Loaded
+                        Status::Pending
                     }
 
-                    // Set status of Lv2 to Unticked.  Remove from the
-                    // list of ticked simulators
+                    // Set status of Lv2 to Unloaded.  Remove from the
+                    // list of loaded simulators
                     Status::Loaded => {
                         if let Some(i) = self
                             .lv2_loaded_list
@@ -138,7 +148,9 @@ impl App<'_> {
                         }
                         Status::Unloaded
                     }
+		    Status::Pending => Status::Pending
                 }
+	    
         }
     }
 
@@ -163,23 +175,66 @@ impl App<'_> {
         Ok(())
     }
 
-    /// Get the StateFulList that is currently in view
-    fn get_stateful_list(&self) -> &Lv2StatefulList {
-        match self.app_state {
-            AppState::List => &self.lv2_stateful_list,
-            AppState::Command => &self.lv2_loaded_list,
-        }
+    /// Set a status line
+    fn set_status(&self, status: &str) {
+	// No actual status yet 
+	eprintln!("Status: {status}");
     }
+    
+    /// If there are any results ready in buffer....
+    fn process_buffer(&mut self) {
+	while let Some(s) = self.buffer.as_str().find('\n') {
+	    // There is a line available
+	    let r = self.buffer.as_str()[0..s].to_string();
+	    eprintln!("Process: {r}");
+	    // `r` is a line from mod-host
+	    if r.len() > 5  && &r.as_str()[0..5] == "resp " {
+		if let Ok(n) = r.as_str()[5..].parse::<isize>() {
+		    if n >= 0 {
+			// `n` is the number of an LV2 that is ready now 
+			let mut found = false;
+			let n:usize = n as usize; // Ok because `n` >= 0
+			for item in &mut self.lv2_stateful_list.items {
+			    if item.mh_id == n {
+				found = true;
+				item.status = Status::Loaded;
+				break;
+			    }
+			}
+			if found {
+			    eprintln!("Loaded {n}");
+			}else{
+			    eprintln!("Could not find simulator for resp {n}");
+			}
+		    }else{
+			// Error code
+			let errno = n;
+			match errno {
+			    -201 => {
+				//  -201    ERR_JACK_CLIENT_CREATION
+				// reset all LV2 simulators
+				for li in self.get_stateful_list_mut().items.iter_mut() {
+				    li.status = Status::Unloaded;
+				}
+				self.set_status("Jack Client failed");
+			    }
+			    _ => eprintln!("Bad error no: {errno}")
+			}
+		    }
+		}
+	    }else{
+		eprintln!("Unrecognised: {r}");
+	    }
 
-    /// Get a mutable reference to the StateFulList that is currently
-    /// in view
-    fn get_stateful_list_mut(&mut self) -> &mut Lv2StatefulList {
-        match self.app_state {
-            AppState::List => &mut self.lv2_stateful_list,
-            AppState::Command => &mut self.lv2_loaded_list,
-        }
+	    self.buffer = if s < self.buffer.len() {
+		self.buffer.as_str()[(s+1)..].to_string()
+	    }else  {
+		"".to_string()
+	    };
+	    eprintln!("buffer trucated: {}\n", self.buffer.replace('\n', "\\n"));
+	}
+
     }
-
     /// The main body of the App
     fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
         // init_error_hooks().expect("App::run error hooks");
@@ -224,7 +279,21 @@ impl App<'_> {
                     x => panic!("Error reading event: {x:?}"),
                 };
             }
-            let elapsed_time = Instant::now() - start_time;
+
+	    // Is there any data from mod-host
+	    if let Ok(Some(data)) = self.mod_host_controller.try_get_data() {
+		eprint!("Got Data: \"{}\" + \"{}\" = ",
+			self.buffer.replace('\n', "\\n"),
+			data.replace('\n', "\\n"),
+		);
+		self.buffer += data.as_str();
+		eprintln!("{}", self.buffer.replace('\n', "\\n"));
+		self.process_buffer();
+	    }
+
+	    
+	    
+	    let elapsed_time = Instant::now() - start_time;
             if elapsed_time < frame_time {
                 thread::sleep(frame_time - elapsed_time);
             } else {
@@ -236,6 +305,24 @@ impl App<'_> {
     fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> io::Result<()> {
         terminal.draw(|f| f.render_widget(self, f.size()))?;
         Ok(())
+    }
+
+
+    /// Get the StateFulList that is currently in view
+    fn get_stateful_list(&self) -> &Lv2StatefulList {
+        match self.app_state {
+            AppState::List => &self.lv2_stateful_list,
+            AppState::Command => &self.lv2_loaded_list,
+        }
+    }
+
+    /// Get a mutable reference to the StateFulList that is currently
+    /// in view
+    fn get_stateful_list_mut(&mut self) -> &mut Lv2StatefulList {
+        match self.app_state {
+            AppState::List => &mut self.lv2_stateful_list,
+            AppState::Command => &mut self.lv2_loaded_list,
+        }
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {

@@ -1,6 +1,7 @@
 use crate::colours::ALT_ROW_COLOR;
 use crate::colours::COMPLETED_TEXT_COLOR;
 use crate::colours::NORMAL_ROW_COLOR;
+use crate::colours::PENDING_TEXT_COLOR;
 use crate::colours::SELECTED_TEXT_FG;
 use crate::colours::STATIC_TEXT_FG;
 /// The representation of a LV2 simulator for the purposes of
@@ -13,6 +14,7 @@ use ratatui::widgets::ListItem;
 #[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub enum Status {
     Loaded,
+    Pending,
     Unloaded,
 }
 
@@ -26,6 +28,9 @@ pub struct Lv2Simulator {
 
     // Status (un)loaded
     pub status: Status,
+
+    /// The number assigned to this simulator for mod-host
+    pub mh_id: usize,
 }
 
 impl Lv2Simulator {
@@ -41,6 +46,10 @@ impl Lv2Simulator {
                 format!(" ✓ {}", self.name),
                 (COMPLETED_TEXT_COLOR, bg_color),
             ),
+	    Status::Pending => Line::styled(
+		format!(" {} ", self.name),
+		(PENDING_TEXT_COLOR, bg_color),
+	    ),					   
         };
         ListItem::new(line).bg(bg_color)
     }
@@ -64,6 +73,7 @@ impl From<&(String, String, Status)> for Lv2Simulator {
             name: name.clone(),
             status: *status,
             url: url.clone(),
+            mh_id: 0,
         }
     }
 }

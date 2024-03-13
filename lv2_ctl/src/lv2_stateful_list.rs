@@ -11,7 +11,6 @@ pub struct Lv2StatefulList {
 
     pub last_selected: Option<usize>, // The line that is selected
 }
-
 impl Lv2StatefulList {
     /// Create a Lv2Statefullist from a vector of name, url pairs.
     pub fn new(types: &[(String, String)]) -> Lv2StatefulList {
@@ -20,10 +19,12 @@ impl Lv2StatefulList {
             last_selected: None,
             items: types
                 .iter()
+                .enumerate()
                 .map(|t| Lv2Simulator {
-                    name: t.0.clone(),
+                    name: t.1 .0.clone(),
                     status: Status::Unloaded,
-                    url: t.1.clone(),
+                    url: t.1 .1.clone(),
+                    mh_id: t.0,
                 })
                 .collect(),
         }
