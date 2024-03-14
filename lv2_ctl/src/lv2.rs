@@ -1,4 +1,4 @@
-use std::sync::mpsc::TryRecvError;
+/// Representation of Mod Host controller and simulators
 use crate::run_executable::{run_executable, trunc_vec_0};
 use core::fmt;
 use std::collections::HashMap;
@@ -8,6 +8,7 @@ use std::io::Lines;
 use std::io::Result;
 /// Process LV2 descriptions and simulators
 use std::io::StdinLock;
+use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
@@ -45,7 +46,7 @@ pub enum Lv2Type {
 }
 
 #[derive(PartialEq, Debug, PartialOrd)]
-struct ControlPortProperties {
+pub struct ControlPortProperties {
     min: f64,
     max: f64,
     default: f64,
@@ -54,7 +55,7 @@ struct ControlPortProperties {
 
 //#[derive(, Eq, Hash, Ord,)]
 #[derive(PartialEq, Debug, PartialOrd)]
-enum PortType {
+pub enum PortType {
     Input,
     Output,
     Control(ControlPortProperties),
@@ -65,8 +66,8 @@ enum PortType {
 
 #[derive(Debug)]
 pub struct Port {
-    name: String,
-    types: Vec<PortType>,
+    pub name: String,
+    pub types: Vec<PortType>,
     index: usize,
 }
 
@@ -89,9 +90,6 @@ pub struct ModHostController {
 }
 
 impl ModHostController {
-
-    
-
     /// Get a response from mod-host if one is available.  Will block
     /// until some is available.  
     pub fn get_data(&self) -> Result<String> {
@@ -106,29 +104,35 @@ impl ModHostController {
             Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
         }
     }
+
     /// Get a response from mod-host if one is available.  Will not block
     /// and returns Ok(None) if no data availale
     pub fn try_get_data(&self) -> Result<Option<String>> {
         match self.output_rx.try_recv() {
-            Ok(t) =>  {
-		// Got some data
-		let resp = trunc_vec_0(t);
-		match String::from_utf8(resp) {
-		    Ok(s) => Ok(Some(s)),
-		    Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
-		}
-	    }
-,
-	    Err(err) => match err {
-		// No data available
-		TryRecvError::Empty => Ok(None),
+            Ok(t) => {
+                // Got some data
+                let resp = trunc_vec_0(t);
+                match String::from_utf8(resp) {
+                    Ok(s) => Ok(Some(s)),
+                    Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
+                }
+            }
+            Err(err) => match err {
+                // No data available
+                TryRecvError::Empty => Ok(None),
 
-		// Something bad
-		TryRecvError::Disconnected => Err(io::Error::new(io::ErrorKind::Other, err.to_string())),
-	    }
+                // Something bad
+                TryRecvError::Disconnected => {
+                    Err(io::Error::new(io::ErrorKind::Other, err.to_string()))
+                }
+            },
         }
     }
 
+    /// Return `Lv2` by URL
+    pub fn get_lv2_url(&self, url: &String) -> Option<&Lv2> {
+        self.simulators.iter().find(|l| &l.url == url)
+    }
 }
 
 /// Stores all the data required to run LV2 simulators
@@ -491,7 +495,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
             output_tx,
         );
     });
-    
+
     let result = ModHostController {
         mod_host_th,
         simulators,

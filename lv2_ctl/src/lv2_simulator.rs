@@ -11,14 +11,14 @@ use ratatui::text::Line;
 use ratatui::widgets::ListItem;
 
 /// Whether the simuator is loaded into mod-host
-#[derive(Copy, Clone, PartialEq, PartialOrd)]
+#[derive(Copy, Debug, Clone, PartialEq, PartialOrd)]
 pub enum Status {
     Loaded,
     Pending,
     Unloaded,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Lv2Simulator {
     // Display name
     pub name: String,
@@ -46,10 +46,9 @@ impl Lv2Simulator {
                 format!(" ✓ {}", self.name),
                 (COMPLETED_TEXT_COLOR, bg_color),
             ),
-	    Status::Pending => Line::styled(
-		format!(" {} ", self.name),
-		(PENDING_TEXT_COLOR, bg_color),
-	    ),					   
+            Status::Pending => {
+                Line::styled(format!(" {} ", self.name), (PENDING_TEXT_COLOR, bg_color))
+            }
         };
         ListItem::new(line).bg(bg_color)
     }
