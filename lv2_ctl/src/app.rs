@@ -5,6 +5,7 @@
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
+use std::collections::HashMap;
 use crate::colours::NORMAL_ROW_COLOR;
 use crate::colours::SELECTED_STYLE_FG;
 use crate::colours::TEXT_COLOR;
@@ -37,6 +38,9 @@ pub struct App<'a> {
     // Data from mod-host
     buffer: String,
 
+    // JACK audi Connections
+    jack_connections: HashMap<String, String>,
+    
     mod_host_controller: &'a ModHostController,
 
     // Maintain the view for the first screen.  Which simulators are
@@ -102,6 +106,7 @@ impl App<'_> {
             .collect();
 
         App {
+	    jack_connections:HashMap::new(),
             buffer: "".to_string(),
             app_state: AppState::List,
             mod_host_controller,
@@ -163,8 +168,6 @@ impl App<'_> {
                     // Connect the selected effect to system in/out
                     eprintln!("Effect: effect_{idx}");
 
-                    // TODO!  Disconnect any existing connections.  Going to need to store them.
-
                     let lv_url = &self.get_stateful_list().items[idx].url;
 		    let mh_id = self.get_stateful_list().items[idx].mh_id;
                     let mhc = &self.mod_host_controller;
@@ -173,6 +176,15 @@ impl App<'_> {
                         Some(l) => l,
                         None => panic!("Getting Lv2 by url: {}", lv_url),
                     };
+                    //  Disconnect any existing connections.  This
+                    //  connects one, and only one, LV2
+		    for (lhs, rhs) in self.jack_connections.iter(){
+			let cmd = format!("disconnect {lhs} {rhs}");
+                        match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
+                            Ok(()) => (),
+                            Err(err) => panic!("{err}: {cmd}"),
+                        };
+		    }
 
                     // For each input audio port make a connection
                     let mut i = 1; // To name input ports system:capture_1....
@@ -186,12 +198,13 @@ impl App<'_> {
                         .collect::<Vec<&Port>>()
                         .iter()
                     {
-                        let cmd = format!(
-                            "connect system:capture_{i} effect_{mh_id}:{}",
+			let lhs = format!("system:capture_{i}");
+			let rhs = format!("effect_{mh_id}:{}",
                             p.name.as_str().to_ascii_lowercase()
                         );
+                        let cmd = format!("connect {lhs} {rhs}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
-                            Ok(()) => (),
+                            Ok(()) => self.jack_connections.insert(lhs, rhs),
                             Err(err) => panic!("{err}: {cmd}"),
                         };
                         i += 1;
