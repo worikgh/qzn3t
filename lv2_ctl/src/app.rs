@@ -221,12 +221,12 @@ impl App<'_> {
                         .collect::<Vec<&Port>>()
                         .iter()
                     {
-                        let cmd = format!(
-                            "connect effect_{mh_id}:{} system:playback_{i} ",
-                            p.name.as_str().to_ascii_lowercase()
-                        );
+			let lhs = format!("effect_{mh_id}:{}",
+                            p.name.as_str().to_ascii_lowercase());
+			let rhs = format!("system:playback_{i}");
+                        let cmd = format!("connect {lhs} {rhs}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
-                            Ok(()) => (),
+                            Ok(()) => self.jack_connections.insert(lhs, rhs),
                             Err(err) => panic!("{err}: {cmd}"),
                         };
                         i += 1;
@@ -279,7 +279,8 @@ impl App<'_> {
         while let Some(s) = self.buffer.as_str().find('\n') {
             // There is a line available
             let r = self.buffer.as_str()[0..s].to_string();
-            eprintln!("Process: '{r}'");
+            // eprintln!("Process: '{r}'");
+
             // `r` is a line from mod-host
             if r.len() > 5 && &r.as_str()[0..5] == "resp " {
                 if let Ok(n) = r.as_str()[5..].parse::<isize>() {
@@ -327,6 +328,7 @@ impl App<'_> {
             // eprintln!("buffer trucated: {}\n", self.buffer.replace('\n', "\\n"));
         }
     }
+
     /// The main body of the App
     fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
         // init_error_hooks().expect("App::run error hooks");
