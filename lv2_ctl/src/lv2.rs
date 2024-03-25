@@ -66,7 +66,8 @@ pub enum PortType {
 
 #[derive(Debug)]
 pub struct Port {
-    pub name: String,
+    pub name: String,   // For display
+    pub symbol: String, // For sending to mod-host
     pub types: Vec<PortType>,
     index: usize,
 }
@@ -242,7 +243,6 @@ fn number(object: &str) -> f64 {
     }
 }
 
-
 /// `lines` defines the LV2 simulators on the host computer.  Uses
 /// the output of [serd](https://gitlab.com/drobilla/serd)
 pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> {
@@ -385,10 +385,10 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                     .map(|p| {
                         // :Vec<Vec<Port>> `p`
 
+                        // `l` is the set of tripples that define this port
                         let l: Vec<&Lv2Datum> =
                             lv2_data.iter().filter(|&x| &x.subject == p).collect();
 
-                        // `l` is the set of tripples that define this port
                         let name: String = l
                             .iter()
                             .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#name>")
@@ -399,20 +399,33 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                                 a + remove_quotes(b.object.as_str())
                             });
 
+                        let symbol: String = l
+                            .iter()
+                            .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#symbol>")
+                            .collect::<Vec<&&Lv2Datum>>()
+                            .iter()
+                            .fold(String::new(), |a, b| {
+                                // println!("Symbol: '{a}' + '{}'", b.object);
+                                a + remove_quotes(b.object.as_str())
+                            });
+
                         let min: f64 =
                             predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
                                 .iter()
                                 .fold(0.0, |a, b| a + number(b.object.as_str()));
+
                         let max: f64 = l
                             .iter()
                             .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
                             .collect::<Vec<&&Lv2Datum>>()
                             .iter()
                             .fold(0.0, |a, b| a + number(b.object.as_str()));
+
                         let default: f64 =
                             predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#default>")
                                 .iter()
                                 .fold(0.0, |a, b| a + number(b.object.as_str()));
+
                         let logarithmic: bool = !predicate_filter(
                             l.iter(),
                             "<http://lv2plug.in/ns/lv2core#portProperty>",
@@ -423,6 +436,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                         })
                         .collect::<Vec<&&&Lv2Datum>>()
                         .is_empty();
+
                         let index: usize = l
                             .iter()
                             .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#index>")
@@ -435,6 +449,8 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                                 let b2 = b2.as_str().parse::<usize>().expect("{b2} not a usize");
                                 a + b2
                             });
+
+                        // Usually more than ne type for a port
                         let types: Vec<PortType> = l
                             .iter()
                             .filter(|l| {
@@ -465,7 +481,12 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                                 }
                             })
                             .collect();
-                        Port { name, index, types }
+                        Port {
+                            symbol,
+                            name,
+                            index,
+                            types,
+                        }
                     })
                     .collect::<Vec<Port>>();
             };

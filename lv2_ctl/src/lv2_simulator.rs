@@ -41,14 +41,18 @@ impl Lv2Simulator {
             _ => ALT_ROW_COLOR,
         };
         let line = match self.status {
-            Status::Loaded => Line::styled(format!(" ☐ {}", self.name), SELECTED_TEXT_FG),
+            Status::Loaded => Line::styled(
+                format!(" ☐ {:>3} {}", self.mh_id, self.name),
+                SELECTED_TEXT_FG,
+            ),
             Status::Unloaded => Line::styled(
-                format!(" ✓ {}", self.name),
+                format!(" ✓ {:>3} {}", self.mh_id, self.name),
                 (COMPLETED_TEXT_COLOR, bg_color),
             ),
-            Status::Pending => {
-                Line::styled(format!(" {} ", self.name), (PENDING_TEXT_COLOR, bg_color))
-            }
+            Status::Pending => Line::styled(
+                format!(" {:>3} {} ", self.mh_id, self.name),
+                (PENDING_TEXT_COLOR, bg_color),
+            ),
         };
         ListItem::new(line).bg(bg_color)
     }
@@ -59,7 +63,10 @@ impl Lv2Simulator {
             0 => NORMAL_ROW_COLOR,
             _ => ALT_ROW_COLOR,
         };
-        let line = Line::styled(self.name.to_string(), STATIC_TEXT_FG);
+        let line = Line::styled(
+            format!("{} effect_{} ", self.name, self.mh_id,),
+            STATIC_TEXT_FG,
+        );
 
         ListItem::new(line).bg(bg_color)
     }

@@ -24,7 +24,7 @@ impl Lv2StatefulList {
                     name: t.1 .0.clone(),
                     status: Status::Unloaded,
                     url: t.1 .1.clone(),
-                    mh_id: t.0,
+                    mh_id: t.0, // This is used as mod-host to communicate with loaded simulator
                 })
                 .collect(),
         }

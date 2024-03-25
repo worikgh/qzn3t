@@ -5,7 +5,6 @@
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
 
-use std::collections::HashMap;
 use crate::colours::NORMAL_ROW_COLOR;
 use crate::colours::SELECTED_STYLE_FG;
 use crate::colours::TEXT_COLOR;
@@ -23,6 +22,8 @@ use crossterm::{
     ExecutableCommand,
 };
 use ratatui::{prelude::*, widgets::*};
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
@@ -40,7 +41,7 @@ pub struct App<'a> {
 
     // JACK audi Connections
     jack_connections: HashMap<String, String>,
-    
+
     mod_host_controller: &'a ModHostController,
 
     // Maintain the view for the first screen.  Which simulators are
@@ -51,6 +52,10 @@ pub struct App<'a> {
     lv2_loaded_list: Lv2StatefulList,
 
     app_state: AppState,
+
+    // Internal state to prevent complaining too much about
+    // unrecogised responses from mod-host
+    unrecognised_resp: HashSet<String>,
 }
 
 impl Drop for App<'_> {
@@ -95,7 +100,7 @@ impl App<'_> {
     /// Initialise the App
     pub fn new(mod_host_controller: &ModHostController) -> App {
         if let Err(err) = init_error_hooks() {
-            eprintln!("{err}: Initialising error hooks");
+            eprintln!("1 INFO: {err}: Initialising error hooks");
         }
 
         // Vec<(name, url)>
@@ -106,70 +111,92 @@ impl App<'_> {
             .collect();
 
         App {
-	    jack_connections:HashMap::new(),
+            jack_connections: HashMap::new(),
             buffer: "".to_string(),
             app_state: AppState::List,
             mod_host_controller,
             lv2_loaded_list: Lv2StatefulList::empty(),
             lv2_stateful_list: Lv2StatefulList::new(&types),
+            unrecognised_resp: HashSet::new(),
         }
     }
 
     /// Changes the status of the selected list item.  
     fn change_status(&mut self) {
-        eprintln!("change_status: {:?}", self.app_state);
+        eprintln!("2 INFO change_status: {:?}", self.app_state);
         match self.app_state {
             AppState::List => {
                 if let Some(i) = self.get_stateful_list_mut().state.selected() {
-                    self.get_stateful_list_mut().items[i].status =
-                        match self.get_stateful_list_mut().items[i].status {
-                            Status::Unloaded => {
-                                // Set status of Lv2 to Loaded.  Put the
-                                // simulator into the list of loaded
-                                // simulators
+                    // There is a selected item at index `i`
+
+                    self.get_stateful_list_mut().items[i].status = match self
+                        .get_stateful_list_mut()
+                        .items[i]
+                        .status
+                    {
+                        Status::Unloaded => {
+                            // Set status of Lv2 to Loaded.  Put the
+                            // simulator into the list of loaded
+                            // simulators
+                            let lv2: Lv2Simulator = self.lv2_stateful_list.items[i].clone();
+                            eprintln!(
+                                    "STATEREP change_status Unloaded -> Pending i({i}) url({}) mh_id({})",
+                                    lv2.url, lv2.mh_id
+                                );
+                            let cmd = format!("add {} {}\n", lv2.url, lv2.mh_id);
+                            eprintln!("CMD: {cmd}");
+                            self.mod_host_controller
+                                .input_tx
+                                .send(cmd.as_bytes().to_vec())
+                                .expect("Send to mod-host");
+                            self.lv2_loaded_list.items.insert(
+                                if i > self.lv2_loaded_list.items.len() {
+                                    self.lv2_loaded_list.items.len()
+                                } else {
+                                    i
+                                },
+                                lv2,
+                            );
+                            Status::Pending
+                        }
+
+                        // Set status of Lv2 to Unloaded.  Remove from the
+                        // list of loaded simulators
+                        Status::Loaded => {
+                            if let Some(j) = self
+                                .lv2_loaded_list
+                                .items
+                                .iter()
+                                .position(|x| x.url == self.lv2_stateful_list.items[i].url)
+                            {
                                 let lv2: Lv2Simulator = self.lv2_stateful_list.items[i].clone();
-                                let cmd = format!("add {} {}\n", lv2.url, lv2.mh_id);
-                                eprintln!("cmd: {cmd}");
+                                let cmd = format!("remove {}\n", lv2.mh_id);
+                                eprintln!("CMD: {cmd}");
                                 self.mod_host_controller
                                     .input_tx
                                     .send(cmd.as_bytes().to_vec())
                                     .expect("Send to mod-host");
-                                self.lv2_loaded_list.items.insert(
-                                    if i > self.lv2_loaded_list.items.len() {
-                                        self.lv2_loaded_list.items.len()
-                                    } else {
-                                        i
-                                    },
-                                    lv2,
+                                eprintln!(
+                                    "STATEREP Remove Loaded -> Unloaded {:?}",
+                                    self.lv2_loaded_list.items.remove(j)
                                 );
-                                Status::Pending
-                            }
-
-                            // Set status of Lv2 to Unloaded.  Remove from the
-                            // list of loaded simulators
-                            Status::Loaded => {
-                                if let Some(i) = self
-                                    .lv2_loaded_list
-                                    .items
-                                    .iter()
-                                    .position(|x| x.url == self.lv2_stateful_list.items[i].url)
-                                {
-                                    self.lv2_loaded_list.items.remove(i);
-                                }
                                 Status::Unloaded
+                            } else {
+                                panic!("A loaded LV2 was not om loaded_list.  {i}");
                             }
-                            Status::Pending => Status::Pending,
                         }
+                        Status::Pending => Status::Pending,
+                    }
                 }
             }
             AppState::Command => {
-                eprintln!("Enter/Command");
+                //eprintln!("Enter/Command");
                 if let Some(idx) = self.get_stateful_list_mut().state.selected() {
                     // Connect the selected effect to system in/out
-                    eprintln!("Effect: effect_{idx}");
+                    //eprintln!("Effect: effect_{idx}");
 
                     let lv_url = &self.get_stateful_list().items[idx].url;
-		    let mh_id = self.get_stateful_list().items[idx].mh_id;
+                    let mh_id = self.get_stateful_list().items[idx].mh_id;
                     let mhc = &self.mod_host_controller;
 
                     let lv2 = match mhc.get_lv2_url(lv_url) {
@@ -178,13 +205,13 @@ impl App<'_> {
                     };
                     //  Disconnect any existing connections.  This
                     //  connects one, and only one, LV2
-		    for (lhs, rhs) in self.jack_connections.iter(){
-			let cmd = format!("disconnect {lhs} {rhs}");
+                    for (lhs, rhs) in self.jack_connections.iter() {
+                        let cmd = format!("disconnect {lhs} {rhs}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
                             Ok(()) => (),
                             Err(err) => panic!("{err}: {cmd}"),
                         };
-		    }
+                    }
 
                     // For each input audio port make a connection
                     let mut i = 1; // To name input ports system:capture_1....
@@ -198,10 +225,9 @@ impl App<'_> {
                         .collect::<Vec<&Port>>()
                         .iter()
                     {
-			let lhs = format!("system:capture_{i}");
-			let rhs = format!("effect_{mh_id}:{}",
-                            p.name.as_str().to_ascii_lowercase()
-                        );
+                        let lhs = format!("system:capture_{i}");
+                        let rhs =
+                            format!("effect_{mh_id}:{}", p.symbol.as_str().to_ascii_lowercase());
                         let cmd = format!("connect {lhs} {rhs}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
                             Ok(()) => self.jack_connections.insert(lhs, rhs),
@@ -221,9 +247,9 @@ impl App<'_> {
                         .collect::<Vec<&Port>>()
                         .iter()
                     {
-			let lhs = format!("effect_{mh_id}:{}",
-                            p.name.as_str().to_ascii_lowercase());
-			let rhs = format!("system:playback_{i}");
+                        let lhs =
+                            format!("effect_{mh_id}:{}", p.symbol.as_str().to_ascii_lowercase());
+                        let rhs = format!("system:playback_{i}");
                         let cmd = format!("connect {lhs} {rhs}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
                             Ok(()) => self.jack_connections.insert(lhs, rhs),
@@ -241,7 +267,7 @@ impl App<'_> {
 
                     //
                 } else {
-                    eprintln!("Nothing selected!");
+                    eprintln!("ERR Nothing selected!");
                 }
             }
         }
@@ -271,20 +297,23 @@ impl App<'_> {
     /// Set a status line
     fn set_status(&self, status: &str) {
         // No actual status yet
-        eprintln!("Status: {status}");
+        eprintln!("3 INFO Status: {status}");
     }
 
     /// If there are any results ready in buffer....
     fn process_buffer(&mut self) {
+        // If there is no '\mn' in buffer, do not process it, leave it
+        // till next time.
         while let Some(s) = self.buffer.as_str().find('\n') {
             // There is a line available
             let r = self.buffer.as_str()[0..s].to_string();
-            // eprintln!("Process: '{r}'");
 
             // `r` is a line from mod-host
             if r.len() > 5 && &r.as_str()[0..5] == "resp " {
                 if let Ok(n) = r.as_str()[5..].parse::<isize>() {
                     if n >= 0 {
+                        eprintln!("STATEREP resp {n} -> Loaded");
+
                         // `n` is the number of an LV2 that is ready now
                         let mut found = false;
                         let n: usize = n as usize; // Ok because `n` >= 0
@@ -296,9 +325,9 @@ impl App<'_> {
                             }
                         }
                         if found {
-                            eprintln!("Loaded {n}");
+                            eprintln!("4 INFO Loaded {n}");
                         } else {
-                            eprintln!("Could not find simulator for resp {n}");
+                            eprintln!("ERR Could not find simulator for resp {n}");
                         }
                     } else {
                         // Error code
@@ -306,18 +335,19 @@ impl App<'_> {
                         match errno {
                             -201 => {
                                 //  -201    ERR_JACK_CLIENT_CREATION
+                                eprintln!("ERR: -201 from jack");
                                 // reset all LV2 simulators
                                 for li in self.get_stateful_list_mut().items.iter_mut() {
                                     li.status = Status::Unloaded;
                                 }
                                 self.set_status("Jack Client failed");
                             }
-                            _ => eprintln!("Bad error no: {errno}"),
+                            _ => eprintln!("ERR Bad error no: {errno}"),
                         }
                     }
                 }
-            } else {
-                eprintln!("Unrecognised: {r}");
+            } else if self.unrecognised_resp.insert(r.clone()) {
+                eprintln!("ERR Unrecognised: {r}");
             }
 
             self.buffer = if s < self.buffer.len() {
@@ -325,7 +355,6 @@ impl App<'_> {
             } else {
                 "".to_string()
             };
-            // eprintln!("buffer trucated: {}\n", self.buffer.replace('\n', "\\n"));
         }
     }
 
@@ -356,7 +385,10 @@ impl App<'_> {
                             Left => self.get_stateful_list_mut().unselect(),
                             Down => self.get_stateful_list_mut().next(),
                             Up => self.get_stateful_list_mut().previous(),
-                            Right | Enter => self.change_status(),
+                            Right | Enter => {
+                                eprintln!("STATEREP _run call change_status");
+                                self.change_status()
+                            }
                             Char('g') => self.go_top(),
                             Char('G') => self.go_bottom(),
 
@@ -374,13 +406,7 @@ impl App<'_> {
 
             // Is there any data from mod-host
             if let Ok(Some(data)) = self.mod_host_controller.try_get_data() {
-                // eprint!(
-                //     "Got Data: \"{}\" + \"{}\" = ",
-                //     self.buffer.replace('\n', "\\n"),
-                //     data.replace('\n', "\\n"),
-                // );
                 self.buffer += data.as_str();
-                // eprintln!("{}", self.buffer.replace('\n', "\\n"));
                 self.process_buffer();
             }
 
@@ -416,7 +442,7 @@ impl App<'_> {
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-        // Create a space for header, todo list and the footer.
+        // Create a space for header,  list and the footer.
         let vertical = Layout::vertical([
             Constraint::Length(2),
             Constraint::Min(0),
@@ -444,8 +470,10 @@ impl App<'_> {
         ]);
         let [header_area, rest_area, footer_area] = vertical.areas(area);
 
-        // Create two chunks with equal vertical screen space. One for the list and the other for
-        // the info block.
+        // Create two chunks: Top chunk is (25%) is the list of
+        // selected devices (that are loaded into mod-host with
+        // `add...`) and the bottom 75% is for configuring the
+        // simulator
         let vertical = Layout::vertical([Constraint::Percentage(25), Constraint::Percentage(75)]);
         let [upper_item_list_area, lower_item_list_area] = vertical.areas(rest_area);
 
@@ -504,6 +532,7 @@ impl App<'_> {
             .filter(|&l| l.1.status == Status::Loaded)
             .map(|(i, lv2_item)| lv2_item.to_static_list_item(i))
             .collect();
+
         // Create a List from all list items and highlight the currently selected one
         let items2 = List::new(items)
             .block(inner_block)
@@ -646,7 +675,6 @@ impl Lv2StatefulList {
     fn next(&mut self) {
         let i = match self.state.selected() {
             Some(i) => {
-		eprintln!("next: i: {i} length: {} ", self.items.len());
                 if (i + 1) >= self.items.len() {
                     i // `next` at bottom of list has no effect
                 } else {
