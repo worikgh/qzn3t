@@ -241,6 +241,10 @@ fn number(object: &str) -> f64 {
         None => b.parse::<isize>().expect("Failed parsing b") as f64,
     }
 }
+
+
+/// `lines` defines the LV2 simulators on the host computer.  Uses
+/// the output of [serd](https://gitlab.com/drobilla/serd)
 pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> {
     let mut lv2_data: Vec<Lv2Datum> = vec![];
     let mut subject_store: HashMap<String, usize> = HashMap::new();
@@ -284,6 +288,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
 
     // Keep track of the simulators to put into the result
     let mut simulators: Vec<Lv2> = vec![];
+
     for l in lv2_data.iter() {
         if &l.object == "<http://lv2plug.in/ns/lv2core#Plugin>" {
             // Examine this because it is a plugin.
