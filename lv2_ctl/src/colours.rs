@@ -1,6 +1,6 @@
 use ratatui::style::palette::tailwind;
 use ratatui::style::Color;
-pub const TODO_HEADER_BG: Color = tailwind::BLUE.c950;
+pub const HEADER_BG: Color = tailwind::BLUE.c950;
 pub const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
 pub const ALT_ROW_COLOR: Color = tailwind::SLATE.c900;
 pub const STATIC_TEXT_FG: Color = tailwind::WHITE;

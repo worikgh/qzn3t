@@ -25,6 +25,9 @@ fn read_child_stdout(mut child_stdout: ChildStdout, output_tx: Sender<Vec<u8>>) 
         };
     });
 }
+
+/// Run the executable in `path`, aith the arguments in `args`.  It
+/// will read from `input_rx` and write to `output_tx.
 pub fn run_executable(
     path: &str,
     args: &Vec<&str>,
@@ -48,13 +51,6 @@ pub fn run_executable(
 
     let target_fps = 20;
     let target_frame_time = time::Duration::from_secs(1) / target_fps;
-    // let mut file = OpenOptions::new()
-    //     .write(true)
-    //     .create(true)
-    //     .open("/tmp/output2.txt")
-    //     .expect("Failed to open file");
-
-    // file.write_all(b"Hello, world!\n").unwrap();
 
     let (stdout_tx, stdout_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
     read_child_stdout(stdout, stdout_tx);
@@ -87,9 +83,6 @@ pub fn run_executable(
             if !data.is_empty() {
                 // `stdin` is the STDIN of the child
                 stdin.write_all(&data).unwrap();
-
-                let msg = format!("< {}\n", String::from_utf8(data.clone()).unwrap());
-                eprintln!("{msg}");
             }
         }
 
@@ -97,9 +90,6 @@ pub fn run_executable(
         if let Ok(s) = stdout_rx.try_recv() {
             // Non-blocking send to output channel
             let s = trunc_vec_0(s); // Strip zeros
-
-            let msg = format!("> {}\n", String::from_utf8(s.clone()).unwrap());
-            eprintln!("{msg}");
 
             // Send the output from mod-host to the UI
             output_tx.send(s).unwrap();

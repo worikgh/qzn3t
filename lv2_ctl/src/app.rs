@@ -4,17 +4,17 @@
 //! [Ratatui]: https://github.com/ratatui-org/ratatui
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
-
+use crate::colours::HEADER_BG;
 use crate::colours::NORMAL_ROW_COLOR;
 use crate::colours::SELECTED_STYLE_FG;
 use crate::colours::TEXT_COLOR;
-use crate::colours::TODO_HEADER_BG;
 use crate::lv2::Port;
 use crate::lv2::PortType;
 use crate::lv2::{Lv2, ModHostController};
 use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 use crate::lv2_stateful_list::Lv2StatefulList;
+use crate::port_table::port_table;
 use color_eyre::config::HookBuilder;
 use crossterm::{
     event::{self, Event, KeyCode},
@@ -28,7 +28,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
 
-#[derive(Debug)]
+/// Used by the scroll bar for LV2 Controls (F2)
+const ITEM_HEIGHT: usize = 4;
+
+#[derive(Debug, PartialEq, Eq)]
 enum AppState {
     List,    // Listing all simulators
     Command, // Interacting with mod-host
@@ -52,6 +55,12 @@ pub struct App<'a> {
     lv2_loaded_list: Lv2StatefulList,
 
     app_state: AppState,
+
+    // Because of the way tables are implemented the size of the table
+    // must be available
+    table_len: usize,
+    table_state: TableState,
+    scroll_bar_state: ScrollbarState,
 
     // Internal state to prevent complaining too much about
     // unrecogised responses from mod-host
@@ -118,6 +127,9 @@ impl App<'_> {
             lv2_loaded_list: Lv2StatefulList::empty(),
             lv2_stateful_list: Lv2StatefulList::new(&types),
             unrecognised_resp: HashSet::new(),
+            table_len: 0, // Does not exist yet
+            table_state: TableState::default().with_selected(0),
+            scroll_bar_state: ScrollbarState::default(),
         }
     }
 
@@ -207,6 +219,7 @@ impl App<'_> {
                     //  connects one, and only one, LV2
                     for (lhs, rhs) in self.jack_connections.iter() {
                         let cmd = format!("disconnect {lhs} {rhs}");
+                        eprintln!("CMD: {cmd}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
                             Ok(()) => (),
                             Err(err) => panic!("{err}: {cmd}"),
@@ -226,9 +239,9 @@ impl App<'_> {
                         .iter()
                     {
                         let lhs = format!("system:capture_{i}");
-                        let rhs =
-                            format!("effect_{mh_id}:{}", p.symbol.as_str().to_ascii_lowercase());
+                        let rhs = format!("effect_{mh_id}:{}", p.symbol.as_str());
                         let cmd = format!("connect {lhs} {rhs}");
+                        eprintln!("CMD: {cmd}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
                             Ok(()) => self.jack_connections.insert(lhs, rhs),
                             Err(err) => panic!("{err}: {cmd}"),
@@ -247,10 +260,10 @@ impl App<'_> {
                         .collect::<Vec<&Port>>()
                         .iter()
                     {
-                        let lhs =
-                            format!("effect_{mh_id}:{}", p.symbol.as_str().to_ascii_lowercase());
+                        let lhs = format!("effect_{mh_id}:{}", p.symbol.as_str());
                         let rhs = format!("system:playback_{i}");
                         let cmd = format!("connect {lhs} {rhs}");
+                        eprintln!("CMD: {cmd}");
                         match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
                             Ok(()) => self.jack_connections.insert(lhs, rhs),
                             Err(err) => panic!("{err}: {cmd}"),
@@ -307,49 +320,57 @@ impl App<'_> {
         while let Some(s) = self.buffer.as_str().find('\n') {
             // There is a line available
             let r = self.buffer.as_str()[0..s].to_string();
+            if !r.trim().is_empty() {
+                // Skip blank lines.
 
-            // `r` is a line from mod-host
-            if r.len() > 5 && &r.as_str()[0..5] == "resp " {
-                if let Ok(n) = r.as_str()[5..].parse::<isize>() {
-                    if n >= 0 {
-                        eprintln!("STATEREP resp {n} -> Loaded");
+                eprintln!("INFO m-h: {r}");
+                // `r` is a line from mod-host
+                if r.len() > 5 && &r.as_str()[0..5] == "resp " {
+                    if let Ok(n) = r.as_str()[5..].parse::<isize>() {
+                        if n >= 0 {
+                            eprintln!("STATEREP resp {n} -> Loaded");
 
-                        // `n` is the number of an LV2 that is ready now
-                        let mut found = false;
-                        let n: usize = n as usize; // Ok because `n` >= 0
-                        for item in &mut self.lv2_stateful_list.items {
-                            if item.mh_id == n {
-                                found = true;
-                                item.status = Status::Loaded;
-                                break;
-                            }
-                        }
-                        if found {
-                            eprintln!("4 INFO Loaded {n}");
-                        } else {
-                            eprintln!("ERR Could not find simulator for resp {n}");
-                        }
-                    } else {
-                        // Error code
-                        let errno = n;
-                        match errno {
-                            -201 => {
-                                //  -201    ERR_JACK_CLIENT_CREATION
-                                eprintln!("ERR: -201 from jack");
-                                // reset all LV2 simulators
-                                for li in self.get_stateful_list_mut().items.iter_mut() {
-                                    li.status = Status::Unloaded;
+                            // `n` is the number of an LV2 that is ready now
+                            let mut found = false;
+                            let n: usize = n as usize; // Ok because `n` >= 0
+                            for item in &mut self.lv2_stateful_list.items {
+                                if item.mh_id == n {
+                                    found = true;
+                                    item.status = Status::Loaded;
+                                    break;
                                 }
-                                self.set_status("Jack Client failed");
                             }
-                            _ => eprintln!("ERR Bad error no: {errno}"),
+                            if found {
+                                eprintln!("4 INFO Loaded {n}");
+                            } else {
+                                eprintln!("ERR Could not find simulator for resp {n}");
+                            }
+                        } else {
+                            // Error code
+                            let errno = n;
+                            match errno {
+                                -201 => {
+                                    //  -201    ERR_JACK_CLIENT_CREATION
+                                    eprintln!("ERR: -201 from jack");
+                                    // reset all LV2 simulators
+                                    for li in self.get_stateful_list_mut().items.iter_mut() {
+                                        li.status = Status::Unloaded;
+                                    }
+                                    self.set_status("Jack Client failed");
+                                }
+                                -206 | -205 => {
+                                    //  -205   ERR_JACK_PORT_CONNECTION
+                                    //  -206   ERR_JACK_PORT_DISCONNECTION
+                                    eprintln!("ERR ERR_JACK_PORT_[DIS]CONNECTION {n}");
+                                }
+                                _ => eprintln!("ERR Bad error no: {errno}"),
+                            }
                         }
                     }
+                } else if self.unrecognised_resp.insert(r.clone()) {
+                    eprintln!("ERR Unrecognised: {r}");
                 }
-            } else if self.unrecognised_resp.insert(r.clone()) {
-                eprintln!("ERR Unrecognised: {r}");
             }
-
             self.buffer = if s < self.buffer.len() {
                 self.buffer.as_str()[(s + 1)..].to_string()
             } else {
@@ -374,6 +395,7 @@ impl App<'_> {
                         use KeyCode::*;
                         match key.code {
                             Char('q') | Esc => {
+                                eprintln!("CMD: quit");
                                 self.mod_host_controller
                                     .input_tx
                                     .send(b"quit\n".to_vec())
@@ -392,10 +414,58 @@ impl App<'_> {
                             Char('g') => self.go_top(),
                             Char('G') => self.go_bottom(),
 
+                            Char('n') => {
+                                // In LV2 Control view (F2) move down
+                                // on Port in Port display
+                                if self.app_state == AppState::Command {
+                                    // In LV2 Control view (F2) move down
+                                    let i = match self.table_state.selected() {
+                                        Some(i) => {
+                                            if i >= self.table_len - 1 {
+                                                0
+                                            } else {
+                                                i + 1
+                                            }
+                                        }
+                                        None => 0,
+                                    };
+                                    self.table_state.select(Some(i));
+                                    self.scroll_bar_state =
+                                        self.scroll_bar_state.position(i * ITEM_HEIGHT);
+                                }
+                            }
+                            Char('p') => {
+                                // In LV2 Control view (F2) move down
+                                // on Port in Port display
+                                if self.app_state == AppState::Command {
+                                    // In LV2 Control view (F2) move down
+                                    let i = match self.table_state.selected() {
+                                        Some(i) => {
+                                            if i == 0 {
+                                                self.table_len - 1
+                                            } else {
+                                                i - 1
+                                            }
+                                        }
+                                        None => 0,
+                                    };
+                                    self.table_state.select(Some(i));
+                                    self.scroll_bar_state =
+                                        self.scroll_bar_state.position(i * ITEM_HEIGHT);
+                                }
+                            }
                             // Function keys for setting modes
                             F(1) => self.app_state = AppState::List,
                             F(2) => self.app_state = AppState::Command,
-                            _ => {}
+                            _ => {
+                                eprintln!(
+                                    "Unrecognised key code: {:?} Modifier: {:?} Control: {}",
+                                    key.code,
+                                    key.modifiers,
+                                    key.modifiers & crossterm::event::KeyModifiers::CONTROL
+                                        == crossterm::event::KeyModifiers::CONTROL
+                                );
+                            }
                         }
                     }
                     Ok(Event::Resize(_, _)) => (),
@@ -466,7 +536,7 @@ impl App<'_> {
         let vertical = Layout::vertical([
             Constraint::Length(2),
             Constraint::Min(0),
-            Constraint::Length(3),
+            Constraint::Length(2),
         ]);
         let [header_area, rest_area, footer_area] = vertical.areas(area);
 
@@ -481,6 +551,15 @@ impl App<'_> {
         self.render_lv2_list_selected(upper_item_list_area, buf);
         self.render_control_area(lower_item_list_area, buf);
         self.render_footer(footer_area, buf);
+    }
+
+    /// Ask mod-host what the value is for this port
+    fn get_port_value(&self, index: usize, symbol: &str) -> String {
+        self.mod_host_controller
+            .input_tx
+            .send(format!("param_get {index} {symbol}").as_bytes().to_vec())
+            .expect("Sending param_get to mod-host");
+        "".to_string()
     }
 }
 
@@ -509,7 +588,7 @@ impl App<'_> {
         let outer_block = Block::default()
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
-            .bg(TODO_HEADER_BG)
+            .bg(HEADER_BG)
             .title("LV2 Simulators")
             .title_alignment(Alignment::Center);
         let inner_block = Block::default()
@@ -556,7 +635,7 @@ impl App<'_> {
         let outer_block = Block::default()
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
-            .bg(TODO_HEADER_BG)
+            .bg(HEADER_BG)
             .title("LV2 Simulators")
             .title_alignment(Alignment::Center);
         let inner_block = Block::default()
@@ -610,7 +689,7 @@ impl App<'_> {
         let outer_info_block = Block::default()
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
-            .bg(TODO_HEADER_BG)
+            .bg(HEADER_BG)
             .title("Details")
             .title_alignment(Alignment::Center);
         let inner_info_block = Block::default()
@@ -635,13 +714,15 @@ impl App<'_> {
         info_paragraph.render(inner_info_area, buf);
     }
 
-    fn render_control_area(&self, area: Rect, buf: &mut Buffer) {
+    // In screen 2 (F2) render the control details for the selected
+    // LV2 simulator `area` is the screen real-estate that can be used
+    fn render_control_area(&mut self, area: Rect, buf: &mut Buffer) {
         // We show the list item's info under the list in this paragraph
         let outer_info_block = Block::default()
             .borders(Borders::NONE)
             .fg(TEXT_COLOR)
-            .bg(TODO_HEADER_BG)
-            .title("LVC Control")
+            .bg(HEADER_BG)
+            .title("LV2 Control")
             .bold()
             .title_alignment(Alignment::Center);
         // let inner_info_block = Block::default()
@@ -649,25 +730,62 @@ impl App<'_> {
         //     .bg(NORMAL_ROW_COLOR)
         //     .padding(Padding::horizontal(1));
 
-        let outer_info_area = area;
-        // let inner_info_area = outer_info_block.inner(outer_info_area);
+        let inner_info_area: Rect = outer_info_block.inner(area);
+
+        // Render the controls into `inner_info_area`
+
+        // Get the list of ports to render.  Want Control/Input ports
+        let ports = if let Some(i) = self.get_stateful_list().state.selected() {
+            // The controls for this LV2
+            let lv2 = &self.mod_host_controller.simulators.as_slice()[i];
+            lv2.ports
+                .iter()
+                .filter(|p| {
+                    p.types.iter().any(|t| matches!(t, PortType::Control(_)))
+                        && p.types.contains(&PortType::Input)
+                })
+                .collect::<Vec<&Port>>()
+        } else {
+            vec![]
+        };
+        self.table_len = ports.len();
+        self.scroll_bar_state = ScrollbarState::new((self.table_len - 1) * ITEM_HEIGHT);
+        // Get the table widget
+        let table = port_table(ports);
+        ratatui::widgets::StatefulWidget::render(
+            table,
+            inner_info_area,
+            buf,
+            &mut self.table_state,
+        );
+        ratatui::widgets::StatefulWidget::render(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None),
+            inner_info_area,
+            buf,
+            &mut self.scroll_bar_state,
+        );
+        // table.render(inner_info_area, buf);
 
         // We can render the header. Inner info will be rendered later
-        outer_info_block.render(outer_info_area, buf);
+        outer_info_block.render(area, buf);
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
         match self.app_state {
             AppState::List => Paragraph::new(
-                "Use ↓↑ to move, ← to unselect, → to change status, g/G to go top/bottom.\nAny other character to send instructions",
+                "Use ↓↑ to move, ← to unselect, → to change status, \
+		 g/G to go top/bottom.\nAny other character to send instructions",
             ),
-	    AppState::Command => Paragraph::new(
-                "Use ↓↑ to move, ← to unselect, → to change status.\nAny other characters fol to send instructions <Enter> to send",
-            )
+            AppState::Command => Paragraph::new(
+                "Use ↓↑ to move, ← to unselect, → to change status.\n\
+		 Any other characters fol to send instructions <Enter> to send",
+            ),
         }
-	.centered()
-	    .render(area, buf)
-	;
+        .centered()
+        .render(area, buf);
     }
 }
 
