@@ -144,72 +144,6 @@ struct Lv2Datum {
     object: String,
 }
 
-/// Unicode constants for display
-const LESSEQ: &str = "\u{2a7d}"; // <=
-const LOG: &str = "\u{33d2}"; // log
-
-impl fmt::Display for ControlPortProperties {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}{} {LESSEQ} {}  {LESSEQ} {}",
-            if self.logarithmic {
-                format!["{LOG} "]
-            } else {
-                "".to_string()
-            },
-            self.min,
-            self.default,
-            self.max,
-        )
-    }
-}
-impl fmt::Display for PortType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PortType::Input => write!(f, "Input"),
-            PortType::Output => write!(f, "Output"),
-            PortType::Control(properties) => write!(f, "Control({})", properties),
-            PortType::Audio => write!(f, "Audio"),
-            PortType::AtomPort => write!(f, "AtomPort"),
-            PortType::Other(s) => write!(f, "Other({})", s),
-        }
-    }
-}
-impl fmt::Display for Port {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let port_types: Vec<String> = self.types.iter().map(|t| format!("{}", t)).collect();
-        write!(
-            f,
-            "Port {}: {} [{}]",
-            self.index,
-            self.name,
-            port_types.join(", "),
-        )
-    }
-}
-impl fmt::Display for Lv2Datum {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {}", self.subject, self.predicate, self.object)
-    }
-}
-impl fmt::Display for Lv2 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}: {}{}{}",
-            self.name,
-            self.url,
-            self.ports
-                .iter()
-                .fold("".to_string(), |a, b| format!("{}\n\t{}", a, b)),
-            self.types
-                .iter()
-                .fold("".to_string(), |a, b| format!("{}\n\t{:?}", a, b))
-        )
-    }
-}
-
 // Filter Lv2Datum by predicate
 fn predicate_filter<'a, T: Iterator<Item = &'a &'a Lv2Datum>>(
     i: T,
@@ -538,7 +472,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
         if resp != MOD_HOST {
             panic!("Unknown response: '{resp}'.  Not: '{MOD_HOST}'");
         }
-        println!("Channel working: {resp}");
+        eprintln!("Channel working: {resp}");
     }
     Ok(result)
     // // Send a command
@@ -557,4 +491,70 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
     //     Err(err) => panic!("{err} Cannot translate resppone"),
     // };
     // println!("Got {resp}");
+}
+
+/// Unicode constants for display
+const LESSEQ: &str = "\u{2a7d}"; // <=
+const LOG: &str = "\u{33d2}"; // log
+
+impl fmt::Display for ControlPortProperties {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}{} {LESSEQ} {}  {LESSEQ} {}",
+            if self.logarithmic {
+                format!["{LOG} "]
+            } else {
+                "".to_string()
+            },
+            self.min,
+            self.default,
+            self.max,
+        )
+    }
+}
+impl fmt::Display for PortType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PortType::Input => write!(f, "Input"),
+            PortType::Output => write!(f, "Output"),
+            PortType::Control(properties) => write!(f, "Control({})", properties),
+            PortType::Audio => write!(f, "Audio"),
+            PortType::AtomPort => write!(f, "AtomPort"),
+            PortType::Other(s) => write!(f, "Other({})", s),
+        }
+    }
+}
+impl fmt::Display for Port {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let port_types: Vec<String> = self.types.iter().map(|t| format!("{}", t)).collect();
+        write!(
+            f,
+            "Port {}: {} [{}]",
+            self.index,
+            self.name,
+            port_types.join(", "),
+        )
+    }
+}
+impl fmt::Display for Lv2Datum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} {}", self.subject, self.predicate, self.object)
+    }
+}
+impl fmt::Display for Lv2 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: {}{}{}",
+            self.name,
+            self.url,
+            self.ports
+                .iter()
+                .fold("".to_string(), |a, b| format!("{}\n\t{}", a, b)),
+            self.types
+                .iter()
+                .fold("".to_string(), |a, b| format!("{}\n\t{:?}", a, b))
+        )
+    }
 }

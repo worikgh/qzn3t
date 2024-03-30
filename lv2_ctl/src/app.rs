@@ -24,6 +24,7 @@ use crossterm::{
 use ratatui::{prelude::*, widgets::*};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
@@ -56,15 +57,30 @@ pub struct App<'a> {
 
     app_state: AppState,
 
-    // Because of the way tables are implemented the size of the table
-    // must be available
-    table_len: usize,
-    table_state: TableState,
-    scroll_bar_state: ScrollbarState,
-
     // Internal state to prevent complaining too much about
     // unrecogised responses from mod-host
     unrecognised_resp: HashSet<String>,
+
+    /// The Ports in the current view and the scrolling table they are
+    /// displayed in
+    ports: Vec<&'a Port>,
+    table_state: TableState,
+    scroll_bar_state: ScrollbarState,
+
+    /// The last command sent to mod-host.  It is command orientated
+    /// so a "resp..." from mod-host refers to the last command sent.
+    /// This programme is asynchronous, so a command is sent, and
+    /// later a response is received.  This allows the two to be
+    /// connected.  When a response is received set this back to None.
+    last_mh_command: Option<String>,
+
+    /// Commands are queued when they arrive.  They are sent in the
+    /// order they are received.
+    mh_command_queue: VecDeque<String>,
+
+    /// Store the last status output so do not thrash status reporting
+    /// mechanism (eprintln! as I write) with repeated status messages
+    status: Option<String>,
 }
 
 impl Drop for App<'_> {
@@ -127,12 +143,46 @@ impl App<'_> {
             lv2_loaded_list: Lv2StatefulList::empty(),
             lv2_stateful_list: Lv2StatefulList::new(&types),
             unrecognised_resp: HashSet::new(),
-            table_len: 0, // Does not exist yet
+
             table_state: TableState::default().with_selected(0),
             scroll_bar_state: ScrollbarState::default(),
+            ports: vec![],
+
+            last_mh_command: None,
+            mh_command_queue: VecDeque::new(),
+
+            status: None,
         }
     }
 
+    fn status_string(&self) -> String {
+        format!(
+            "{:?} queued cmd# {} Last Command: {:?}",
+            self.app_state,
+            self.mh_command_queue.len(),
+            self.last_mh_command
+        )
+    }
+
+    /// Queue a command to send to mod-host
+    fn send_mh_cmd(&mut self, cmd: &str) {
+        self.mh_command_queue.push_back(cmd.to_string());
+    }
+
+    /// Called from the event loop to send a message to mod-host
+    fn pump_mh_queue(&mut self) {
+        if self.last_mh_command.is_none() && !self.mh_command_queue.is_empty() {
+            // Safe because queue is not empty
+            let cmd = self.mh_command_queue.pop_front().unwrap();
+
+            eprintln!("CMD: {cmd}");
+            self.last_mh_command = Some(cmd.trim().to_string());
+            self.mod_host_controller
+                .input_tx
+                .send(cmd.as_bytes().to_vec())
+                .expect("Send to mod-host");
+        }
+    }
     /// Changes the status of the selected list item.  
     fn change_status(&mut self) {
         eprintln!("2 INFO change_status: {:?}", self.app_state);
@@ -156,11 +206,9 @@ impl App<'_> {
                                     lv2.url, lv2.mh_id
                                 );
                             let cmd = format!("add {} {}\n", lv2.url, lv2.mh_id);
-                            eprintln!("CMD: {cmd}");
-                            self.mod_host_controller
-                                .input_tx
-                                .send(cmd.as_bytes().to_vec())
-                                .expect("Send to mod-host");
+                            self.send_mh_cmd(cmd.as_str());
+
+                            // TODO:  Move this into the handler for received messages
                             self.lv2_loaded_list.items.insert(
                                 if i > self.lv2_loaded_list.items.len() {
                                     self.lv2_loaded_list.items.len()
@@ -183,15 +231,16 @@ impl App<'_> {
                             {
                                 let lv2: Lv2Simulator = self.lv2_stateful_list.items[i].clone();
                                 let cmd = format!("remove {}\n", lv2.mh_id);
-                                eprintln!("CMD: {cmd}");
-                                self.mod_host_controller
-                                    .input_tx
-                                    .send(cmd.as_bytes().to_vec())
-                                    .expect("Send to mod-host");
+                                self.send_mh_cmd(cmd.as_str());
+
+                                self.send_mh_cmd(cmd.as_str());
                                 eprintln!(
                                     "STATEREP Remove Loaded -> Unloaded {:?}",
                                     self.lv2_loaded_list.items.remove(j)
                                 );
+                                // TODO: Move this into the handler
+                                // for received messages.  This should
+                                // be `Status::Pending
                                 Status::Unloaded
                             } else {
                                 panic!("A loaded LV2 was not om loaded_list.  {i}");
@@ -202,30 +251,30 @@ impl App<'_> {
                 }
             }
             AppState::Command => {
-                //eprintln!("Enter/Command");
+                // Showing and editing the Port values for a LV2.  Change the LV2 simulator
+                // TODO: Optimisation - check the same LV2 is not selected twice
                 if let Some(idx) = self.get_stateful_list_mut().state.selected() {
                     // Connect the selected effect to system in/out
                     //eprintln!("Effect: effect_{idx}");
 
-                    let lv_url = &self.get_stateful_list().items[idx].url;
                     let mh_id = self.get_stateful_list().items[idx].mh_id;
-                    let mhc = &self.mod_host_controller;
+                    //  Disconnect any existing connections.  This
+                    //  connects one, and only one, LV2
+                    let cmds = self
+                        .jack_connections
+                        .iter()
+                        .map(|(l, r)| format!("disconnect {l} {r}"))
+                        .collect::<Vec<String>>();
+                    for cmd in cmds.iter() {
+                        self.send_mh_cmd(cmd.as_str());
+                    }
 
+                    let mhc = &self.mod_host_controller;
+                    let lv_url = &self.get_stateful_list().items[idx].url;
                     let lv2 = match mhc.get_lv2_url(lv_url) {
                         Some(l) => l,
                         None => panic!("Getting Lv2 by url: {}", lv_url),
                     };
-                    //  Disconnect any existing connections.  This
-                    //  connects one, and only one, LV2
-                    for (lhs, rhs) in self.jack_connections.iter() {
-                        let cmd = format!("disconnect {lhs} {rhs}");
-                        eprintln!("CMD: {cmd}");
-                        match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
-                            Ok(()) => (),
-                            Err(err) => panic!("{err}: {cmd}"),
-                        };
-                    }
-
                     // For each input audio port make a connection
                     let mut i = 1; // To name input ports system:capture_1....
                     for p in lv2
@@ -241,11 +290,7 @@ impl App<'_> {
                         let lhs = format!("system:capture_{i}");
                         let rhs = format!("effect_{mh_id}:{}", p.symbol.as_str());
                         let cmd = format!("connect {lhs} {rhs}");
-                        eprintln!("CMD: {cmd}");
-                        match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
-                            Ok(()) => self.jack_connections.insert(lhs, rhs),
-                            Err(err) => panic!("{err}: {cmd}"),
-                        };
+                        self.send_mh_cmd(cmd.as_str());
                         i += 1;
                     }
                     // For each output audio port make a connection
@@ -263,22 +308,9 @@ impl App<'_> {
                         let lhs = format!("effect_{mh_id}:{}", p.symbol.as_str());
                         let rhs = format!("system:playback_{i}");
                         let cmd = format!("connect {lhs} {rhs}");
-                        eprintln!("CMD: {cmd}");
-                        match mhc.input_tx.send(cmd.as_bytes().to_vec()) {
-                            Ok(()) => self.jack_connections.insert(lhs, rhs),
-                            Err(err) => panic!("{err}: {cmd}"),
-                        };
+                        self.send_mh_cmd(cmd.as_str());
                         i += 1;
                     }
-                    // connect <origin_port> <destination_port>
-                    //     * connect two effect audio ports
-                    //     e.g.: connect system:capture_1 effect_0:in
-
-                    // disconnect <origin_port> <destination_port>
-                    //     * disconnect two effect audio ports
-                    //     e.g.: disconnect system:capture_1 effect_0:in
-
-                    //
                 } else {
                     eprintln!("ERR Nothing selected!");
                 }
@@ -313,62 +345,154 @@ impl App<'_> {
         eprintln!("3 INFO Status: {status}");
     }
 
+    /// Handle a response from mod-host that starts with "resp ".
+    /// There are at least these cases:
+    ///
+    /// 1. A LV2 simulator has just been added and 'resp N' with N
+    /// being the "instance number" of the added simulator
+    ///
+    /// 2. A `param_get` command has been sent and get: 'resp N M'
+    /// where N is the instance number, and M is the value of the
+    /// parameter
+    fn procss_resp(&mut self, response: &str) {
+        // Can only get a "resp " from mod-host after a command has been sent
+        let last_mh_command: String;
+        {
+            last_mh_command = self
+                .last_mh_command
+                .as_ref()
+                .expect("The last command sent to mod-host is empty")
+                .trim()
+                .to_string();
+        }
+        // Get the first word as a slice
+        let sp: usize = last_mh_command
+            .chars()
+            .position(|x| x.is_whitespace())
+            .expect("No space in resp string");
+        let fw_cmd = &last_mh_command[0..sp];
+        match fw_cmd {
+            "add" => {
+                // Adding an LV2.  Get the instance number from the command
+                let sp = last_mh_command
+                    .rfind(' ')
+                    .unwrap_or_else(|| panic!("Malformed command: '{last_mh_command}'"));
+                let instance_number = last_mh_command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
+                    panic!(
+                        "No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
+			&last_mh_command[sp..]
+                    )
+                });
+
+                // Get a reference to the item in use.  Its state will
+                // be modified: to `'oaded` if all is well, to
+                // `unloaded` if mod-host returned an error
+                let item: &mut Lv2Simulator = self
+                    .lv2_stateful_list
+                    .items
+                    .iter_mut()
+                    .find(|x| x.mh_id == instance_number)
+                    .expect("Cannot find LV2 instance: {instance_number}");
+
+                if let Ok(n) = response[5..].parse::<isize>() {
+                    eprintln!("Got a idx: {n}");
+
+                    if n >= 0 {
+                        // If `n` > 0 it is the instance_number of the simulator
+                        let n = n as usize; // Ok.  n >= 0
+                        if n != instance_number {
+                            panic!("Bad instance_number in `add` response: {n} is not {instance_number}");
+                        }
+                        item.status = Status::Loaded;
+                    } else {
+                        // Error code
+                        let errno = n;
+                        eprintln!("ERR: {errno}.  Command: {:?}", self.last_mh_command);
+                        item.status = Status::Unloaded;
+                    }
+                    self.last_mh_command = None;
+                }
+            }
+            "param_get" => {
+                // Got the current value of a Port.  Get the symbol for the port from the command
+                let sp = last_mh_command[10..] // Consider string after "param_get " prefix
+                    .find(' ')
+                    .expect("Malformed command: {last_mh_command}") + 10;
+                let instance_number_str = last_mh_command[10..sp].trim();
+                let instance_number = instance_number_str
+                    .parse::<usize>()
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "No instance number at end of param_get command: \
+			     '{last_mh_command}' => '{instance_number_str}"
+                        )
+                    });
+
+                let sp = last_mh_command
+                    .rfind(' ')
+                    .expect("Malformed command: {last_mh_command}");
+                let symbol = last_mh_command[sp..].trim();
+
+                // Get the instance number and the value from the response
+                let r = &response[5..];
+                let sp: usize = r
+                    .chars()
+                    .position(|x| x.is_whitespace())
+                    .unwrap_or_else(|| panic!("Malformed response to param_get: {response}"));
+                let n = r[..sp]
+                    .trim()
+                    .parse::<usize>()
+                    .expect("Malformed response to param_get: Instance number invalid. {response}");
+                if n != instance_number {
+                    panic!(
+                        "Bad instance_number in `param_get` response: {n} is not {instance_number}"
+                    );
+                }
+                let value = r[sp..].trim();
+                self.set_port_value(n, symbol, value);
+                self.last_mh_command = None;
+            }
+            _ => panic!("Unknown command: {last_mh_command}"),
+        };
+    }
+
+    /// This needs to set the value of the port where ever it is
+    /// displayed.  Probably by maipulating self.ports.
+    fn set_port_value(&mut self, instance_number: usize, symbol: &str, value: &str) {
+        eprintln!("UNIMPLEMENTED: set_port_value(&mut self, {instance_number}, {symbol}, {value})");
+    }
+
     /// If there are any results ready in buffer....
     fn process_buffer(&mut self) {
         // If there is no '\mn' in buffer, do not process it, leave it
         // till next time.
         while let Some(s) = self.buffer.as_str().find('\n') {
+
             // There is a line available
-            let r = self.buffer.as_str()[0..s].to_string();
-            if !r.trim().is_empty() {
+            let r = self.buffer.as_str()[0..s].trim().to_string();
+            if !r.is_empty() {
                 // Skip blank lines.
-
-                eprintln!("INFO m-h: {r}");
-                // `r` is a line from mod-host
-                if r.len() > 5 && &r.as_str()[0..5] == "resp " {
-                    if let Ok(n) = r.as_str()[5..].parse::<isize>() {
-                        if n >= 0 {
-                            eprintln!("STATEREP resp {n} -> Loaded");
-
-                            // `n` is the number of an LV2 that is ready now
-                            let mut found = false;
-                            let n: usize = n as usize; // Ok because `n` >= 0
-                            for item in &mut self.lv2_stateful_list.items {
-                                if item.mh_id == n {
-                                    found = true;
-                                    item.status = Status::Loaded;
-                                    break;
-                                }
-                            }
-                            if found {
-                                eprintln!("4 INFO Loaded {n}");
+                //eprintln!("INFO m-h: {r}");
+                if r.trim() == "mod-host>" || r.trim() == "using block size: 1024" {
+                    // Unsure why we see these....
+                    eprintln!("INFO m-h: {r}");
+                } else if r.len() > 5 && &r.as_str()[0..5] == "resp " {
+                    self.procss_resp(r.as_str());
+                } else {
+                    match &self.last_mh_command {
+                        Some(s) => {
+                            if format!("mod-host> {}",s.trim()).as_str() == r.trim(){
+                                // All good mod-host repeats back commands
+                                // Command is not complete yet
                             } else {
-                                eprintln!("ERR Could not find simulator for resp {n}");
-                            }
-                        } else {
-                            // Error code
-                            let errno = n;
-                            match errno {
-                                -201 => {
-                                    //  -201    ERR_JACK_CLIENT_CREATION
-                                    eprintln!("ERR: -201 from jack");
-                                    // reset all LV2 simulators
-                                    for li in self.get_stateful_list_mut().items.iter_mut() {
-                                        li.status = Status::Unloaded;
-                                    }
-                                    self.set_status("Jack Client failed");
-                                }
-                                -206 | -205 => {
-                                    //  -205   ERR_JACK_PORT_CONNECTION
-                                    //  -206   ERR_JACK_PORT_DISCONNECTION
-                                    eprintln!("ERR ERR_JACK_PORT_[DIS]CONNECTION {n}");
-                                }
-                                _ => eprintln!("ERR Bad error no: {errno}"),
+                                eprintln!("'{s}': Fuck you: '{r}'");
                             }
                         }
+                        None => (),
+                    };
+                    if self.unrecognised_resp.insert(r.clone()) {
+                        eprintln!("INFO Unrecognised: {r}");
                     }
-                } else if self.unrecognised_resp.insert(r.clone()) {
-                    eprintln!("ERR Unrecognised: {r}");
                 }
             }
             self.buffer = if s < self.buffer.len() {
@@ -385,8 +509,25 @@ impl App<'_> {
 
         let target_fps = 60; // 400 is about the limit on Raspberry Pi 5
         let frame_time = Duration::from_secs(1) / target_fps as u32;
+
+	// Set this to false to make process exit on next loop
+	let mut run = true;
         loop {
+	    if !run {
+		break;
+	    }
             let start_time = Instant::now();
+            let status = self.status_string();
+
+            if let Some(st) = &self.status {
+                if st != &status {
+                    self.set_status(status.as_str());
+                    self.status = Some(status);
+                }
+            } else {
+                self.set_status(status.as_str());
+                self.status = Some(status);
+            }
 
             self.draw(&mut terminal)?;
             if event::poll(Duration::from_secs(0)).expect("Polling for event") {
@@ -395,16 +536,12 @@ impl App<'_> {
                         use KeyCode::*;
                         match key.code {
                             Char('q') | Esc => {
-                                eprintln!("CMD: quit");
-                                self.mod_host_controller
-                                    .input_tx
-                                    .send(b"quit\n".to_vec())
-                                    .expect("Send quit to mod-host");
-
-                                return Ok(());
+                                self.send_mh_cmd("quit");
+                                // Move this to handler of data from mod-host?
+                                //return Ok(());
+				run = false;
                             }
-                            Char('h') => (),
-                            Left => self.get_stateful_list_mut().unselect(),
+                            Char('u') | Left => self.get_stateful_list_mut().unselect(),
                             Down => self.get_stateful_list_mut().next(),
                             Up => self.get_stateful_list_mut().previous(),
                             Right | Enter => {
@@ -418,10 +555,10 @@ impl App<'_> {
                                 // In LV2 Control view (F2) move down
                                 // on Port in Port display
                                 if self.app_state == AppState::Command {
-                                    // In LV2 Control view (F2) move down
+                                    // In LV2 Control view (F2) move down a port
                                     let i = match self.table_state.selected() {
                                         Some(i) => {
-                                            if i >= self.table_len - 1 {
+                                            if i >= self.ports.len() - 1 {
                                                 0
                                             } else {
                                                 i + 1
@@ -430,6 +567,12 @@ impl App<'_> {
                                         None => 0,
                                     };
                                     self.table_state.select(Some(i));
+                                    self.update_port_data(
+                                        self.get_stateful_list().items
+                                            [self.get_stateful_list().state.selected().unwrap()]
+                                        .mh_id,
+                                        self.ports[i].name.as_str(),
+                                    );
                                     self.scroll_bar_state =
                                         self.scroll_bar_state.position(i * ITEM_HEIGHT);
                                 }
@@ -442,7 +585,7 @@ impl App<'_> {
                                     let i = match self.table_state.selected() {
                                         Some(i) => {
                                             if i == 0 {
-                                                self.table_len - 1
+                                                self.ports.len() - 1
                                             } else {
                                                 i - 1
                                             }
@@ -459,7 +602,7 @@ impl App<'_> {
                             F(2) => self.app_state = AppState::Command,
                             _ => {
                                 eprintln!(
-                                    "Unrecognised key code: {:?} Modifier: {:?} Control: {}",
+                                    "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
                                     key.code,
                                     key.modifiers,
                                     key.modifiers & crossterm::event::KeyModifiers::CONTROL
@@ -474,6 +617,9 @@ impl App<'_> {
                 };
             }
 
+            // Send data to mod-host if it is enqueued
+            self.pump_mh_queue();
+
             // Is there any data from mod-host
             if let Ok(Some(data)) = self.mod_host_controller.try_get_data() {
                 self.buffer += data.as_str();
@@ -487,6 +633,7 @@ impl App<'_> {
                 eprintln!("Timing error: {elapsed_time:?}/{frame_time:?}");
             }
         }
+	Ok(())
     }
 
     fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> io::Result<()> {
@@ -554,12 +701,9 @@ impl App<'_> {
     }
 
     /// Ask mod-host what the value is for this port
-    fn get_port_value(&self, index: usize, symbol: &str) -> String {
-        self.mod_host_controller
-            .input_tx
-            .send(format!("param_get {index} {symbol}").as_bytes().to_vec())
-            .expect("Sending param_get to mod-host");
-        "".to_string()
+    fn get_port_value(&mut self, index: usize, symbol: &str) {
+        let cmd = format!("param_get {index} {symbol}");
+        self.send_mh_cmd(cmd.as_str());
     }
 }
 
@@ -714,6 +858,11 @@ impl App<'_> {
         info_paragraph.render(inner_info_area, buf);
     }
 
+    fn update_port_data(&mut self, index: usize, symbol: &str) {
+        self.get_port_value(index, symbol);
+        eprintln!("Update {index} {symbol}");
+    }
+
     // In screen 2 (F2) render the control details for the selected
     // LV2 simulator `area` is the screen real-estate that can be used
     fn render_control_area(&mut self, area: Rect, buf: &mut Buffer) {
@@ -725,19 +874,17 @@ impl App<'_> {
             .title("LV2 Control")
             .bold()
             .title_alignment(Alignment::Center);
-        // let inner_info_block = Block::default()
-        //     .borders(Borders::NONE)
-        //     .bg(NORMAL_ROW_COLOR)
-        //     .padding(Padding::horizontal(1));
 
         let inner_info_area: Rect = outer_info_block.inner(area);
 
         // Render the controls into `inner_info_area`
 
         // Get the list of ports to render.  Want Control/Input ports
-        let ports = if let Some(i) = self.get_stateful_list().state.selected() {
+        self.ports = if let Some(i) = self.get_stateful_list().state.selected() {
             // The controls for this LV2
+
             let lv2 = &self.mod_host_controller.simulators.as_slice()[i];
+
             lv2.ports
                 .iter()
                 .filter(|p| {
@@ -748,10 +895,9 @@ impl App<'_> {
         } else {
             vec![]
         };
-        self.table_len = ports.len();
-        self.scroll_bar_state = ScrollbarState::new((self.table_len - 1) * ITEM_HEIGHT);
+        self.scroll_bar_state = ScrollbarState::new((self.ports.len()) * ITEM_HEIGHT);
         // Get the table widget
-        let table = port_table(ports);
+        let table = port_table(&self.ports);
         ratatui::widgets::StatefulWidget::render(
             table,
             inner_info_area,
