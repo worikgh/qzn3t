@@ -1,14 +1,13 @@
+use crate::mod_host_controller::ModHostController;
 /// Representation of Mod Host controller and simulators
-use crate::run_executable::{run_executable, trunc_vec_0};
+use crate::run_executable::run_executable;
 use core::fmt;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io;
 use std::io::Lines;
 use std::io::Result;
 /// Process LV2 descriptions and simulators
 use std::io::StdinLock;
-use std::sync::mpsc::TryRecvError;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
@@ -45,7 +44,7 @@ pub enum Lv2Type {
     Other(String),
 }
 
-#[derive(PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub struct ControlPortProperties {
     min: f64,
     max: f64,
@@ -54,7 +53,7 @@ pub struct ControlPortProperties {
 }
 
 //#[derive(, Eq, Hash, Ord,)]
-#[derive(PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub enum PortType {
     Input,
     Output,
@@ -64,14 +63,26 @@ pub enum PortType {
     Other(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Port {
     pub name: String,   // For display
     pub symbol: String, // For sending to mod-host
     pub types: Vec<PortType>,
     index: usize,
+    pub value: String,
 }
 
+impl Port {
+    pub fn get_min_def_max(&self) -> Option<(f64, f64, f64, bool)> {
+	let t = self.types.iter().find(|t| matches!(t, PortType::Control(ControlPortProperties { min: _, max: _, default: _, logarithmic:_})));
+	// Is a control port.  Extract result
+	if let Some(&PortType::Control( ControlPortProperties { min, default, max, logarithmic })) = t {
+	    Some((min, default, max, logarithmic))
+	}else{
+	    None
+	}
+    }
+}
 #[derive(Debug)]
 pub struct Lv2 {
     pub types: HashSet<Lv2Type>,
@@ -79,62 +90,7 @@ pub struct Lv2 {
     pub name: String,
     pub url: String,
 }
-
-#[derive(Debug)]
-/// Interface to mod-host
-pub struct ModHostController {
-    pub simulators: Vec<Lv2>,
-    pub mod_host_th: thread::JoinHandle<()>,
-    // pub data_th: thread::JoinHandle<()>,
-    pub input_tx: Sender<Vec<u8>>,    // Send data to mod-host
-    pub output_rx: Receiver<Vec<u8>>, // Get data from mod-host
-}
-
-impl ModHostController {
-    /// Get a response from mod-host if one is available.  Will block
-    /// until some is available.  
-    pub fn get_data(&self) -> Result<String> {
-        let resp = match self.output_rx.recv() {
-            Ok(t) => t,
-            Err(err) => return Err(io::Error::new(io::ErrorKind::Other, err.to_string())),
-        };
-
-        let resp = trunc_vec_0(resp);
-        match String::from_utf8(resp) {
-            Ok(s) => Ok(s),
-            Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
-        }
-    }
-
-    /// Get a response from mod-host if one is available.  Will not block
-    /// and returns Ok(None) if no data availale
-    pub fn try_get_data(&self) -> Result<Option<String>> {
-        match self.output_rx.try_recv() {
-            Ok(t) => {
-                // Got some data
-                let resp = trunc_vec_0(t);
-                match String::from_utf8(resp) {
-                    Ok(s) => Ok(Some(s)),
-                    Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
-                }
-            }
-            Err(err) => match err {
-                // No data available
-                TryRecvError::Empty => Ok(None),
-
-                // Something bad
-                TryRecvError::Disconnected => {
-                    Err(io::Error::new(io::ErrorKind::Other, err.to_string()))
-                }
-            },
-        }
-    }
-
-    /// Return `Lv2` by URL
-    pub fn get_lv2_url(&self, url: &String) -> Option<&Lv2> {
-        self.simulators.iter().find(|l| &l.url == url)
-    }
-}
+use std::collections::VecDeque;
 
 /// Stores all the data required to run LV2 simulators
 #[derive(PartialEq, PartialOrd)]
@@ -187,11 +143,21 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
 
     let mut index_sbj = 0;
     for line in lines.map(|x| x.unwrap()) {
+        // `line` is n three useful parts: Subject, Predicate, and Object
+        // 1. The line upto the first space ' ' is the Subject
+        // 2. The remainder of the line upto the next space is the Predicate
+        // 3. The remainder of the line, except for the last two characters, is the Object
+        // The Object can contain spaces.
+        // The last two characters are " ."
+
         let mut split: Vec<&str> = line.as_str().split(' ').collect();
         let subject = split.remove(0).to_string();
         let predicate = split.remove(0).to_string();
         // print!("split {} left: ", split.len());
         let _object = split.join(" ");
+        if &_object[_object.len() - 2..] != " ." {
+            panic!("Bad line: {line}");
+        }
         let object = _object.as_str()[..(_object.len() - 2)].to_string();
         // println!("'{subject}' / '{predicate}' / '{object}'");
         if subject_store.get(&subject).is_none() {
@@ -311,8 +277,9 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                     .map(|p| p.object.clone())
                     .collect::<Vec<String>>();
 
-                // Process the ports
-                // Each port  has a subject like `_:gx_zita_rev1b9`.  Usually about two dozen lines that describe a port
+                // Process the ports Each port has a subject like
+                // `_:gx_zita_rev1b9`.  Usually about two dozen lines
+                // that describe a port
 
                 ports = port_names
                     .iter()
@@ -420,6 +387,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                             name,
                             index,
                             types,
+                            value: "".to_string(),
                         }
                     })
                     .collect::<Vec<Port>>();
@@ -437,9 +405,9 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
         }
     }
     // for s in simulators.iter() {
-    //     println!("{s}");
+    //     eprintln!("{s}");
     // }
-    // println!("Found {} simulators", simulators.len());
+    eprintln!("Found {} simulators", simulators.len());
 
     // Run the mod-host sub-process
     // pub fn run_executable(path: &str, input_rx: Receiver<Vec<u8>>, output_tx: Sender<Vec<u8>>) {
@@ -461,6 +429,8 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
         simulators,
         input_tx,
         output_rx,
+        last_mh_command: None,
+        mh_command_queue: VecDeque::new(),
     };
     {
         // Ensure mod-host is going.  This is taking a gamble.  The

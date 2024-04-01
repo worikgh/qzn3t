@@ -12,6 +12,11 @@ pub struct Lv2StatefulList {
     pub last_selected: Option<usize>, // The line that is selected
 }
 impl Lv2StatefulList {
+    /// Get the selected Lv2Simulator
+    pub fn _clone_selected(&self) -> Option<Lv2Simulator> {
+        self.state.selected().map(|t| self.items[t].clone())
+    }
+
     /// Create a Lv2Statefullist from a vector of name, url pairs.
     pub fn new(types: &[(String, String)]) -> Lv2StatefulList {
         Lv2StatefulList {

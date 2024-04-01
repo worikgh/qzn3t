@@ -3,7 +3,8 @@ use std::process::{ChildStdout, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::{thread, time};
 
-pub fn trunc_vec_0(resp: Vec<u8>) -> Vec<u8> {
+/// Remove the zero bytes from the end of a`resp`
+pub fn rem_trail_0(resp: Vec<u8>) -> Vec<u8> {
     let mut i = resp.as_slice().iter();
     let n = i.position(|&x| x == 0); //.unwrap_or(resp.len());
     let n = n.unwrap_or(resp.len());
@@ -76,7 +77,7 @@ pub fn run_executable(
         // These are commands for mod-host
         if let Ok(data) = input_rx.try_recv() {
             // Strip off the zeros from the end of the input
-            let mut data = trunc_vec_0(data);
+            let mut data = rem_trail_0(data);
 
             // Append a new line as mod-host input is line orientated
             data.append(&mut "\n".to_string().as_bytes().to_vec());
@@ -89,7 +90,7 @@ pub fn run_executable(
         // Non-blocking read from the child.
         if let Ok(s) = stdout_rx.try_recv() {
             // Non-blocking send to output channel
-            let s = trunc_vec_0(s); // Strip zeros
+            let s = rem_trail_0(s); // Strip zeros
 
             // Send the output from mod-host to the UI
             output_tx.send(s).unwrap();
