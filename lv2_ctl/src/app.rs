@@ -279,7 +279,8 @@ impl App<'_> {
                             })
                             .cloned()
                             .collect::<Vec<Port>>();
-                        control_commands = self.ports
+                        control_commands = self
+                            .ports
                             .iter()
                             .filter(|&p| {
                                 p.types.iter().any(|t| matches!(t, PortType::Control(_)))
@@ -377,27 +378,17 @@ impl App<'_> {
         eprintln!("3 INFO Status: {status}");
     }
 
-    /// Handle a response from mod-host that starts with "resp ".
-    /// There are at least these cases:
-    ///
-    /// 1. A LV2 simulator has just been added and 'resp N' with N
-    /// being the "instance number" of the added simulator
-    ///
-    /// 2. A `param_get` command has been sent and get: 'resp E M'
-    /// where E is 0 for success, and a negative number if mod-hosy
-    /// made an error
+    /// Handle a response from mod-host that starts with "resp ".  It
+    /// is a response to a command, so what happens here is dependant
+    /// on that command    
+    /// resp status [value]
     fn procss_resp(&mut self, response: &str) {
+	
         // Can only get a "resp " from mod-host after a command has been sent
-        let last_mh_command: String;
-        {
-            last_mh_command = self
-                .mod_host_controller
-                .get_last_mh_command()
-                .as_ref()
-                .expect("The last command sent to mod-host is empty")
-                .trim()
-                .to_string();
-        }
+        let last_mh_command = match  self.mod_host_controller.get_last_mh_command() {
+	    Some(s) => s.trim().to_string(),
+	    None => panic!("Handeling 'resp' response but there is no `last_mh_command`"),
+	};
 
         // Get the first word as a slice
         let sp: usize = last_mh_command
@@ -408,7 +399,10 @@ impl App<'_> {
 
         match fw_cmd {
             "add" => {
-                // Adding an LV2.  Get the instance number from the command
+                // Adding an LV2.  Get the instance number from the
+                // command, the instance number that the cammand was
+                // addressed to
+
                 let sp = last_mh_command
                     .rfind(' ')
                     .unwrap_or_else(|| panic!("Malformed command: '{last_mh_command}'"));
@@ -419,9 +413,9 @@ impl App<'_> {
                     )
                 });
 
-                // Get a reference to the item in use.  Its state will
-                // be modified: to `loaded` if all is well, to
-                // `unloaded` if mod-host returned an error
+                // Get a reference to the item the command is for.
+                // Its state will be modified: to `loaded` if all is
+                // well, to `unloaded` if mod-host returned an error
                 let item: &mut Lv2Simulator = self
                     .lv2_stateful_list
                     .items
@@ -429,35 +423,31 @@ impl App<'_> {
                     .find(|x| x.mh_id == instance_number)
                     .expect("Cannot find LV2 instance: {instance_number}");
 
-                if let Ok(n) = response[5..].parse::<isize>() {
-                    eprintln!("Got a idx: {n}");
+		// Get the instance number from the response.  If this
+		// is > 0 it is the `instace_number`, else it is an
+		// error code
+                let n = response[5..].parse::<isize>().expect("No instance number at end of response");
+                eprintln!("INFO process_resp/add: Got resp {n}");
 
-                    if n >= 0 {
-                        // If `n` > 0 it is the instance_number of the simulator
-                        let n = n as usize; // Ok.  n >= 0
-                        if n != instance_number {
-                            panic!(
-                                "Bad instance_number in `add` response: {n} \
-				    is not {instance_number}"
-                            );
-                        }
-                        eprintln!(
-                            "STATEREP change_status {:?} -> Status::Loaded  \
-			     Instance: {n}",
-                            item.status
-                        );
-                        item.status = Status::Loaded;
-                    } else {
-                        // Error code
-                        let errno = n;
-                        eprintln!(
-                            "ERR: {errno}.  Command: {:?}: {}",
-                            self.mod_host_controller.get_last_mh_command(),
-                            ModHostController::translate_error_code(n)
-                        );
-                        item.status = Status::Unloaded;
-                    }
-                    self.mod_host_controller.set_last_mh_command(None);
+                if n >= 0 {
+                    // `n` is the instance_number of the simulator
+		    assert!(n as usize == instance_number);
+
+                    eprintln!(
+                        "INFO change_status {:?} -> Status::Loaded  \
+			 Instance: {n}",
+                        item.status
+                    );
+                    item.status = Status::Loaded;
+                } else {
+                    // Error code
+                    let errno = n;
+                    eprintln!(
+                        "ERR: {errno}.  Command: {:?}: {}",
+                        self.mod_host_controller.get_last_mh_command(),
+                        ModHostController::translate_error_code(n)
+                    );
+                    item.status = Status::Unloaded;
                 }
             }
             "param_get" => {
@@ -492,16 +482,14 @@ impl App<'_> {
                     }
                     Ordering::Equal => {
                         let value = r[sp..].trim();
-                        for p in  self
-                            .ports
-                            .iter_mut() {
-				if  p.symbol == symbol {
-				    // eprintln!("INFO {symbol} -> {value}");
-				    p.value = value.to_string();
-				}
-			    }
-		    
-			// eprintln!("INFO Set {symbol} to {value}/{:?}",self
+                        for p in self.ports.iter_mut() {
+                            if p.symbol == symbol {
+                                // eprintln!("INFO {symbol} -> {value}");
+                                p.value = value.to_string();
+                            }
+                        }
+
+                        // eprintln!("INFO Set {symbol} to {value}/{:?}",self
                         //     .ports
                         //     .iter_mut()
                         //     .filter(|p| p.symbol == symbol)
@@ -509,7 +497,6 @@ impl App<'_> {
                     }
                     Ordering::Greater => panic!("Bad n {n} from mod-host in resp"),
                 };
-                self.mod_host_controller.set_last_mh_command(None);
             }
             "remove" => {
                 // Removing an LV2.  Get the instance number from the command
@@ -547,12 +534,16 @@ impl App<'_> {
                 self.mod_host_controller.set_last_mh_command(None);
             }
             "connect" => {
+		// A connection was established
+		// TODO:  Record connections in model data
                 let jacks = &last_mh_command.as_str()[sp + 1..];
                 eprintln!("INFO jacks: {jacks}");
-                self.mod_host_controller.set_last_mh_command(None);
             }
             _ => panic!("Unknown command: {last_mh_command}"),
         };
+
+	// Having handles the command, one way or another, delete it
+	self.mod_host_controller.set_last_mh_command(None);
     }
 
     /// This needs to set the value of the port where ever it is
@@ -561,17 +552,17 @@ impl App<'_> {
         eprintln!("UNIMPLEMENTED: set_port_value(&mut self, {instance_number}, {symbol}, {value})");
     }
 
-    /// If there are any results ready in buffer....
+    /// Process data coming from mod-host.  Line orientated and asynchronous
     fn process_buffer(&mut self) {
-        // If there is no '\mn' in buffer, do not process it, leave it
-        // till next time.
+        // If there is no '\n' in buffer, do not process it, leave it
+        // till next time.  But process all lines that are available
         while let Some(s) = self.buffer.as_str().find('\n') {
             // There is a line available
             let r = self.buffer.as_str()[0..s].trim().to_string();
             if !r.is_empty() {
                 // Skip blank lines.
                 //eprintln!("INFO m-h: {r}");
-                if r.trim() == "mod-host>" || r.trim() == "using block size: 1024" {
+                if r == "mod-host>" || r == "using block size: 1024" {
                     // Unsure why we see these....
                     // eprintln!("INFO m-h: {r}");
                 } else if r.len() > 5 && &r.as_str()[0..5] == "resp " {
@@ -579,7 +570,7 @@ impl App<'_> {
                 } else {
                     match &self.mod_host_controller.get_last_mh_command() {
                         Some(s) => {
-                            if format!("mod-host> {}", s.trim()).as_str() == r.trim() {
+                            if format!("mod-host> {}", s.trim()).as_str() == r {
                                 // All good mod-host repeats back commands
                                 // Command is not complete yet
                             } else {

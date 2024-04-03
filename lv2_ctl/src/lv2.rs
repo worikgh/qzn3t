@@ -74,13 +74,29 @@ pub struct Port {
 
 impl Port {
     pub fn get_min_def_max(&self) -> Option<(f64, f64, f64, bool)> {
-	let t = self.types.iter().find(|t| matches!(t, PortType::Control(ControlPortProperties { min: _, max: _, default: _, logarithmic:_})));
-	// Is a control port.  Extract result
-	if let Some(&PortType::Control( ControlPortProperties { min, default, max, logarithmic })) = t {
-	    Some((min, default, max, logarithmic))
-	}else{
-	    None
-	}
+        let t = self.types.iter().find(|t| {
+            matches!(
+                t,
+                PortType::Control(ControlPortProperties {
+                    min: _,
+                    max: _,
+                    default: _,
+                    logarithmic: _
+                })
+            )
+        });
+        // Is a control port.  Extract result
+        if let Some(&PortType::Control(ControlPortProperties {
+            min,
+            default,
+            max,
+            logarithmic,
+        })) = t
+        {
+            Some((min, default, max, logarithmic))
+        } else {
+            None
+        }
     }
 }
 #[derive(Debug)]
