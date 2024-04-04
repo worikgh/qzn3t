@@ -9,7 +9,6 @@ use std::io::StdinLock;
 use crate::mod_host_controller::ModHostController;
 mod app;
 mod colours;
-mod integer_control;
 mod lv2;
 mod lv2_simulator;
 mod lv2_stateful_list;

@@ -69,7 +69,7 @@ pub struct Port {
     pub symbol: String, // For sending to mod-host
     pub types: Vec<PortType>,
     index: usize,
-    pub value: String,
+    pub value: Option<String>,
 }
 
 impl Port {
@@ -403,7 +403,7 @@ pub fn get_lv2_controller(lines: Lines<StdinLock>) -> Result<ModHostController> 
                             name,
                             index,
                             types,
-                            value: "".to_string(),
+                            value: None,
                         }
                     })
                     .collect::<Vec<Port>>();

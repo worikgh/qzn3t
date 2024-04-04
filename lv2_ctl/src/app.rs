@@ -285,6 +285,7 @@ impl App<'_> {
                             .filter(|&p| {
                                 p.types.iter().any(|t| matches!(t, PortType::Control(_)))
                                     && p.types.contains(&PortType::Input)
+                                    && p.value.is_none()
                             })
                             .map(|p| format!("param_get {mh_id} {}", p.symbol))
                             .collect::<Vec<String>>();
@@ -382,14 +383,14 @@ impl App<'_> {
     /// is a response to a command, so what happens here is dependant
     /// on that command    
     /// resp status [value]
-    fn procss_resp(&mut self, response: &str) {
-	
+    fn process_resp(&mut self, response: &str) {
         // Can only get a "resp " from mod-host after a command has been sent
-        let last_mh_command = match  self.mod_host_controller.get_last_mh_command() {
-	    Some(s) => s.trim().to_string(),
-	    None => panic!("Handeling 'resp' response but there is no `last_mh_command`"),
-	};
-
+        let last_mh_command = match self.mod_host_controller.get_last_mh_command() {
+            Some(s) => s.trim().to_string(),
+            None => panic!("Handeling 'resp' response but there is no `last_mh_command`"),
+        };
+        eprintln!("INFO process_resp last_mh_command: {last_mh_command}");
+        eprintln!("INFO process_resp resp: {response}");
         // Get the first word as a slice
         let sp: usize = last_mh_command
             .chars()
@@ -423,15 +424,17 @@ impl App<'_> {
                     .find(|x| x.mh_id == instance_number)
                     .expect("Cannot find LV2 instance: {instance_number}");
 
-		// Get the instance number from the response.  If this
-		// is > 0 it is the `instace_number`, else it is an
-		// error code
-                let n = response[5..].parse::<isize>().expect("No instance number at end of response");
+                // Get the instance number from the response.  If this
+                // is > 0 it is the `instace_number`, else it is an
+                // error code
+                let n = response[5..]
+                    .parse::<isize>()
+                    .expect("No instance number at end of response");
                 eprintln!("INFO process_resp/add: Got resp {n}");
 
                 if n >= 0 {
                     // `n` is the instance_number of the simulator
-		    assert!(n as usize == instance_number);
+                    assert!(n as usize == instance_number);
 
                     eprintln!(
                         "INFO change_status {:?} -> Status::Loaded  \
@@ -459,10 +462,10 @@ impl App<'_> {
 
                 // Get the instance number from the command
                 let instance = last_mh_command["param_get ".len()..sp].trim();
-                let _instance_number = instance
+                let instance_number = instance
                     .parse::<usize>()
                     .unwrap_or_else(|_| panic!("Bad command instance number: {last_mh_command}"));
-                // Get the instance number and the value from the response
+                // Get the status and the value from the response
                 let r = &response[5..];
                 let sp: usize = r.chars().position(|x| x.is_whitespace()).unwrap_or(
                     // No whitespace till end of string
@@ -481,11 +484,36 @@ impl App<'_> {
                         );
                     }
                     Ordering::Equal => {
+                        // Got a value.  Cache it in the port
                         let value = r[sp..].trim();
+
+                        // let idx:usize = self.get_stateful_list_mut().state.selected().expect("Get selected");
+
+                        let lv2_name = self
+                            .get_stateful_list_mut()
+                            .items
+                            .iter_mut()
+                            .find(|x| x.mh_id == instance_number)
+                            .expect("Find LV2 with mh_id")
+                            .name
+                            .clone();
+
+                        self.mod_host_controller
+                            .simulators
+                            .iter_mut()
+                            .find(|l| l.name == lv2_name)
+                            .expect("Find Lv2 by name!")
+                            .ports
+                            .iter_mut()
+                            .find(|p| p.symbol == symbol)
+                            .expect("Finding port by symbol")
+                            .value = Some(value.to_string());
+
+                        // self.mod_host_controller.simulators.find(|s| s.url == self.url).expect("Cannot find url")
                         for p in self.ports.iter_mut() {
                             if p.symbol == symbol {
                                 // eprintln!("INFO {symbol} -> {value}");
-                                p.value = value.to_string();
+                                p.value = Some(value.to_string());
                             }
                         }
 
@@ -534,16 +562,16 @@ impl App<'_> {
                 self.mod_host_controller.set_last_mh_command(None);
             }
             "connect" => {
-		// A connection was established
-		// TODO:  Record connections in model data
+                // A connection was established
+                // TODO:  Record connections in model data
                 let jacks = &last_mh_command.as_str()[sp + 1..];
                 eprintln!("INFO jacks: {jacks}");
             }
             _ => panic!("Unknown command: {last_mh_command}"),
         };
 
-	// Having handles the command, one way or another, delete it
-	self.mod_host_controller.set_last_mh_command(None);
+        // Having handles the command, one way or another, delete it
+        self.mod_host_controller.set_last_mh_command(None);
     }
 
     /// This needs to set the value of the port where ever it is
@@ -566,7 +594,7 @@ impl App<'_> {
                     // Unsure why we see these....
                     // eprintln!("INFO m-h: {r}");
                 } else if r.len() > 5 && &r.as_str()[0..5] == "resp " {
-                    self.procss_resp(r.as_str());
+                    self.process_resp(r.as_str());
                 } else {
                     match &self.mod_host_controller.get_last_mh_command() {
                         Some(s) => {
