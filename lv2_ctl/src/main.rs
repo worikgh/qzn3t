@@ -16,16 +16,16 @@ mod mod_host_controller;
 mod port_table;
 mod run_executable;
 fn main() -> std::io::Result<()> {
-    let lines: Lines<StdinLock> = io::stdin().lines();
-    let mut mod_host_controller: ModHostController = get_lv2_controller(lines)?;
+   let lines: Lines<StdinLock> = io::stdin().lines();
+   let mut mod_host_controller: ModHostController = get_lv2_controller(lines)?;
 
-    // Start user interface.  Loop until user quits
-    App::run(&mut mod_host_controller).expect("Running app");
+   // Start user interface.  Loop until user quits
+   App::run(&mut mod_host_controller).expect("Running app");
 
-    mod_host_controller
-        .mod_host_th
-        .join()
-        .expect("Joining mod-host thread");
+   mod_host_controller
+      .mod_host_th
+      .join()
+      .expect("Joining mod-host thread");
 
-    Ok(())
+   Ok(())
 }
