@@ -191,6 +191,10 @@ impl App<'_> {
 
    /// Changes the status of the selected list item.  
    fn change_status(&mut self) {
+      if self.get_stateful_list().items.len() == 0 {
+         // Nothing to do
+         return;
+      }
       match self.app_view_state {
          AppViewState::List => {
             if let Some(i) = self.get_stateful_list_mut().state.selected() {
@@ -246,7 +250,7 @@ impl App<'_> {
             // TODO: Optimisation - check the same LV2 is not selected twice
             if let Some(idx) = self.get_stateful_list_mut().state.selected() {
                // Connect the selected effect to system in/out
-
+               eprintln!("INFO change_status AppViewState::Command idx: {idx}");
                let mh_id = self.get_stateful_list().items[idx].mh_id;
 
                eprintln!(
@@ -491,8 +495,8 @@ impl App<'_> {
             };
          }
          "param_set" => {
-				 // E.g: "param_set 1 Gain 0"
-             let q = Self::get_instance_symbol_res(
+            // E.g: "param_set 1 Gain 0"
+            let q = Self::get_instance_symbol_res(
                last_mh_command.as_str(),
                response,
             );
@@ -510,11 +514,12 @@ impl App<'_> {
                Ordering::Equal => {
                   // Set the value in the LV2, update our records
                   // Get the value from the command
-                  let sp = last_mh_command.len() - last_mh_command
-                     .chars()
-                     .rev()
-                     .position(|c| c.is_whitespace())
-                     .unwrap_or(0);
+                  let sp = last_mh_command.len()
+                     - last_mh_command
+                        .chars()
+                        .rev()
+                        .position(|c| c.is_whitespace())
+                        .unwrap_or(0);
                   let value = last_mh_command.as_str()[sp..].trim();
                   self.update_port(instance_number, symbol, value);
                }
@@ -583,7 +588,6 @@ impl App<'_> {
             // Skip blank lines.
             eprintln!("INFO m-h: {r}");
             if r == "mod-host>" || r == "using block size: 1024" {
-
             } else if r.len() > 5 && &r.as_str()[0..5] == "resp " {
                self.process_resp(r.as_str());
             } else {
@@ -833,9 +837,7 @@ impl App<'_> {
                      Char('u') => self.get_stateful_list_mut().unselect(),
                      Down => self.get_stateful_list_mut().next(),
                      Up => self.get_stateful_list_mut().previous(),
-                     Enter => {
-                        self.change_status()
-                     }
+                     Enter => self.change_status(),
                      Char('g') => self.go_top(),
                      Char('G') => self.go_bottom(),
 
@@ -1217,6 +1219,9 @@ impl App<'_> {
 
 impl Lv2StatefulList {
    fn next(&mut self) {
+      if self.items.len() == 0 {
+         return;
+      }
       let i = match self.state.selected() {
          Some(i) => {
             if (i + 1) >= self.items.len() {
@@ -1231,6 +1236,9 @@ impl Lv2StatefulList {
    }
 
    fn previous(&mut self) {
+      if self.items.len() == 0 {
+         return;
+      }
       let i = match self.state.selected() {
          Some(i) => {
             if i == 0 {
