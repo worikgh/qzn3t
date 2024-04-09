@@ -4,9 +4,14 @@
 //! [Ratatui]: https://github.com/ratatui-org/ratatui
 //! [examples]: https://github.com/ratatui-org/ratatui/blob/main/examples
 //! [examples readme]: https://github.com/ratatui-org/ratatui/blob/main/examples/README.md
+use crate::colours::ALT_ROW_COLOR;
+use crate::colours::COMPLETED_TEXT_COLOR;
 use crate::colours::HEADER_BG;
 use crate::colours::NORMAL_ROW_COLOR;
+use crate::colours::PENDING_TEXT_COLOR;
 use crate::colours::SELECTED_STYLE_FG;
+use crate::colours::SELECTED_TEXT_FG;
+use crate::colours::STATIC_TEXT_FG;
 use crate::colours::TEXT_COLOR;
 use crate::lv2::Lv2;
 use crate::lv2::Port;
@@ -191,7 +196,7 @@ impl App<'_> {
 
    /// Changes the status of the selected list item.  
    fn change_status(&mut self) {
-      if self.get_stateful_list().items.len() == 0 {
+      if self.get_stateful_list().items.is_empty() {
          // Nothing to do
          return;
       }
@@ -1046,7 +1051,7 @@ impl App<'_> {
          .iter()
          .enumerate()
          .filter(|&l| l.1.status == Status::Loaded)
-         .map(|(i, lv2_item)| lv2_item.to_static_list_item(i))
+         .map(|(i, lv2_item)| Self::sim_to_static_list_item(lv2_item, i))
          .collect();
 
       // Create a List from all list items and highlight the currently selected one
@@ -1072,6 +1077,43 @@ impl App<'_> {
       );
    }
 
+   /// Make a ListItem for App::lv2_loaded_list
+   fn sim_to_static_list_item(sim: &Lv2Simulator, index: usize) -> ListItem {
+      let bg_color = match index % 2 {
+         0 => NORMAL_ROW_COLOR,
+         _ => ALT_ROW_COLOR,
+      };
+      let line = Line::styled(
+         format!("{} effect_{} ", sim.name, sim.mh_id,),
+         STATIC_TEXT_FG,
+      );
+
+      ListItem::new(line).bg(bg_color)
+   }
+
+   /// Make a list item for App::lv2_stateful_list
+   fn sim_lv2_list_item(sim: &Lv2Simulator, index: usize) -> ListItem {
+      let bg_color = match index % 2 {
+         0 => NORMAL_ROW_COLOR,
+         _ => ALT_ROW_COLOR,
+      };
+      // SELECTED_TEXT_FG
+      let line = match sim.status {
+         Status::Loaded => Line::styled(
+            format!(" ☐ {:>3} {}", sim.mh_id, sim.name),
+            SELECTED_TEXT_FG,
+         ),
+         Status::Unloaded => Line::styled(
+            format!(" ✓ {:>3} {}", sim.mh_id, sim.name),
+            (COMPLETED_TEXT_COLOR, bg_color),
+         ),
+         Status::Pending => Line::styled(
+            format!(" {:>3} {} ", sim.mh_id, sim.name),
+            (PENDING_TEXT_COLOR, bg_color),
+         ),
+      };
+      ListItem::new(line).bg(bg_color)
+   }
    fn render_lv2_list(&mut self, area: Rect, buf: &mut Buffer) {
       // We create two blocks, one is for the header (outer) and the other is for list (inner).
       let outer_block = Block::default()
@@ -1098,7 +1140,7 @@ impl App<'_> {
          .items
          .iter()
          .enumerate()
-         .map(|(i, todo_item)| todo_item.to_stateful_list_item(i))
+         .map(|(i, simulator_lv2)| Self::sim_lv2_list_item(simulator_lv2, i))
          .collect();
 
       // Create a List from all list items and highlight the currently selected one
@@ -1219,7 +1261,7 @@ impl App<'_> {
 
 impl Lv2StatefulList {
    fn next(&mut self) {
-      if self.items.len() == 0 {
+      if self.items.is_empty() {
          return;
       }
       let i = match self.state.selected() {
@@ -1236,7 +1278,7 @@ impl Lv2StatefulList {
    }
 
    fn previous(&mut self) {
-      if self.items.len() == 0 {
+      if self.items.is_empty() {
          return;
       }
       let i = match self.state.selected() {

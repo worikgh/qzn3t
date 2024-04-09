@@ -1,3 +1,4 @@
+//! Definition of an LV2 simulator as defined in the Turtle files
 use crate::mod_host_controller::ModHostController;
 /// Representation of Mod Host controller and simulators
 use crate::run_executable::run_executable;
@@ -10,6 +11,16 @@ use std::io::Result;
 use std::io::StdinLock;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
+
+/// The assembled simulator with all the data necessary to load it
+/// into a host
+#[derive(Debug)]
+pub struct Lv2 {
+   pub types: HashSet<Lv2Type>,
+   pub ports: Vec<Port>,
+   pub name: String,
+   pub url: String,
+}
 
 #[derive(PartialEq, Eq, Hash, Debug, Ord, PartialOrd, Clone)]
 pub enum Lv2Type {
@@ -44,6 +55,15 @@ pub enum Lv2Type {
    Other(String),
 }
 
+#[derive(Debug, Clone)]
+pub struct Port {
+   pub name: String,   // For display
+   pub symbol: String, // For sending to mod-host
+   pub types: Vec<PortType>,
+   index: usize,
+   pub value: Option<String>,
+}
+
 #[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub struct ControlPortProperties {
    min: f64,
@@ -63,14 +83,6 @@ pub enum PortType {
    Other(String),
 }
 
-#[derive(Debug, Clone)]
-pub struct Port {
-   pub name: String,   // For display
-   pub symbol: String, // For sending to mod-host
-   pub types: Vec<PortType>,
-   index: usize,
-   pub value: Option<String>,
-}
 
 impl Port {
    pub fn get_min_def_max(&self) -> Option<(f64, f64, f64, bool)> {
@@ -98,13 +110,6 @@ impl Port {
          None
       }
    }
-}
-#[derive(Debug)]
-pub struct Lv2 {
-   pub types: HashSet<Lv2Type>,
-   pub ports: Vec<Port>,
-   pub name: String,
-   pub url: String,
 }
 use std::collections::VecDeque;
 
@@ -193,7 +198,7 @@ pub fn get_lv2_controller(
          object_store.insert(object.clone(), index_sbj);
          index_sbj += 1;
       }
-
+      // eprintln!("SPO {subject} {predicate} {object}");
       lv2_data.push(Lv2Datum {
          subject,
          predicate,
