@@ -38,10 +38,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
 
-/// Used by the scroll bar for LV2 Controls (F2)
-const ITEM_HEIGHT: usize = 4;
+/// Used by the scroll bar for LV2 Controls (F2).  So far the scroll
+/// bars do nothing at all
+const ITEM_HEIGHT: usize = 1;
 
-/// Encodes whether a port going one step up, or one step down
+/// Encodes whether a port value is being incremented `up` or
+/// decremented `down` when adjusting the port value.
+/// This allows the same code do be used for both cases
 enum PortAdj {
    Up,
    Down,
@@ -948,13 +951,14 @@ impl App<'_> {
    }
 
    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-      // Create a space for header,  list and the footer.
-      let vertical = Layout::vertical([
+		 // Header, body, and footer
+       let vertical = Layout::vertical([
          Constraint::Length(2),
          Constraint::Min(0),
          Constraint::Length(2),
       ]);
       let [header_area, rest_area, footer_area] = vertical.areas(area);
+      // Create a space for header,  list and the footer.
 
       // Create two chunks with equal vertical screen space. One for the list and the other for
       // the info block.
@@ -971,8 +975,11 @@ impl App<'_> {
       self.render_footer(footer_area, buf);
    }
 
+   /// F2 The LV2 simulators that were selected in the main (F1)
+   /// screen are all listed here in the top part of the screen, in a
+   /// list.  The simulator selected there has its control ports
+   /// listed in the bottom part of the screen.
    fn render_selected_lv2(&mut self, area: Rect, buf: &mut Buffer) {
-      // Create a space for header, todo list and the footer.
       let vertical = Layout::vertical([
          Constraint::Length(2),
          Constraint::Min(0),
@@ -988,6 +995,8 @@ impl App<'_> {
          Constraint::Percentage(25),
          Constraint::Percentage(75),
       ]);
+
+
       let [upper_item_list_area, lower_item_list_area] =
          vertical.areas(rest_area);
 
@@ -1004,6 +1013,7 @@ impl App<'_> {
    }
 }
 
+/// The main method got making the UI
 impl Widget for &mut App<'_> {
    fn render(self, area: Rect, buf: &mut Buffer) {
       match self.app_view_state {
@@ -1114,6 +1124,10 @@ impl App<'_> {
       };
       ListItem::new(line).bg(bg_color)
    }
+
+   /// A list of all LV2 Simulators known.
+   /// `area`: Where to draw the list
+   /// `buffer`: ??? FI2K
    fn render_lv2_list(&mut self, area: Rect, buf: &mut Buffer) {
       // We create two blocks, one is for the header (outer) and the other is for list (inner).
       let outer_block = Block::default()

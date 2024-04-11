@@ -83,7 +83,6 @@ pub enum PortType {
    Other(String),
 }
 
-
 impl Port {
    pub fn get_min_def_max(&self) -> Option<(f64, f64, f64, bool)> {
       let t = self.types.iter().find(|t| {
@@ -342,21 +341,25 @@ pub fn get_lv2_controller(
 
                   let max: f64 = l
                      .iter()
-                     .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
+                       .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
                      .collect::<Vec<&&Lv2Datum>>()
                      .iter()
-                     .fold(0.0, |a, b| a + number(b.object.as_str()));
+                       .fold(0.0, |a, b| a
+									  + number(b.object.as_str()));
 
                   let default: f64 =
-                     predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#default>")
+                       predicate_filter(l.iter(),
+													 "<http://lv2plug.in/ns/lv2core#default>")
                         .iter()
                         .fold(0.0, |a, b| a + number(b.object.as_str()));
 
                   let logarithmic: bool =
-                     !predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#portProperty>")
+                       !predicate_filter(l.iter(),
+													  "<http://lv2plug.in/ns/lv2core#portProperty>")
                         .iter()
                         .filter(|lv| {
-                           lv.object == "<http://lv2plug.in/ns/ext/port-props#logarithmic>"
+                            lv.object ==
+										  "<http://lv2plug.in/ns/ext/port-props#logarithmic>"
                         })
                         .collect::<Vec<&&&Lv2Datum>>()
                         .is_empty();
