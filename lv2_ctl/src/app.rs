@@ -32,7 +32,6 @@ use crossterm::{
 };
 use ratatui::{prelude::*, widgets::*};
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -61,8 +60,8 @@ pub struct App<'a> {
    // Data from mod-host
    buffer: String,
 
-   /// JACK audi Connections
-   jack_connections: HashMap<String, String>,
+   /// JACK audio Connections
+   jack_connections: HashSet<String>,
 
    mod_host_controller: &'a mut ModHostController,
 
@@ -159,7 +158,7 @@ impl App<'_> {
          .collect();
 
       App {
-         jack_connections: HashMap::new(),
+         jack_connections: HashSet::new(),
          buffer: "".to_string(),
          app_view_state: AppViewState::List,
          mod_host_controller,
@@ -270,8 +269,9 @@ impl App<'_> {
                let disconnect_cmds = self
                   .jack_connections
                   .iter()
-                  .map(|(l, r)| format!("disconnect {l} {r}"))
+                  .map(|s| format!("disconnect {s}"))
                   .collect::<Vec<String>>();
+               eprintln!("INFO Disconnect commands: {disconnect_cmds:?}");
                let control_commands: Vec<String>;
                let input_commands: Vec<String>;
                let output_commands: Vec<String>;
@@ -576,9 +576,16 @@ impl App<'_> {
             // A connection was established
             // TODO:  Record connections in model data
             let jacks = &last_mh_command.as_str()[sp + 1..];
-            eprintln!("INFO jacks: {jacks}");
+				 self.jack_connections.insert(jacks.to_string());
+             eprintln!("INFO jacks: {jacks}");
          }
-         _ => panic!("Unknown command: {last_mh_command}"),
+          "disconnect" => {
+				  let jacks = &last_mh_command.as_str()[sp + 1..];
+				  if !self.jack_connections.remove(jacks) {
+						panic!("Failed to remove {jacks} from connections");
+				  }
+			}
+          _ => panic!("Unknown command: {last_mh_command}"),
       };
 
       // Having handled the command, one way or another, delete it
@@ -817,6 +824,7 @@ impl App<'_> {
          }
 
          self.draw(&mut terminal)?;
+
          if event::poll(Duration::from_secs(0)).expect("Polling for event") {
             match event::read() {
                Ok(Event::Key(key)) => {
@@ -951,8 +959,8 @@ impl App<'_> {
    }
 
    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-		 // Header, body, and footer
-       let vertical = Layout::vertical([
+      // Header, body, and footer
+      let vertical = Layout::vertical([
          Constraint::Length(2),
          Constraint::Min(0),
          Constraint::Length(2),
@@ -995,7 +1003,6 @@ impl App<'_> {
          Constraint::Percentage(25),
          Constraint::Percentage(75),
       ]);
-
 
       let [upper_item_list_area, lower_item_list_area] =
          vertical.areas(rest_area);
