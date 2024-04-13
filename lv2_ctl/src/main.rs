@@ -13,6 +13,7 @@ mod lv2;
 mod lv2_simulator;
 mod lv2_stateful_list;
 mod mod_host_controller;
+mod port;
 mod port_table;
 mod run_executable;
 fn main() -> std::io::Result<()> {
