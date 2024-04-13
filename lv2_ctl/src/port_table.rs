@@ -1,7 +1,7 @@
 //! Make a table widget of control Port information
 
 //use crate::lv2::ModHostController;
-use crate::lv2::Port;
+use crate::port::Port;
 use ratatui::layout::Constraint;
 use ratatui::style::palette::tailwind;
 use ratatui::style::Color;
