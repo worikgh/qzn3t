@@ -1,5 +1,6 @@
 use crate::lv2::Lv2;
 use crate::run_executable::rem_trail_0;
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::io;
 use std::io::Result;
@@ -129,8 +130,50 @@ impl ModHostController {
       self.mh_command_queue.push_back(cmd.to_string());
    }
 
+   /// Check for redundant commands in command queue.
+   fn reduce_queue(&mut self) {
+      // Start at the far end of the queue.  A command there that
+      // sets a parameter means that any earlier commands (in thye
+      // queue) that set the same parameter will be over ridden so
+      // no point keeping them
+
+      // Put the commands here that can be removed from the rest of
+      // the queue
+      let mut commands: HashSet<String> = HashSet::new();
+
+      // This is the new queue without redundant commands
+      let mut new_queue: VecDeque<String> = VecDeque::new();
+
+      let cmd_iter = self.mh_command_queue.iter_mut().rev();
+      for c in cmd_iter {
+         if &c[.."param_set".len()] == "param_set" {
+            // param_set <instance_number> <param_symbol> <param_value>
+            //     e.g.: param_set 0 gain 2.50
+            let cmd_end = c
+               .chars()
+               .rev()
+               .position(|c| c.is_whitespace())
+               .expect("reduce_queue: Find end of param_set");
+            let cmd_key = &c[..cmd_end];
+            if commands.contains(cmd_key) {
+               // Do not process this
+               eprintln!("INFO: reduce_queue - delete: {c}");
+               continue;
+            }
+            commands.insert(cmd_key.to_string());
+            new_queue.push_back(c.to_string());
+            continue;
+         }
+
+         // Default is to keep command
+         new_queue.push_back(c.to_string());
+      }
+      self.mh_command_queue = new_queue;
+   }
+
    /// Called from the event loop to send a message to mod-host
    pub fn pump_mh_queue(&mut self) {
+      self.reduce_queue();
       if self.last_mh_command.is_none() && !self.mh_command_queue.is_empty() {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
