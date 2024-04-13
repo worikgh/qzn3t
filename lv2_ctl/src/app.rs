@@ -14,12 +14,12 @@ use crate::colours::SELECTED_TEXT_FG;
 use crate::colours::STATIC_TEXT_FG;
 use crate::colours::TEXT_COLOR;
 use crate::lv2::Lv2;
-use crate::lv2::Port;
-use crate::lv2::PortType;
 use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 use crate::lv2_stateful_list::Lv2StatefulList;
 use crate::mod_host_controller::ModHostController;
+use crate::port::Port;
+use crate::port::PortType;
 use crate::port_table::port_table;
 use color_eyre::config::HookBuilder;
 use crossterm::{
@@ -576,16 +576,16 @@ impl App<'_> {
             // A connection was established
             // TODO:  Record connections in model data
             let jacks = &last_mh_command.as_str()[sp + 1..];
-				 self.jack_connections.insert(jacks.to_string());
-             eprintln!("INFO jacks: {jacks}");
+            self.jack_connections.insert(jacks.to_string());
+            eprintln!("INFO jacks: {jacks}");
          }
-          "disconnect" => {
-				  let jacks = &last_mh_command.as_str()[sp + 1..];
-				  if !self.jack_connections.remove(jacks) {
-						panic!("Failed to remove {jacks} from connections");
-				  }
-			}
-          _ => panic!("Unknown command: {last_mh_command}"),
+         "disconnect" => {
+            let jacks = &last_mh_command.as_str()[sp + 1..];
+            if !self.jack_connections.remove(jacks) {
+               panic!("Failed to remove {jacks} from connections");
+            }
+         }
+         _ => panic!("Unknown command: {last_mh_command}"),
       };
 
       // Having handled the command, one way or another, delete it
