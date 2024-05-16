@@ -29,26 +29,25 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
       };
 
       // Set variables for the Port
-      let min: String;
-      let max: String;
-      let logarithmic: String;
-      if let Some((n, _, x, l)) = port.get_min_def_max() {
-         min = format!("{n:4}");
-         max = format!("{x:4}");
-         logarithmic = format!("{l}");
-      } else {
-         // Does this happen?  Is it an error
-         eprintln!("INFO Port {} has no min/max/log", port.name);
-         min = "".to_string();
-         max = "".to_string();
-         logarithmic = "".to_string();
-      }
+      let (n, _, x, l) = (0, 1, 0, false);
+      let min = format!("{n:4}");
+      let max = format!("{x:4}");
+      let logarithmic = format!("{l}");
+      //port.get_min_def_max_def()) {
+
+      // } else {
+      //    // Does this happen?  Is it an error
+      //    eprintln!("INFO Port {} has no min/max/log", port.name);
+      //    min = "".to_string();
+      //    max = "".to_string();
+      //    logarithmic = "".to_string();
+      // }
 
       // The row itself as a styled row
       let item = [
          port.name.clone(),
          min,
-         port.value.clone().unwrap_or_else(|| "".to_string()),
+         "".to_string(), //port.value.clone().unwrap_or_else(|| "".to_string()),
          max,
          logarithmic,
       ];

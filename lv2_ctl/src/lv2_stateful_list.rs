@@ -1,5 +1,4 @@
 use crate::lv2_simulator::Lv2Simulator;
-use crate::lv2_simulator::Status;
 /// Display LV2 simulators and select/deselect them
 use ratatui::widgets::ListState;
 
@@ -22,21 +21,31 @@ impl Lv2StatefulList {
    pub fn get_selected_mh_id(&self) -> Option<usize> {
       self.state.selected().map(|t| self.items[t].mh_id)
    }
+   pub fn get_selected_value(&self) -> Option<String> {
+      self.state.selected().map(|t| {
+         self.items[t]
+            .value
+            .as_ref()
+            .unwrap_or(&"No Value".to_string())
+          // .expect("Must be a value to get")
+            .clone()
+      })
+   }
    /// Create a Lv2Statefullist from a vector of name, url pairs.
-   pub fn new(types: &[(String, String)]) -> Lv2StatefulList {
+   pub fn new(types: Vec<Lv2Simulator>) -> Lv2StatefulList {
       Lv2StatefulList {
          state: ListState::default(),
          last_selected: None,
-         items: types
-            .iter()
-            .enumerate()
-            .map(|t| Lv2Simulator {
-               name: t.1 .0.clone(),
-               status: Status::Unloaded,
-               url: t.1 .1.clone(),
-               mh_id: t.0, // This is used as mod-host to communicate with loaded simulator
-            })
-            .collect(),
+         items: types,
+         // .iter()
+         // .enumerate()
+         // .map(|t| Lv2Simulator {
+         //    name: t.1 .0.clone(),
+         //    status: Status::Unloaded,
+         //    url: t.1 .1.clone(),
+         //    mh_id: t.0, // This is used as mod-host to communicate with loaded simulator
+         // })
+         // .collect(),
       }
    }
    /// An empty list

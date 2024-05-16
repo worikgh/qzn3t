@@ -1,18 +1,84 @@
-#[derive(Debug, Clone)]
-pub struct Port {
-   pub name: String,   // For display
-   pub symbol: String, // For sending to mod-host
-   pub types: Vec<PortType>,
-   pub index: usize,
-   pub value: Option<String>,
+/// A Port can be:
+/// * MIDI in/out.  Unimplemented as yet, here
+/// * Audio in/out.
+/// * Control
+/// * Control can be:
+///   * discrete, with a list of values and labels
+///   * Continuous.  A continuous port can be:
+///     * Integer
+///     * Decimal
+///     * Float
+use crate::lv2::ScaleDescription;
+
+#[derive(Clone, PartialEq, Debug, PartialOrd)]
+pub enum ContinuousType {
+   Integer,
+   Decimal,
+   Float,
 }
 
 #[derive(Clone, PartialEq, Debug, PartialOrd)]
-pub struct ControlPortProperties {
-   pub min: f64,
+pub struct ContinuousControlPort {
+   pub kind: ContinuousType,
    pub max: f64,
+   pub min: f64,
    pub default: f64,
    pub logarithmic: bool,
+}
+
+impl ContinuousControlPort {
+   fn _values(&self) -> Vec<String> {
+      vec![]
+   }
+}
+
+#[derive(Clone, PartialEq, Debug, PartialOrd)]
+pub struct ScaleControlPort {
+   labels_values: Vec<(String, String)>,
+}
+
+impl ScaleControlPort {
+   fn _values(&self) -> Vec<&String> {
+      self
+         .labels_values
+         .iter()
+         .map(|(_, a)| a)
+         .collect::<Vec<&String>>()
+   }
+
+   #[allow(dead_code)]
+   fn labels(&self) -> Vec<&String> {
+      self
+         .labels_values
+         .iter()
+         .map(|(a, _a)| a)
+         .collect::<Vec<&String>>()
+   }
+}
+
+#[derive(Clone, PartialEq, Debug, PartialOrd)]
+pub enum ControlPortProperties {
+   Continuous(ContinuousControlPort),
+   Scale(ScaleControlPort),
+}
+
+impl ControlPortProperties {
+   pub fn new(
+      min: f64,
+      max: f64,
+      default: f64,
+      logarithmic: bool,
+      _scale: Option<ScaleDescription>,
+      kind: ContinuousType,
+   ) -> Self {
+      ControlPortProperties::Continuous(ContinuousControlPort {
+         kind,
+         min,
+         max,
+         default,
+         logarithmic,
+      })
+   }
 }
 
 //#[derive(, Eq, Hash, Ord,)]
@@ -25,31 +91,49 @@ pub enum PortType {
    AtomPort,
    Other(String),
 }
+impl PortType {
+   // Return the strings  to asign to the control values.  These are sent to mod-host
+   fn _values(pt: PortType) -> Vec<String> {
+      match pt {
+         PortType::Control(properties) => {
+            match properties {
+               ControlPortProperties::Continuous(_cp) => {
+                  // struct ContinuousControlPort {
+                  // 	 kind: ContinuousType,
+                  // 	 max: f64,
+                  // 	 min: f64,
+                  // 	 default: f64,
+                  // 	 logarithmic: bool,
+                  // }
+               }
+               ControlPortProperties::Scale(_sp) => (),
+            }
+         }
+         _ => panic!("Only implemented for Control ports"),
+      };
+      vec![]
+   }
+}
+#[derive(Debug, Clone)]
+pub struct Port {
+   pub name: String,   // For display
+   pub symbol: String, // For sending to mod-host
+   pub types: Vec<PortType>,
+   pub index: usize, // index from LV2 description
+}
 
 impl Port {
-   pub fn get_min_def_max(&self) -> Option<(f64, f64, f64, bool)> {
-      let t = self.types.iter().find(|t| {
-         matches!(
-            t,
-            PortType::Control(ControlPortProperties {
-               min: _,
-               max: _,
-               default: _,
-               logarithmic: _
-            })
-         )
-      });
-      // Is a control port.  Extract result
-      if let Some(&PortType::Control(ControlPortProperties {
-         min,
-         default,
-         max,
-         logarithmic,
-      })) = t
-      {
-         Some((min, default, max, logarithmic))
-      } else {
-         None
+   pub fn new() -> Self {
+      Self {
+         name: "".to_string(),
+         symbol: "".to_string(),
+         types: vec![],
+         index: 0,
       }
+   }
+}
+impl Default for Port {
+   fn default() -> Self {
+      Self::new()
    }
 }

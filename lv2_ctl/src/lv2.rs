@@ -1,5 +1,6 @@
 //! Definition of an LV2 simulator as defined in the Turtle files
 use crate::mod_host_controller::ModHostController;
+use crate::port::ContinuousType;
 use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
@@ -8,10 +9,8 @@ use crate::run_executable::run_executable;
 use core::fmt;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::io::Lines;
 use std::io::Result;
 /// Process LV2 descriptions and simulators
-use std::io::StdinLock;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
@@ -61,7 +60,7 @@ pub enum Lv2Type {
 use std::collections::VecDeque;
 
 /// Stores all the data required to run LV2 simulators
-#[derive(PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd)]
 struct Lv2Datum {
    subject: String,
    predicate: String,
@@ -92,19 +91,235 @@ fn remove_quotes(inp: &str) -> &str {
 
 /// Numbers for control ports are in the data often without a decimal
 /// point.  This takes a LV2 object string and extracts the number.
-/// Or panics.
-fn number(object: &str) -> f64 {
-   let b = remove_quotes(object);
-   match b.find(|c| c != '.' && c != '+') {
-      Some(_) => b.parse::<f64>().expect("Failed parsing b"),
-      None => b.parse::<isize>().expect("Failed parsing b") as f64,
+/// Or panics.  It also returns the LV2 type
+/// "0.5"^^<http://www.w3.org/2001/XMLSchema#decimal>
+fn control_number(object: &str) -> (f64, String) {
+   let b = &object[1..];
+   let c = b
+      .chars()
+      .position(|c| c == '"')
+      .expect("Fnding quote in object");
+   let n = &b[..c];
+   let n = n.parse::<f64>().expect("control number parse");
+
+   let b = &b[c + 1..];
+   let c = b
+      .chars()
+      .position(|c| c == '#')
+      .expect("Fnding quote in object");
+   let schema = b[c + 1..b.len() - 1].to_string();
+   (n, schema)
+}
+
+#[allow(dead_code)]
+fn make_control_port_values(
+   min: f64,
+   max: f64,
+   logarithmic: bool,
+) -> [f64; 128] {
+   let mut result = [0_f64; 128];
+   if logarithmic {
+      let log_min = min.ln();
+      let log_max = max.ln();
+
+      for (i, item) in result.iter_mut().enumerate() {
+         //      for i in 0..128 {
+         let t = i as f64 / 127.0;
+         *item = (log_min + (log_max - log_min) * t.exp()).exp();
+      }
+   } else {
+      let increment = (max - min) / 127.0;
+
+      for (i, item) in result.iter_mut().enumerate() {
+         *item = min + increment * i as f64;
+      }
    }
+   // eprintln!("INFO: control_port_values: {result:?}");
+   result
+}
+
+fn get_number_from_object(object: &str) -> &str {
+   // "29"^^<http://www.w3.org/2001/XMLSchema#integer> not usize
+   let c = object[1..]
+      .chars()
+      .position(|c| c == '^')
+      .expect("Two quotes in number string");
+   &object[1..c]
+}
+
+fn _port_name(data: &[&Lv2Datum]) -> String {
+   data
+      .iter()
+      .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#name>")
+      .collect::<Vec<&&Lv2Datum>>()
+      .iter()
+      .fold(String::new(), |a, b| {
+         // println!("Name: '{a}' + '{}'", b.object);
+         a + remove_quotes(b.object.as_str())
+      })
+}
+
+#[derive(Clone)]
+pub struct ScaleDescription {
+   labels: Vec<String>,
+   values: Vec<String>,
+}
+
+/// For control ports get the important data
+fn get_mmdls(
+   l: &[&Lv2Datum],
+   lv2_data: &[Lv2Datum],
+) -> (
+   f64,
+   f64,
+   f64,
+   bool,
+   Option<ScaleDescription>,
+   ContinuousType,
+) {
+   let min_set: Vec<&Lv2Datum> =
+      predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
+         .into_iter()
+         .copied()
+         .collect();
+
+   if min_set.is_empty() {
+      eprintln!("Oh dear");
+      assert!(min_set.len() == 1);
+   }
+   let min_set = control_number(&min_set[0].object);
+   let min_type = min_set.1;
+   let min = min_set.0;
+   let max_set: Vec<&Lv2Datum> =
+      predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#maximum>")
+         .into_iter()
+         .copied()
+         .collect();
+   assert!(max_set.len() == 1);
+   let max_set = control_number(&max_set[0].object);
+   let max_type = max_set.1;
+   let max = max_set.0;
+   // let max: f64 = l
+   // 	 .iter()
+   //   .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
+   // .collect::<Vec<&&Lv2Datum>>()
+   // .iter()
+   //   .fold(0.0, |a, b| a
+   // 		  + control_number(b.object.as_str()));
+
+   let default_set: Vec<&Lv2Datum> =
+      predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#default>")
+         .into_iter()
+         .copied()
+         .collect();
+   let default_set = if default_set.len() == 1 {
+      control_number(&default_set[0].object)
+   } else if default_set.is_empty() {
+      // What to do if not default?
+      (min, min_type.clone())
+   } else {
+      panic!("Too many defaults");
+   };
+   let def_type = default_set.1;
+   let default = default_set.0;
+   // let default: f64 =
+   //      predicate_filter(l.iter(),
+   // 							 "<http://lv2plug.in/ns/lv2core#default>")
+   //       .iter()
+   //       .fold(0.0, |a, b| a + control_number(b.object.as_str()));
+
+   let logarithmic: bool = !predicate_filter(
+      l.iter(),
+      "<http://lv2plug.in/ns/lv2core#portProperty>",
+   )
+   .iter()
+   .filter(|lv| {
+      lv.object == "<http://lv2plug.in/ns/ext/port-props#logarithmic>"
+   })
+   .collect::<Vec<&&&Lv2Datum>>()
+   .is_empty();
+
+   // Get `scalePoints' to construct a `scale` value
+   // for the Port, if it is of that type .  It will
+   // have a scale if it is a Control Port with
+   // discrete values.  E.g. "on"/"off", or
+   // "sin"/"triangle"/"square"
+   let scale_points = l
+      .iter()
+      .filter(|l| l.predicate == "<http://lv2plug.in/ns/lv2core#scalePoint>")
+      .collect::<Vec<&&Lv2Datum>>()
+      .iter()
+      .map(|&l| l.object.as_str())
+      .collect::<Vec<&str>>();
+   let scale: Option<ScaleDescription> = if scale_points.is_empty() {
+      None
+   } else {
+      let mut scale_description = ScaleDescription {
+         labels: vec![],
+         values: vec![],
+      };
+      for sp in scale_points.iter() {
+         // For each scale point need to rescan all the
+         // tripples.  Frustratingly inefficient
+         let both_points: Vec<&Lv2Datum> =
+            lv2_data.iter().filter(|&x| &x.subject == sp).collect();
+         if both_points.len() != 2 {
+            eprintln!("scale is wrong.   {both_points:?}");
+            continue;
+         }
+         for sp in both_points {
+            if sp.predicate.as_str()
+               == "<http://www.w3.org/2000/01/rdf-schema#label>"
+            {
+               scale_description.labels.push(sp.object.clone());
+            }
+            if sp.predicate.as_str()
+               == "<http://www.w3.org/1999/02/22-rdf-syntax-ns#value>"
+            {
+               scale_description
+                  .values
+                  .push(get_number_from_object(sp.object.as_str()).to_string());
+            }
+         }
+      }
+      Some(scale_description)
+   };
+
+   // if max_type != min_type || max_type != def_type {
+   //     eprint!("Control port types differ:  {l:?} {default} - {max}");
+   // }
+   // For some reason it is sometimes true that not all the minimum,
+   // maximum, and default values are the same type.  Use a "majority
+   // rules" algorithm.
+   let con_type = if max_type == min_type || max_type == def_type {
+      max_type
+   } else if min_type == def_type {
+      min_type
+   } else {
+      eprintln!("All three types are diferent");
+      "double".to_string()
+   };
+
+   (
+      min,
+      max,
+      default,
+      logarithmic,
+      scale,
+      match con_type.as_str() {
+         "integer" => ContinuousType::Integer,
+         "decimal" => ContinuousType::Decimal,
+         "double" => ContinuousType::Float,
+         _ => panic!("{con_type}: Unknown conntrol port type"),
+      },
+   )
 }
 
 /// `lines` defines the LV2 simulators on the host computer.  Uses
 /// the output of [serd](https://gitlab.com/drobilla/serd)
 pub fn get_lv2_controller(
-   lines: Lines<StdinLock>,
+   lines: impl Iterator<Item = Result<String>>,
+   // lines: Lines<StdinLock>,
 ) -> Result<ModHostController> {
    let mut lv2_data: Vec<Lv2Datum> = vec![];
    let mut subject_store: HashMap<String, usize> = HashMap::new();
@@ -112,7 +327,9 @@ pub fn get_lv2_controller(
    let mut object_store: HashMap<String, usize> = HashMap::new();
 
    let mut index_sbj = 0;
-   for line in lines.map(|x| x.unwrap()) {
+   for line in lines {
+      let line = line?;
+      //.map(|x| x.unwrap()) {
       // `line` is n three useful parts: Subject, Predicate, and Object
       // 1. The line upto the first space ' ' is the Subject
       // 2. The remainder of the line upto the next space is the Predicate
@@ -167,7 +384,7 @@ pub fn get_lv2_controller(
             // This subject has been processed
             continue;
          }
-
+         // eprintln!("TRIPPLE: {} {} {}", l.subject, l.predicate, l.object);
          // It is a plugin that has not been processed yet
 
          // Collect all data for this plugin identified by `subject`
@@ -187,7 +404,7 @@ pub fn get_lv2_controller(
             });
 
          // Collect all types for this plugin.  Will probably be two or three
-         let types: HashSet<Lv2Type> = plugin_data
+         let plugin_type: HashSet<Lv2Type> = plugin_data
             .iter()
             .filter(|lv| {
                lv.predicate
@@ -233,7 +450,7 @@ pub fn get_lv2_controller(
             .collect();
 
          // The ports.  These will be control ports and audio I/O ports
-         let ports: Vec<Port>;
+         let plugin_ports: Vec<Port>;
          {
             // Collect all the subject names of ports for this simulator
             let port_names: Vec<String> = plugin_data
@@ -254,15 +471,16 @@ pub fn get_lv2_controller(
             // `_:gx_zita_rev1b9`.  Usually about two dozen lines
             // that describe a port
 
-            ports = port_names
+            plugin_ports = port_names
                .iter()
-               .map(|p| {
+                 .map(|p| {
                   // :Vec<Vec<Port>> `p`
 
                   // `l` is the set of tripples that define this port
-                  let l: Vec<&Lv2Datum> = lv2_data.iter().filter(|&x| &x.subject == p).collect();
+                   let plugin_data: Vec<&Lv2Datum> = lv2_data.iter().
+							  filter(|&x| &x.subject == p).collect();
 
-                  let name: String = l
+                  let name: String = plugin_data
                      .iter()
                      .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#name>")
                      .collect::<Vec<&&Lv2Datum>>()
@@ -272,7 +490,7 @@ pub fn get_lv2_controller(
                         a + remove_quotes(b.object.as_str())
                      });
 
-                  let symbol: String = l
+                  let symbol: String = plugin_data
                      .iter()
                      .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#symbol>")
                      .collect::<Vec<&&Lv2Datum>>()
@@ -282,37 +500,7 @@ pub fn get_lv2_controller(
                         a + remove_quotes(b.object.as_str())
                      });
 
-                  let min: f64 =
-                     predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
-                        .iter()
-                        .fold(0.0, |a, b| a + number(b.object.as_str()));
-
-                  let max: f64 = l
-                     .iter()
-                       .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#maximum>")
-                     .collect::<Vec<&&Lv2Datum>>()
-                     .iter()
-                       .fold(0.0, |a, b| a
-									  + number(b.object.as_str()));
-
-                  let default: f64 =
-                       predicate_filter(l.iter(),
-													 "<http://lv2plug.in/ns/lv2core#default>")
-                        .iter()
-                        .fold(0.0, |a, b| a + number(b.object.as_str()));
-
-                  let logarithmic: bool =
-                       !predicate_filter(l.iter(),
-													  "<http://lv2plug.in/ns/lv2core#portProperty>")
-                        .iter()
-                        .filter(|lv| {
-                            lv.object ==
-										  "<http://lv2plug.in/ns/ext/port-props#logarithmic>"
-                        })
-                        .collect::<Vec<&&&Lv2Datum>>()
-                        .is_empty();
-
-                  let index: usize = l
+                  let index: usize = plugin_data
                      .iter()
                      .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#index>")
                      .collect::<Vec<&&Lv2Datum>>()
@@ -325,8 +513,15 @@ pub fn get_lv2_controller(
                         a + b2
                      });
 
-                  // Usually more than ne type for a port
-                  let types: Vec<PortType> = l
+							// let min_scheme: (&f64, &String) =
+							//    predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
+							//       .iter()
+							//        .nth(0)
+							//       .expect("Finding minimum");
+							
+
+                   // Usually more than one type for a port
+                   let types: Vec<PortType> = plugin_data
                      .iter()
                      .filter(|l| l.predicate == "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>")
                      .collect::<Vec<&&Lv2Datum>>()
@@ -341,12 +536,11 @@ pub fn get_lv2_controller(
                            // Audio,
                            // Other(String),
                            "InputPort" => PortType::Input,
-                           "ControlPort" => PortType::Control(ControlPortProperties {
-                              min,
-                              max,
-                              default,
-                              logarithmic,
-                           }),
+                            "ControlPort" => {
+										  // eprintln!("Control port: {name} {symbol}");
+										  let (min, max, default, logarthmic, scale, tp) = get_mmdls(&plugin_data, &lv2_data);
+										  PortType::Control(ControlPortProperties::new(min, max, default, logarthmic,  scale.clone(),tp,))
+									 },
                            "OutputPort" => PortType::Output,
                            "AudioPort" => PortType::Audio,
                            "AtomPort" => PortType::AtomPort,
@@ -354,22 +548,23 @@ pub fn get_lv2_controller(
                         }
                      })
                      .collect();
-                  Port {
+
+						 Port {
                      symbol,
                      name,
                      index,
                      types,
-                     value: None,
                   }
                })
                .collect::<Vec<Port>>();
          };
+
          let url = l.subject.as_str()[1..(l.subject.len() - 1)].to_string();
          if !name.is_empty() {
             let lv2 = Lv2 {
                url,
-               types,
-               ports,
+               types: plugin_type,
+               ports: plugin_ports,
                name,
             };
             simulators.push(lv2);
@@ -404,7 +599,7 @@ pub fn get_lv2_controller(
    };
    {
       // Ensure mod-host is going.  This is taking a gamble.  The
-      // gamble is that we will getthe whole response all at once.
+      // gamble is that we will get the whole response all at once.
       let resp = result.get_data()?;
       // const MOD_HOST: &str = "mod-host> ";
       const MOD_HOST: &str = "mod-host>";
@@ -441,34 +636,56 @@ impl fmt::Display for ControlPortProperties {
    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       write!(
          f,
-         "{}{} {LESSEQ} {}  {LESSEQ} {}",
-         if self.logarithmic {
-            format!["{LOG} "]
-         } else {
-            "".to_string()
-         },
-         self.min,
-         self.default,
-         self.max,
+         "{}",
+         match self {
+            ControlPortProperties::Continuous(c) => {
+               format!(
+                  "{} {}{} {LESSEQ} {}  {LESSEQ} {}",
+                  match c.kind {
+                     ContinuousType::Integer => "Int",
+                     ContinuousType::Decimal => "Dec",
+                     ContinuousType::Float => "F  ",
+                  },
+                  c.min,
+                  c.default,
+                  c.max,
+                  if c.logarithmic { LOG } else { "" }
+               )
+            }
+            ControlPortProperties::Scale(_s) => "".to_string(),
+         }
       )
    }
+   //     write!(
+   //       f,
+   //       "{}{} {LESSEQ} {}  {LESSEQ} {}",
+   //       if self.logarithmic {
+   //          format!["{LOG} "]
+   //       } else {
+   //          "".to_string()
+   //       },
+   //       self.min,
+   //       self.default,
+   //       self.max,
+   //    )
+   // }
 }
-impl fmt::Display for PortType {
-   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      match self {
-         PortType::Input => write!(f, "Input"),
-         PortType::Output => write!(f, "Output"),
-         PortType::Control(properties) => write!(f, "Control({})", properties),
-         PortType::Audio => write!(f, "Audio"),
-         PortType::AtomPort => write!(f, "AtomPort"),
-         PortType::Other(s) => write!(f, "Other({})", s),
-      }
-   }
-}
+// impl fmt::Display for PortType {
+//    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//       match self {
+//          PortType::Input => write!(f, "Input"),
+//          PortType::Output => write!(f, "Output"),
+//          PortType::Control(properties) => write!(f, "Control({})", properties),
+//          PortType::Audio => write!(f, "Audio"),
+//          PortType::AtomPort => write!(f, "AtomPort"),
+//          PortType::Other(s) => write!(f, "Other({})", s),
+//       }
+//    }
+// }
 impl fmt::Display for Port {
    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       let port_types: Vec<String> =
-         self.types.iter().map(|t| format!("{}", t)).collect();
+         self.types.iter().map(|t| format!("{:?}", t)).collect();
       write!(
          f,
          "Port {}: {} [{}]",

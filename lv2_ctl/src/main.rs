@@ -2,9 +2,8 @@
 use app::App;
 
 use lv2::get_lv2_controller;
-use std::io;
-use std::io::Lines;
-use std::io::StdinLock;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 use crate::mod_host_controller::ModHostController;
 mod app;
@@ -17,9 +16,19 @@ mod port;
 mod port_table;
 mod run_executable;
 fn main() -> std::io::Result<()> {
-   let lines: Lines<StdinLock> = io::stdin().lines();
-   let mut mod_host_controller: ModHostController = get_lv2_controller(lines)?;
-
+   let file = if let Ok(f) = File::open("../../lv2.dat") {
+      f
+   } else if let Ok(f) = File::open("lv2.dat") {
+      f
+   } else {
+      panic!("Cannot find data")
+   };
+   let reader = BufReader::new(file);
+   // let lines: Lines<StdinLock> = io::stdin().lines();
+   // let mut mod_host_controller: ModHostController =
+   //    get_lv2_controller(lines.map(|r| r.map_err(Into::into)))?;
+   let mut mod_host_controller: ModHostController =
+      get_lv2_controller(reader.lines().map(|r| r.map_err(Into::into)))?;
    // Start user interface.  Loop until user quits
    App::run(&mut mod_host_controller).expect("Running app");
 

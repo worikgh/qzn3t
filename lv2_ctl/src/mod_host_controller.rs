@@ -146,7 +146,8 @@ impl ModHostController {
 
       let cmd_iter = self.mh_command_queue.iter_mut().rev();
       for c in cmd_iter {
-         if &c[.."param_set".len()] == "param_set" {
+         let param_set_len = "param_set".len();
+         if c.len() > param_set_len && &c[..param_set_len] == "param_set" {
             // param_set <instance_number> <param_symbol> <param_value>
             //     e.g.: param_set 0 gain 2.50
             let cmd_end = c
@@ -178,7 +179,7 @@ impl ModHostController {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
 
-         eprintln!("CMD: {cmd}");
+         eprintln!("CMD: {}", cmd.trim());
          self.last_mh_command = Some(cmd.trim().to_string());
          self
             .input_tx
