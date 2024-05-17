@@ -12,10 +12,15 @@ use std::thread;
 /// Interface to mod-host
 pub struct ModHostController {
    pub simulators: Vec<Lv2>,
+
+   /// Encapsulate the `mod-host` process in a thread
    pub mod_host_th: thread::JoinHandle<()>,
-   // pub data_th: thread::JoinHandle<()>,
    pub input_tx: Sender<Vec<u8>>, // Send data to mod-host
    pub output_rx: Receiver<Vec<u8>>, // Get data from mod-host
+
+   /// Commands to be sent to `mod-host` are queued when they arrive.
+   /// They are sent in the order they are received.
+   pub mh_command_queue: VecDeque<String>,
 
    /// The last command sent to mod-host.  It is command orientated
    /// so a "resp..." from mod-host refers to the last command sent.
@@ -23,13 +28,14 @@ pub struct ModHostController {
    /// later a response is received.  This allows the two to be
    /// connected.  When a response is received set this back to None.
    pub last_mh_command: Option<String>,
-
-   /// Commands are queued when they arrive.  They are sent in the
-   /// order they are received.
-   pub mh_command_queue: VecDeque<String>,
 }
 
 impl ModHostController {
+   /// Queue a command to send to mod-host
+   pub fn send_mh_cmd(&mut self, cmd: &str) {
+      self.mh_command_queue.push_back(cmd.to_string());
+   }
+
    // /// Set a value for a port
    pub fn set_port_value(
       &mut self,
@@ -123,11 +129,6 @@ impl ModHostController {
          -902 => "ERR_INVALID_OPERATION".to_string(),
          _ => format!("Unknown error code: {error}"),
       }
-   }
-
-   /// Queue a command to send to mod-host
-   pub fn send_mh_cmd(&mut self, cmd: &str) {
-      self.mh_command_queue.push_back(cmd.to_string());
    }
 
    /// Check for redundant commands in command queue.

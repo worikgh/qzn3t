@@ -34,7 +34,7 @@ impl ContinuousControlPort {
 
 #[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub struct ScaleControlPort {
-   labels_values: Vec<(String, String)>,
+   pub labels_values: Vec<(String, String)>,
 }
 
 impl ScaleControlPort {

@@ -4,13 +4,12 @@ use crate::port::ContinuousType;
 use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
-/// Representation of Mod Host controller and simulators
 use crate::run_executable::run_executable;
 use core::fmt;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::io::Result;
-/// Process LV2 descriptions and simulators
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 
@@ -56,8 +55,6 @@ pub enum Lv2Type {
    EnvelopePlugin,
    Other(String),
 }
-
-use std::collections::VecDeque;
 
 /// Stores all the data required to run LV2 simulators
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -340,16 +337,15 @@ pub fn get_lv2_controller(
       let mut split: Vec<&str> = line.as_str().split(' ').collect();
       let subject = split.remove(0).to_string();
       let predicate = split.remove(0).to_string();
-      // print!("split {} left: ", split.len());
+
       let _object = split.join(" ");
       if &_object[_object.len() - 2..] != " ." {
          panic!("Bad line: {line}");
       }
       let object = _object.as_str()[..(_object.len() - 2)].to_string();
-      // println!("'{subject}' / '{predicate}' / '{object}'");
+
       if subject_store.get(&subject).is_none() {
-         // Firest time a subjecty seen.  Make a simulator for
-         // it. This might not be the right thing to do....
+         // First time a subject is seen.
 
          subject_store.insert(subject.clone(), index_sbj);
          index_sbj += 1;

@@ -1,7 +1,9 @@
 //! Make a table widget of control Port information
 
 //use crate::lv2::ModHostController;
+use crate::port::ControlPortProperties;
 use crate::port::Port;
+use crate::port::PortType;
 use ratatui::layout::Constraint;
 use ratatui::style::palette::tailwind;
 use ratatui::style::Color;
@@ -29,10 +31,30 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
       };
 
       // Set variables for the Port
-      let (n, _, x, l) = (0, 1, 0, false);
-      let min = format!("{n:4}");
-      let max = format!("{x:4}");
-      let logarithmic = format!("{l}");
+      let (min, max, log) = if let Some(PortType::Control(control_port)) =
+         port.types.iter().find(|x| matches!(x, PortType::Control(_cp))) {
+         match control_port {
+            ControlPortProperties::Continuous(cp) => {
+               let min = format!("{:2}", cp.min);
+               let max = format!("{:2}", cp.max);
+               (min, max, cp.logarithmic)
+            }
+            ControlPortProperties::Scale(scale) => (
+               scale.labels_values[0].0.clone(),
+               scale
+                  .labels_values
+                  .last()
+                  .expect("Expect some labels for port table")
+                  .0
+                    .clone(),
+					 false
+            ),
+         }
+      } else {
+         panic!("A port in port table that is not a Controlport")
+      };
+
+      let logarithmic = format!("{log}");
       //port.get_min_def_max_def()) {
 
       // } else {

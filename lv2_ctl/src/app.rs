@@ -18,10 +18,13 @@ use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 use crate::lv2_stateful_list::Lv2StatefulList;
 use crate::mod_host_controller::ModHostController;
+use crate::port::ContinuousType;
+use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
 use crate::port_table::port_table;
 use color_eyre::config::HookBuilder;
+use crossterm::event::KeyEvent;
 use crossterm::{
    event::{self, Event, KeyCode},
    terminal::{
@@ -60,7 +63,7 @@ pub struct App<'a> {
    // Data from mod-host
    buffer: String,
 
-   /// JACK audio Connections
+   /// JACK audio Connections as pairs of ports "<from> <to>"
    jack_connections: HashSet<String>,
 
    mod_host_controller: &'a mut ModHostController,
@@ -708,34 +711,77 @@ impl App<'_> {
       (instance_number, symbol, n)
    }
 
-   fn handle_port_adj(&mut self, _adj: PortAdj) {
+   fn handle_port_adj(&mut self, adj: PortAdj, _k: &KeyEvent) {
       {
          if let Some(url) = self.get_stateful_list().get_selected_url() {
+            //          if let Some(idx) = self.get_stateful_list().last_selected {
+            eprintln!("DNG handle_port_adj url: {url}");
             let value = self
                .get_stateful_list()
                .get_selected_value()
                .expect("Must be a value for port adjust");
+            eprintln!("DNG handle_port_adj value: {value}");
             if let Some(port_table_row) = self.table_state.selected() {
                // Got index to a Port  Get its name
                let n = self.ports[port_table_row].name.as_str();
-               eprintln!("INFO handle_port_adj idx: {port_table_row} name: {n}   url: {url} {value}");
+               eprintln!("INFO handle_port_adj port_table_row: {port_table_row} name: {n}   url: {url} {value}");
 
-               // Get a mutable reference
-               // to the LV2 simulator
-               // whoes port is to be
-               // adjusted
-               let l = self
+               // Get a reference to the LV2 simulator whoes port is
+               // to be adjusted for min/max information
+               let port = self
                   .mod_host_controller
-                  .get_lv2_by_url_mut(&url)
-                  .expect("Cannot get LV2 by URL");
-
-               // Got LV2 and name of port, get a mutable reference
-               let p = l
+                  .get_lv2_by_url(&url)
+                  .expect("Cannot get LV2 by URL")
                   .ports
-                  .iter_mut()
+                  .iter()
                   .find(|p| p.name == n)
                   .expect("Find port by name");
 
+               // This must be a ControlPort
+               let f = port.types.iter().any(|x| match x {
+                  PortType::Control(cp) => {
+                     let (_new_value, _new_label) = match cp {
+                        ControlPortProperties::Continuous(cont) => {
+                           let max = cont.max;
+                           let min = cont.min;
+                           let delta = (max - min) / 128.0;
+                           let v = value
+                              .parse::<f64>()
+                              .expect("Expected a valid value");
+                           let new_v = match adj {
+                              PortAdj::Up => {
+                                 if v + delta < max {
+                                    v + delta
+                                 } else {
+                                    max
+                                 }
+                              }
+                              PortAdj::Down => {
+                                 if v - delta > min {
+                                    v - delta
+                                 } else {
+                                    min
+                                 }
+                              }
+                           };
+
+                           // Label.
+                           let label = match cont.kind {
+                              ContinuousType::Integer => format!("{new_v:0}"),
+                              ContinuousType::Decimal => format!("{new_v:2}"),
+                              ContinuousType::Float => format!("{new_v:4}"),
+                           };
+                           (format!("{new_v}"), label)
+                        }
+                        ControlPortProperties::Scale(_s) => {
+                           ("".to_string(), "".to_string())
+                        }
+                     };
+                     true
+                  }
+                  _ => false,
+               });
+               assert!(f);
                // Values are encoded as String (by accident TODO Fix it)
                // let mdml = p
                //    .get_min_def_max_def()
@@ -778,7 +824,7 @@ impl App<'_> {
                //    v
                // };
                // p.value = Some(format!("{v}"));
-               let symbol = p.symbol.clone();
+               let symbol = ' '; //p.symbol.clone();
 
                let instance_number = self
                   .get_stateful_list()
@@ -827,7 +873,8 @@ impl App<'_> {
          self.draw(&mut terminal)?;
 
          if event::poll(Duration::from_secs(0)).expect("Polling for event") {
-            match event::read() {
+            let ev = event::read();
+            match ev {
                Ok(Event::Key(key)) => {
                   use KeyCode::*;
                   match key.code {
@@ -835,14 +882,14 @@ impl App<'_> {
                         // In Port Control window decrease value of
                         // port by one unit
                         if self.app_view_state == AppViewState::Command {
-                           self.handle_port_adj(PortAdj::Down);
+                           self.handle_port_adj(PortAdj::Down, &key);
                         }
                      }
                      Right => {
                         // In Port Control window increase value of
                         // port by one unit
                         if self.app_view_state == AppViewState::Command {
-                           self.handle_port_adj(PortAdj::Up);
+                           self.handle_port_adj(PortAdj::Up, &key);
                         }
                      }
                      Char('q') | Esc => {
@@ -1188,9 +1235,12 @@ impl App<'_> {
       );
    }
 
+   /// Render the details from the selected list's selected item
+   /// `area` is the area it is drawn in
    fn render_details(&self, area: Rect, buf: &mut Buffer) {
       // We get the info depending on the item's state.
       let info = if let Some(i) = self.get_stateful_list().state.selected() {
+         eprintln!("DBG render_details i: {i}");
          self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
       } else {
          "Nothing to see here...".to_string()
