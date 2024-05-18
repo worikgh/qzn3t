@@ -31,8 +31,11 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
       };
 
       // Set variables for the Port
-      let (min, max, log) = if let Some(PortType::Control(control_port)) =
-         port.types.iter().find(|x| matches!(x, PortType::Control(_cp))) {
+      let (min, max, log) = if let Some(PortType::Control(control_port)) = port
+         .types
+         .iter()
+         .find(|x| matches!(x, PortType::Control(_cp)))
+      {
          match control_port {
             ControlPortProperties::Continuous(cp) => {
                let min = format!("{:2}", cp.min);
@@ -46,8 +49,8 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
                   .last()
                   .expect("Expect some labels for port table")
                   .0
-                    .clone(),
-					 false
+                  .clone(),
+               false,
             ),
          }
       } else {

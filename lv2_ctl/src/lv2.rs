@@ -158,8 +158,8 @@ fn _port_name(data: &[&Lv2Datum]) -> String {
 
 #[derive(Clone)]
 pub struct ScaleDescription {
-   labels: Vec<String>,
-   values: Vec<String>,
+   pub labels: Vec<String>,
+   pub values: Vec<String>,
 }
 
 /// For control ports get the important data
@@ -268,7 +268,9 @@ fn get_mmdls(
             if sp.predicate.as_str()
                == "<http://www.w3.org/2000/01/rdf-schema#label>"
             {
-               scale_description.labels.push(sp.object.clone());
+               let label = remove_quotes(sp.object.as_str());
+
+               scale_description.labels.push(label.to_string());
             }
             if sp.predicate.as_str()
                == "<http://www.w3.org/1999/02/22-rdf-syntax-ns#value>"
@@ -390,7 +392,7 @@ pub fn get_lv2_controller(
             .collect();
 
          // Get name
-         let name = plugin_data
+         let plugin_name = plugin_data
             .iter()
             .filter(|lv| lv.predicate == "<http://usefulinc.com/ns/doap#name>")
             .collect::<Vec<&&Lv2Datum>>()
@@ -509,13 +511,6 @@ pub fn get_lv2_controller(
                         a + b2
                      });
 
-							// let min_scheme: (&f64, &String) =
-							//    predicate_filter(l.iter(), "<http://lv2plug.in/ns/lv2core#minimum>")
-							//       .iter()
-							//        .nth(0)
-							//       .expect("Finding minimum");
-							
-
                    // Usually more than one type for a port
                    let types: Vec<PortType> = plugin_data
                      .iter()
@@ -535,7 +530,7 @@ pub fn get_lv2_controller(
                             "ControlPort" => {
 										  // eprintln!("Control port: {name} {symbol}");
 										  let (min, max, default, logarthmic, scale, tp) = get_mmdls(&plugin_data, &lv2_data);
-										  PortType::Control(ControlPortProperties::new(min, max, default, logarthmic,  scale.clone(),tp,))
+										  PortType::Control(ControlPortProperties::new(min, max, default, logarthmic,  scale.clone(), tp,))
 									 },
                            "OutputPort" => PortType::Output,
                            "AudioPort" => PortType::Audio,
@@ -556,12 +551,12 @@ pub fn get_lv2_controller(
          };
 
          let url = l.subject.as_str()[1..(l.subject.len() - 1)].to_string();
-         if !name.is_empty() {
+         if !plugin_name.is_empty() {
             let lv2 = Lv2 {
                url,
                types: plugin_type,
                ports: plugin_ports,
-               name,
+               name: plugin_name,
             };
             simulators.push(lv2);
          }
@@ -636,7 +631,7 @@ impl fmt::Display for ControlPortProperties {
          match self {
             ControlPortProperties::Continuous(c) => {
                format!(
-                  "{} {}{} {LESSEQ} {}  {LESSEQ} {}",
+                  "{} {} {LESSEQ} {}  {LESSEQ} {} {}",
                   match c.kind {
                      ContinuousType::Integer => "Int",
                      ContinuousType::Decimal => "Dec",
@@ -648,7 +643,12 @@ impl fmt::Display for ControlPortProperties {
                   if c.logarithmic { LOG } else { "" }
                )
             }
-            ControlPortProperties::Scale(_s) => "".to_string(),
+            ControlPortProperties::Scale(s) => format!(
+               "Scale: {}",
+               s.labels_values
+                  .iter()
+                  .fold(String::new(), |a, b| format!("{a} {}/{}", b.0, b.1))
+            ),
          }
       )
    }
@@ -666,22 +666,22 @@ impl fmt::Display for ControlPortProperties {
    //    )
    // }
 }
-// impl fmt::Display for PortType {
-//    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//       match self {
-//          PortType::Input => write!(f, "Input"),
-//          PortType::Output => write!(f, "Output"),
-//          PortType::Control(properties) => write!(f, "Control({})", properties),
-//          PortType::Audio => write!(f, "Audio"),
-//          PortType::AtomPort => write!(f, "AtomPort"),
-//          PortType::Other(s) => write!(f, "Other({})", s),
-//       }
-//    }
-// }
+impl fmt::Display for PortType {
+   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      match self {
+         PortType::Input => write!(f, "Input"),
+         PortType::Output => write!(f, "Output"),
+         PortType::Control(properties) => write!(f, "Control({})", properties),
+         PortType::Audio => write!(f, "Audio"),
+         PortType::AtomPort => write!(f, "AtomPort"),
+         PortType::Other(s) => write!(f, "Other({})", s),
+      }
+   }
+}
 impl fmt::Display for Port {
    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       let port_types: Vec<String> =
-         self.types.iter().map(|t| format!("{:?}", t)).collect();
+         self.types.iter().map(|t| format!("{}", t)).collect();
       write!(
          f,
          "Port {}: {} [{}]",

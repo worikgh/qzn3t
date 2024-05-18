@@ -1240,7 +1240,6 @@ impl App<'_> {
    fn render_details(&self, area: Rect, buf: &mut Buffer) {
       // We get the info depending on the item's state.
       let info = if let Some(i) = self.get_stateful_list().state.selected() {
-         eprintln!("DBG render_details i: {i}");
          self.render_lv2(&self.mod_host_controller.simulators.as_slice()[i])
       } else {
          "Nothing to see here...".to_string()

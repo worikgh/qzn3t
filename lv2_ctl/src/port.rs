@@ -68,16 +68,25 @@ impl ControlPortProperties {
       max: f64,
       default: f64,
       logarithmic: bool,
-      _scale: Option<ScaleDescription>,
+      scale: Option<ScaleDescription>,
       kind: ContinuousType,
    ) -> Self {
-      ControlPortProperties::Continuous(ContinuousControlPort {
-         kind,
-         min,
-         max,
-         default,
-         logarithmic,
-      })
+      if scale.is_some() {
+         let scale = scale.unwrap(); // Safe
+         let mut lv: Vec<(String, String)> = vec![];
+         for i in 0..scale.labels.len() {
+            lv.push((scale.labels[i].clone(), scale.values[i].clone()));
+         }
+         ControlPortProperties::Scale(ScaleControlPort { labels_values: lv })
+      } else {
+         ControlPortProperties::Continuous(ContinuousControlPort {
+            kind,
+            min,
+            max,
+            default,
+            logarithmic,
+         })
+      }
    }
 }
 
