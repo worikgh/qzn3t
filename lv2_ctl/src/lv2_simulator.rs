@@ -1,4 +1,4 @@
-//! An LV2 simulator hosted by mod-host and qzn3t/lv2-control
+//! The information needed to display a loaded LV2 simulator in a list.
 
 /// Whether the simuator is loaded into mod-host
 #[derive(Copy, Debug, Clone, PartialEq, PartialOrd)]
@@ -8,36 +8,19 @@ pub enum Status {
    Unloaded,
 }
 
-/// The PortType and Port defined here are for the purposes of
-/// displaying the port and setting/reading its values.
-#[allow(dead_code)]
-// enum PortType {
-//    Integer,
-//    Double,
-//    Decimal,
-//    // Has a 'scalePoint' lable.  Each point has a label, and a value
-//    // to senbd to mod-host to activate it
-//    Scale(Vec<(String, usize)>),
-// }
-//#[allow(dead_code)]
+/// The control ports need to be displayed.  They need a value a value
+/// to display and adjust
 #[derive(Clone, Debug)]
 pub struct ControlPort {
-   /// Display name to put on the screen
-   display_name: String,
-
    /// The name that describes this port to mod-host
-   param_symbol: String,
-
-   /// The bounds for the values the port can take on.
-   min: String,
-   max: String,
+   pub param_symbol: String,
 
    // The values that can be sent to the backend.  Port values can
    // be integer or decimal, but they are allways sent as strings.
-   value: Option<String>,
+   pub value: Option<String>,
 
-   /// If the values are discrete they will have labels
-   labels: Option<Vec<String>>,
+   /// If it is a ScalePort it has a label as well as a value
+   pub label: Option<Vec<String>>,
 }
 
 /// All the information the front end needs to control a LV2
@@ -65,24 +48,14 @@ pub struct Lv2Simulator {
 
    /// The output ports.
    pub output_ports: Vec<String>,
-
-   /// If the simulater is loaded it will have a value.  In most
-   /// useful cases it is an integer or a decimal, but it depends on
-   /// the type of simulator
-   pub value: Option<String>,
+   // If the simulater is loaded it will have a value.  In most
+   // useful cases it is an integer or a decimal, but it depends on
+   // the type of simulator
+   // No!  Control ports have values not Lv2Simulators
+   // pub value: Option<String>,
 }
 
-impl Lv2Simulator {
-   // pub fn new(lv2: &lv2::Lv2, mh_id: usize) -> Self {
-   // 	  Self {
-   // 			name:lv2.name.clone(),
-   // 			url:lv2.url.clone(),
-   // 			status:Status::Unloaded,
-   // 			mh_id,
-   // 			input_ports:lv2.ports.iter(),
-
-   // }
-}
+impl Lv2Simulator {}
 
 /// The values the port can take.
 /// The maximum is 128 discreet values for MIDI control
@@ -136,7 +109,7 @@ impl From<&(String, String, Status)> for Lv2Simulator {
          control_ports: vec![],
          input_ports: vec![],
          output_ports: vec![],
-         value: None,
+         // value: None,
       }
    }
 }

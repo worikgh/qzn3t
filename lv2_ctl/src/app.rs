@@ -18,8 +18,6 @@ use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 use crate::lv2_stateful_list::Lv2StatefulList;
 use crate::mod_host_controller::ModHostController;
-use crate::port::ContinuousType;
-use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
 use crate::port_table::port_table;
@@ -66,6 +64,7 @@ pub struct App<'a> {
    /// JACK audio Connections as pairs of ports "<from> <to>"
    jack_connections: HashSet<String>,
 
+   /// Interface to `mod-host`
    mod_host_controller: &'a mut ModHostController,
 
    /// Maintain the view for the first screen, and the main data
@@ -103,9 +102,6 @@ pub struct App<'a> {
    /// Store the last status output so do not thrash status reporting
    /// mechanism (eprintln! as I write) with repeated status messages
    status: Option<String>,
-
-   /// For debugging state
-   _dbg_s: String,
 }
 
 impl Drop for App<'_> {
@@ -170,7 +166,7 @@ impl App<'_> {
             control_ports: vec![],
             input_ports: vec![],
             output_ports: vec![],
-            value: None,
+            // value: None,
          })
          .collect();
       App {
@@ -189,7 +185,6 @@ impl App<'_> {
          // last_mh_command: None,
          // mh_command_queue: VecDeque::new(),
          status: None,
-         _dbg_s: "".to_string(),
       }
    }
 
@@ -300,17 +295,6 @@ impl App<'_> {
                      Some(l) => l,
                      None => panic!("Getting Lv2 by url"),
                   };
-                  self.ports = lv2
-                     .ports
-                     .iter()
-                     .filter(|&p| {
-                        p.types
-                           .iter()
-                           .any(|t| matches!(t, PortType::Control(_)))
-                           && p.types.contains(&PortType::Input)
-                     })
-                     .cloned()
-                     .collect::<Vec<Port>>();
                   control_commands = self
                      .ports
                      .iter()
@@ -630,7 +614,8 @@ impl App<'_> {
       }
    }
 
-   /// Set a value to the port named by `symbol` to the LV2 with `instance_number`
+   /// Set a value displayed for the port named by `symbol` to the LV2
+   /// with `instance_number`
    fn update_port(
       &mut self,
       instance_number: usize,
@@ -638,26 +623,50 @@ impl App<'_> {
       value: &str,
    ) {
       // let idx:usize = self.get_stateful_list_mut().state.selected().expect("Get selected");
-      eprintln!("INFO: update_port {instance_number} {symbol} {value}");
-      let lv2_name = self
-         .get_stateful_list_mut()
+      eprintln!(
+         "INFO: update_port {instance_number} {symbol} {value} {}",
+         self.lv2_loaded_list.items.iter().fold(
+            "".to_string(),
+            |a, b| format!(
+               "{a}({} {} {}) ",
+               b.mh_id,
+               b.name,
+               b.control_ports.len()
+            )
+         )
+      );
+
+      let item = self
+         .lv2_loaded_list
          .items
          .iter_mut()
          .find(|x| x.mh_id == instance_number)
-         .expect("Find LV2 with mh_id")
-         .name
-         .clone();
+         .expect("Find LV2 with mh_id");
 
-      self
-         .mod_host_controller
-         .simulators
+      if let Some(port) = item
+         .control_ports
          .iter_mut()
-         .find(|l| l.name == lv2_name)
-         .expect("Find Lv2 by name!")
-         .ports
-         .iter_mut()
-         .find(|p| p.symbol == symbol)
-         .expect("Finding port by symbol");
+         .find(|p| p.param_symbol.as_str() == symbol)
+      {
+         port.value = Some(value.into());
+      } else {
+         eprintln!(
+            "INFO: Cannot find port {symbol} of {} in {}",
+            item.name,
+            item.control_ports.len()
+         );
+      }
+      // self
+      //    .lv2_stateful_list
+      //    .items
+      //    .iter_mut()
+      //    .find(|x| x.mh_id == instance_number)
+      //    .expect("Find LV2 with mh_id")
+      //    .control_ports
+      //    .iter()
+      //    .find(|p| p.param_symbol.as_str() == symbol)
+      //    .expect("Cannot find port to set value")
+      //    .value = Some(value.into());
 
       // Update cached version
       // for p in self.ports.iter_mut() {
@@ -711,137 +720,146 @@ impl App<'_> {
       (instance_number, symbol, n)
    }
 
-   fn handle_port_adj(&mut self, adj: PortAdj, _k: &KeyEvent) {
-      {
-         if let Some(url) = self.get_stateful_list().get_selected_url() {
-            //          if let Some(idx) = self.get_stateful_list().last_selected {
-            eprintln!("DNG handle_port_adj url: {url}");
-            let value = self
-               .get_stateful_list()
-               .get_selected_value()
-               .expect("Must be a value for port adjust");
-            eprintln!("DNG handle_port_adj value: {value}");
-            if let Some(port_table_row) = self.table_state.selected() {
-               // Got index to a Port  Get its name
-               let n = self.ports[port_table_row].name.as_str();
-               eprintln!("INFO handle_port_adj port_table_row: {port_table_row} name: {n}   url: {url} {value}");
+   fn handle_port_adj(&mut self, _adj: PortAdj, _k: &KeyEvent) {
+      // {
 
-               // Get a reference to the LV2 simulator whoes port is
-               // to be adjusted for min/max information
-               let port = self
-                  .mod_host_controller
-                  .get_lv2_by_url(&url)
-                  .expect("Cannot get LV2 by URL")
-                  .ports
-                  .iter()
-                  .find(|p| p.name == n)
-                  .expect("Find port by name");
+      // Implement when ControlPortProperties.values() is implemented
+      // 	 if let Some(url) = &self.lv2_loaded_list.get_selected_url() {
+      //       //          if let Some(idx) = self.get_stateful_list().last_selected {
+      //       eprintln!("DNG handle_port_adj url: {url}");
+      // 		 // Get symbol of selected port
+      // 		 let idx = self.table_state.selected().expect("Expected aport selected in handle_port_adj");
+      // 		 let symbol = &self.ports[idx].symbol;
+      // 		 let port = self
+      //          .ports.iter().find(|p| &p.symbol == symbol).expect("Should be a port present in handle_port_adj");
+      //        if let Some(value) =
+      // 			  port.value{
+      // 					// The value is loaded.  It takes tme to load
+      // 			  }
 
-               // This must be a ControlPort
-               let f = port.types.iter().any(|x| match x {
-                  PortType::Control(cp) => {
-                     let (_new_value, _new_label) = match cp {
-                        ControlPortProperties::Continuous(cont) => {
-                           let max = cont.max;
-                           let min = cont.min;
-                           let delta = (max - min) / 128.0;
-                           let v = value
-                              .parse::<f64>()
-                              .expect("Expected a valid value");
-                           let new_v = match adj {
-                              PortAdj::Up => {
-                                 if v + delta < max {
-                                    v + delta
-                                 } else {
-                                    max
-                                 }
-                              }
-                              PortAdj::Down => {
-                                 if v - delta > min {
-                                    v - delta
-                                 } else {
-                                    min
-                                 }
-                              }
-                           };
+      //       eprintln!("DNG handle_port_adj value: {value}");
+      //       if let Some(port_table_row) = self.table_state.selected() {
+      //          // Got index to a Port  Get its name
+      //          let n = self.ports[port_table_row].name.as_str();
+      //          eprintln!("INFO handle_port_adj port_table_row: {port_table_row} name: {n}   url: {url} {value}");
 
-                           // Label.
-                           let label = match cont.kind {
-                              ContinuousType::Integer => format!("{new_v:0}"),
-                              ContinuousType::Decimal => format!("{new_v:2}"),
-                              ContinuousType::Float => format!("{new_v:4}"),
-                           };
-                           (format!("{new_v}"), label)
-                        }
-                        ControlPortProperties::Scale(_s) => {
-                           ("".to_string(), "".to_string())
-                        }
-                     };
-                     true
-                  }
-                  _ => false,
-               });
-               assert!(f);
-               // Values are encoded as String (by accident TODO Fix it)
-               // let mdml = p
-               //    .get_min_def_max_def()
-               //    .expect("Getting min, default, max, log adjusting port");
+      //          // Get a reference to the LV2 simulator whoes port is
+      //          // to be adjusted for min/max information
+      //          let port = self
+      //             .mod_host_controller
+      //             .get_lv2_by_url(&url)
+      //             .expect("Cannot get LV2 by URL")
+      //             .ports
+      //             .iter()
+      //             .find(|p| p.name == n)
+      //             .expect("Find port by name");
 
-               // let v = if let Some(ref v) = p.value {
-               //    v.parse::<f64>().expect("Translate value to f64")
-               // } else {
-               //    panic!("No value for port in adj");
-               // };
+      //          // This must be a ControlPort
+      //          let f = port.types.iter().any(|x| match x {
+      //             PortType::Control(cp) => {
+      //                let (_new_value, _new_label) = match cp {
+      //                   ControlPortProperties::Continuous(cont) => {
+      //                      let max = cont.max;
+      //                      let min = cont.min;
+      //                      let delta = (max - min) / 128.0;
+      //                      let v = value
+      //                         .parse::<f64>()
+      //                         .expect("Expected a valid value");
+      //                      let new_v = match adj {
+      //                         PortAdj::Up => {
+      //                            if v + delta < max {
+      //                               v + delta
+      //                            } else {
+      //                               max
+      //                            }
+      //                         }
+      //                         PortAdj::Down => {
+      //                            if v - delta > min {
+      //                               v - delta
+      //                            } else {
+      //                               min
+      //                            }
+      //                         }
+      //                      };
 
-               // let v = if mdml.3 {
-               //    // Logarithmic
-               //    // Make linear
-               //    let min_ln = mdml.0.ln();
-               //    let max_ln = mdml.2.ln();
-               //    let step_size_ln = (max_ln - min_ln) / 127.0_f64;
+      //                      // Label.
+      //                      let label = match cont.kind {
+      //                         ContinuousType::Integer => format!("{new_v:0}"),
+      //                         ContinuousType::Decimal => format!("{new_v:2}"),
+      //                         ContinuousType::Float => format!("{new_v:4}"),
+      //                      };
+      //                      (format!("{new_v}"), label)
+      //                   }
+      //                   ControlPortProperties::Scale(_s) => {
+      //                      ("".to_string(), "".to_string())
+      //                   }
+      //                };
+      //                true
+      //             }
+      //             _ => false,
+      //          });
+      //          assert!(f);
+      //          // Values are encoded as String (by accident TODO Fix it)
+      //          // let mdml = p
+      //          //    .get_min_def_max_def()
+      //          //    .expect("Getting min, default, max, log adjusting port");
 
-               //    // Adjust value in linear scale then convert back
-               //    let vn = v.ln();
-               //    match adj {
-               //       PortAdj::Down => (vn - step_size_ln).exp(),
-               //       PortAdj::Up => (vn + step_size_ln).exp(),
-               //    }
-               // } else {
-               //    // Linear
-               //    v + (mdml.2 - mdml.0) / 127.0_f64
-               //       * match adj {
-               //          PortAdj::Down => -1.0_f64,
-               //          PortAdj::Up => 1.0_f64,
-               //       }
-               // };
+      //          // let v = if let Some(ref v) = p.value {
+      //          //    v.parse::<f64>().expect("Translate value to f64")
+      //          // } else {
+      //          //    panic!("No value for port in adj");
+      //          // };
 
-               // // Adjust value so within bounds
-               // let v = if v < mdml.0 {
-               //    0.0_f64
-               // } else if v > mdml.2 {
-               //    mdml.2
-               // } else {
-               //    v
-               // };
-               // p.value = Some(format!("{v}"));
-               let symbol = ' '; //p.symbol.clone();
+      //          // let v = if mdml.3 {
+      //          //    // Logarithmic
+      //          //    // Make linear
+      //          //    let min_ln = mdml.0.ln();
+      //          //    let max_ln = mdml.2.ln();
+      //          //    let step_size_ln = (max_ln - min_ln) / 127.0_f64;
 
-               let instance_number = self
-                  .get_stateful_list()
-                  .get_selected_mh_id()
-                  .expect("handle_port_adj: A selected item");
-               let cmd =
-                  format!("param_set {instance_number} {symbol} {value}",);
-               self.send_mh_cmd(cmd.as_str());
-            }
-         }
-      }
+      //          //    // Adjust value in linear scale then convert back
+      //          //    let vn = v.ln();
+      //          //    match adj {
+      //          //       PortAdj::Down => (vn - step_size_ln).exp(),
+      //          //       PortAdj::Up => (vn + step_size_ln).exp(),
+      //          //    }
+      //          // } else {
+      //          //    // Linear
+      //          //    v + (mdml.2 - mdml.0) / 127.0_f64
+      //          //       * match adj {
+      //          //          PortAdj::Down => -1.0_f64,
+      //          //          PortAdj::Up => 1.0_f64,
+      //          //       }
+      //          // };
+
+      //          // // Adjust value so within bounds
+      //          // let v = if v < mdml.0 {
+      //          //    0.0_f64
+      //          // } else if v > mdml.2 {
+      //          //    mdml.2
+      //          // } else {
+      //          //    v
+      //          // };
+      //          // p.value = Some(format!("{v}"));
+      //          let symbol = ' '; //p.symbol.clone();
+
+      //          let instance_number = self
+      //             .get_stateful_list()
+      //             .get_selected_mh_id()
+      //             .expect("handle_port_adj: A selected item");
+      //          let cmd =
+      //             format!("param_set {instance_number} {symbol} {value}",);
+      //          self.send_mh_cmd(cmd.as_str());
+      //       }
+      //    }
+      // }
    }
 
    /// The main body of the App
    fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
       // init_error_hooks().expect("App::run error hooks");
 
+      // Control the event loop.  `frame_time` is the Duration of a loop.
       let target_fps = 60; // 400 is about the limit on Raspberry Pi 5
       let frame_time = Duration::from_secs(1) / target_fps as u32;
 
@@ -859,6 +877,7 @@ impl App<'_> {
          //     break;
          // }
 
+         // let status = "".to_string();
          let status = self.status_string();
          if let Some(st) = &self.status {
             if st != &status {
@@ -1006,6 +1025,9 @@ impl App<'_> {
       }
    }
 
+   /// F1 The main screen with all known simulators displayed.
+   /// Simulators can be loaded here.  Fo now simulators can only be
+   /// loaded once.
    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
       // Header, body, and footer
       let vertical = Layout::vertical([
@@ -1110,9 +1132,9 @@ impl App<'_> {
       outer_block.render(outer_area, buf);
 
       // Iterate through all elements in the `items` and stylize them.
-      let lv2_simulators: Vec<&Lv2Simulator> =
-         self.lv2_stateful_list.items.iter().collect();
-      let items: Vec<ListItem> = lv2_simulators
+      let items: Vec<ListItem> = self
+         .lv2_stateful_list
+         .items
          .iter()
          .enumerate()
          .filter(|&l| l.1.status == Status::Loaded)

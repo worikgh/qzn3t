@@ -545,7 +545,8 @@ pub fn get_lv2_controller(
                      name,
                      index,
                      types,
-                  }
+							  // value: None,
+						 }
                })
                .collect::<Vec<Port>>();
          };
@@ -601,22 +602,6 @@ pub fn get_lv2_controller(
       eprintln!("Channel working: {resp}");
    }
    Ok(result)
-   // // Send a command
-   // input_tx
-   //     .send(b"add http://guitarix.sourceforge.net/plugins/gx_redeye#chump 1\n".to_vec())
-   //     .unwrap();
-   // // Start interacting with the user
-   // let resp = match output_rx.recv() {
-   //     Ok(t) => t,
-   //     Err(err) => panic!("{err}: Waiting for mod-host"),
-   // };
-   // let resp = trunc_vec_0(resp);
-
-   // let resp = match String::from_utf8(resp) {
-   //     Ok(s) => s,
-   //     Err(err) => panic!("{err} Cannot translate resppone"),
-   // };
-   // println!("Got {resp}");
 }
 
 /// Unicode constants for display
@@ -652,19 +637,6 @@ impl fmt::Display for ControlPortProperties {
          }
       )
    }
-   //     write!(
-   //       f,
-   //       "{}{} {LESSEQ} {}  {LESSEQ} {}",
-   //       if self.logarithmic {
-   //          format!["{LOG} "]
-   //       } else {
-   //          "".to_string()
-   //       },
-   //       self.min,
-   //       self.default,
-   //       self.max,
-   //    )
-   // }
 }
 impl fmt::Display for PortType {
    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

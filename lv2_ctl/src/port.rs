@@ -24,17 +24,40 @@ pub struct ContinuousControlPort {
    pub min: f64,
    pub default: f64,
    pub logarithmic: bool,
+   // When the LV2 is loaded the port values will be loaded.  In
+   // useful cases it is an integer or a decimal, but it depends on
+   // the type of simulator
+   pub value: Option<String>,
 }
 
 impl ContinuousControlPort {
-   fn _values(&self) -> Vec<String> {
-      vec![]
+   /// ?The 128 values the port can take on
+   #[allow(dead_code)]
+   fn values(&self) -> Vec<String> {
+      let range = self.max - self.min;
+      let n: usize = 128; // 128 graduations of a MIDI control
+      let step = range / n as f64;
+      let mut result = vec![];
+      for r in 0..n {
+         let linear = self.min + r as f64 * step;
+         let v = if self.logarithmic {
+            linear.exp()
+         } else {
+            linear
+         };
+         result.push(format!("{v:0.4}"));
+      }
+      result
    }
 }
 
 #[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub struct ScaleControlPort {
    pub labels_values: Vec<(String, String)>,
+   // When the LV2 is loaded the port values will be loaded.  In
+   // useful cases it is an integer or a decimal, but it depends on
+   // the type of simulator.  Implemented as an index into `labels_values`
+   pub value: Option<usize>,
 }
 
 impl ScaleControlPort {
@@ -77,7 +100,10 @@ impl ControlPortProperties {
          for i in 0..scale.labels.len() {
             lv.push((scale.labels[i].clone(), scale.values[i].clone()));
          }
-         ControlPortProperties::Scale(ScaleControlPort { labels_values: lv })
+         ControlPortProperties::Scale(ScaleControlPort {
+            labels_values: lv,
+            value: None,
+         })
       } else {
          ControlPortProperties::Continuous(ContinuousControlPort {
             kind,
@@ -85,6 +111,7 @@ impl ControlPortProperties {
             max,
             default,
             logarithmic,
+            value: None,
          })
       }
    }
@@ -128,7 +155,7 @@ pub struct Port {
    pub name: String,   // For display
    pub symbol: String, // For sending to mod-host
    pub types: Vec<PortType>,
-   pub index: usize, // index from LV2 description
+   pub index: usize, // index from LV2 description If the simulater is
 }
 
 impl Port {

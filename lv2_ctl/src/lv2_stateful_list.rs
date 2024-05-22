@@ -15,22 +15,24 @@ impl Lv2StatefulList {
    pub fn _clone_selected(&self) -> Option<Lv2Simulator> {
       self.state.selected().map(|t| self.items[t].clone())
    }
+
+   #[allow(dead_code)]
    pub fn get_selected_url(&self) -> Option<String> {
       self.state.selected().map(|t| self.items[t].url.clone())
    }
    pub fn get_selected_mh_id(&self) -> Option<usize> {
       self.state.selected().map(|t| self.items[t].mh_id)
    }
-   pub fn get_selected_value(&self) -> Option<String> {
-      self.state.selected().map(|t| {
-         self.items[t]
-            .value
-            .as_ref()
-            .unwrap_or(&"No Value".to_string())
-            // .expect("Must be a value to get")
-            .clone()
-      })
-   }
+   // pub fn get_selected_value(&self) -> Option<String> {
+   //    self.state.selected().map(|t| {
+   //       self.items[t]
+   //          .value
+   //          .as_ref()
+   //          .unwrap_or(&"No Value".to_string())
+   //          // .expect("Must be a value to get")
+   //          .clone()
+   //    })
+   // }
    /// Create a Lv2Statefullist from a vector of name, url pairs.
    pub fn new(types: Vec<Lv2Simulator>) -> Lv2StatefulList {
       Lv2StatefulList {

@@ -18,55 +18,46 @@ use ratatui::widgets::Table;
 
 pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
    // Colours for the table
-   let normal_row_colour: Color = tailwind::SLATE.c950;
-   let alt_row_colour: Color = tailwind::SLATE.c900;
+   let even_row_colour: Color = tailwind::SLATE.c950;
+   let odd_row_colour: Color = tailwind::SLATE.c900;
    let row_fg: Color = tailwind::SLATE.c200;
    let buffer_bg: Color = tailwind::SLATE.c950;
    let selected_style_fg: Color = tailwind::BLUE.c400;
 
    let rows = ports.iter().enumerate().map(|(i, port)| {
       let colour = match i % 2 {
-         0 => normal_row_colour,
-         _ => alt_row_colour,
+         0 => even_row_colour,
+         _ => odd_row_colour,
       };
 
       // Set variables for the Port
-      let (min, max, log) = if let Some(PortType::Control(control_port)) = port
-         .types
-         .iter()
-         .find(|x| matches!(x, PortType::Control(_cp)))
-      {
-         match control_port {
-            ControlPortProperties::Continuous(cp) => {
-               let min = format!("{:2}", cp.min);
-               let max = format!("{:2}", cp.max);
-               (min, max, cp.logarithmic)
+      let (min, max, logarithmic) =
+         if let Some(PortType::Control(control_port)) = port
+            .types
+            .iter()
+            .find(|x| matches!(x, PortType::Control(_cp)))
+         {
+            match control_port {
+               ControlPortProperties::Continuous(cp) => {
+                  let min = format!("{:2}", cp.min);
+                  let max = format!("{:2}", cp.max);
+                  let log = format!("{}", cp.logarithmic);
+                  (min, max, log)
+               }
+               ControlPortProperties::Scale(scale) => (
+                  scale.labels_values[0].0.clone(),
+                  scale
+                     .labels_values
+                     .last()
+                     .expect("Expect some labels for port table")
+                     .0
+                     .clone(),
+                  "false".to_string(),
+               ),
             }
-            ControlPortProperties::Scale(scale) => (
-               scale.labels_values[0].0.clone(),
-               scale
-                  .labels_values
-                  .last()
-                  .expect("Expect some labels for port table")
-                  .0
-                  .clone(),
-               false,
-            ),
-         }
-      } else {
-         panic!("A port in port table that is not a Controlport")
-      };
-
-      let logarithmic = format!("{log}");
-      //port.get_min_def_max_def()) {
-
-      // } else {
-      //    // Does this happen?  Is it an error
-      //    eprintln!("INFO Port {} has no min/max/log", port.name);
-      //    min = "".to_string();
-      //    max = "".to_string();
-      //    logarithmic = "".to_string();
-      // }
+         } else {
+            panic!("A port in port table that is not a Controlport")
+         };
 
       // The row itself as a styled row
       let item = [
