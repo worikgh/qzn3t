@@ -15,8 +15,12 @@ use ratatui::widgets::Cell;
 use ratatui::widgets::HighlightSpacing;
 use ratatui::widgets::Row;
 use ratatui::widgets::Table;
+use std::collections::HashMap;
 
-pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
+pub fn port_table<'a>(
+   ports: &[Port],
+   pv: &HashMap<String, Option<String>>,
+) -> Table<'a> {
    // Colours for the table
    let even_row_colour: Color = tailwind::SLATE.c950;
    let odd_row_colour: Color = tailwind::SLATE.c900;
@@ -31,7 +35,7 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
       };
 
       // Set variables for the Port
-      let (min, max, logarithmic) =
+      let (min, max, def, logarithmic) =
          if let Some(PortType::Control(control_port)) = port
             .types
             .iter()
@@ -42,7 +46,14 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
                   let min = format!("{:2}", cp.min);
                   let max = format!("{:2}", cp.max);
                   let log = format!("{}", cp.logarithmic);
-                  (min, max, log)
+                  let val = match pv.get(port.symbol.as_str()) {
+                     None => panic!("Cannot find {}", port.symbol),
+                     Some(ov) => match ov {
+                        Some(v) => v.clone(),
+                        None => "".to_string(),
+                     },
+                  };
+                  (min, max, val, log)
                }
                ControlPortProperties::Scale(scale) => (
                   scale.labels_values[0].0.clone(),
@@ -52,6 +63,7 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
                      .expect("Expect some labels for port table")
                      .0
                      .clone(),
+                  "".to_string(),
                   "false".to_string(),
                ),
             }
@@ -60,13 +72,7 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
          };
 
       // The row itself as a styled row
-      let item = [
-         port.name.clone(),
-         min,
-         "".to_string(), //port.value.clone().unwrap_or_else(|| "".to_string()),
-         max,
-         logarithmic,
-      ];
+      let item = [port.name.clone(), min, def, max, logarithmic];
       item
          .into_iter()
          .map(|content| Cell::from(Text::from(format!("\n{content}\n"))))

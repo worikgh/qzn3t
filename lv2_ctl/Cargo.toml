@@ -3,6 +3,15 @@ name = "lv2_ctl"
 version = "0.1.0"
 edition = "2021"
 
+# [[bin]]
+# name="mhc_test"
+# path="src/bin/mhc_test.rs"
+
+
+# [[bin]]
+# name = "binary2"
+# path = "src/mod_host_controller.rs"
+
 [dependencies]
 color-eyre = "0.6.2"
 crossterm = "0.27.0"

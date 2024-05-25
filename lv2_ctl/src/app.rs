@@ -33,6 +33,7 @@ use crossterm::{
 };
 use ratatui::{prelude::*, widgets::*};
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -83,9 +84,20 @@ pub struct App<'a> {
    /// unrecogised responses from mod-host
    unrecognised_resp: HashSet<String>,
 
-   /// The Ports in the current view and the scrolling table they are
-   /// displayed in
-   ports: Vec<Port>,
+   /// The control ports of the simulator selected in the current
+   /// views, for views which display such information.  Updated when
+   /// the simulater selected
+   control_ports: Vec<Port>,
+   /// For view that display port values this structure holds them.
+   /// It is initialised at the same time the `control_ports` member
+   /// is.  It maps port symbol -> port value.  WHen first
+   /// initialised the value is unknown, hence being an option.  Some
+   /// views will have values ready for the port when thi sis created
+   /// and will set the value and issue `param_set` commands.  Others
+   /// will not and will issue param_get commands and update the
+   /// value when it arrives.
+   port_values: HashMap<String, Option<String>>,
+
    table_state: TableState,
    scroll_bar_state: ScrollbarState,
 
@@ -180,14 +192,24 @@ impl App<'_> {
 
          table_state: TableState::default().with_selected(0),
          scroll_bar_state: ScrollbarState::default(),
-         ports: vec![],
+         control_ports: vec![],
+         port_values: HashMap::new(),
 
          // last_mh_command: None,
          // mh_command_queue: VecDeque::new(),
          status: None,
       }
    }
-
+   #[allow(dead_code)]
+   fn ports(&self, lv2_url: &str) -> Vec<&Port> {
+      let sim = self
+         .mod_host_controller
+         .simulators
+         .iter()
+         .find(|s| s.url == lv2_url)
+         .expect("Get the Lv2 for Ports in App");
+      sim.ports.iter().collect()
+   }
    fn status_string(&self) -> String {
       format!(
          "{:?} queued cmd# {} Last Command: {:?}",
@@ -270,7 +292,36 @@ impl App<'_> {
                // Connect the selected effect to system in/out
                eprintln!("INFO change_status AppViewState::Command idx: {idx}");
                let mh_id = self.get_stateful_list().items[idx].mh_id;
+               let url = self.get_stateful_list().items[idx].url.clone();
+               self.control_ports = self
+                  .mod_host_controller
+                  .simulators
+                  .iter()
+                  .find(|s| s.url == url)
+                  .expect("Find LV2 getting ports")
+                  .ports
+                  .to_vec()
+                  .iter()
+                  .filter(|p| {
+                     p.types.iter().any(|t| matches!(t, PortType::Control(_)))
+                  })
+                  .map(|t| t.clone())
+                  .collect();
+               self.port_values = self
+                  .control_ports
+                  .iter()
+                  .map(|p| (p.symbol.clone(), None))
+                  .collect();
 
+               // Create commands to get the values
+               let update_port_vales_cmds: Vec<String> = self
+                  .port_values
+                  .iter()
+                  .map(|(s, _)| format!("param_get {mh_id} {s}"))
+                  .collect();
+               for cmd in update_port_vales_cmds {
+                  self.send_mh_cmd(cmd.as_str());
+               }
                eprintln!(
                   "INFO Effect: effect_{idx} dispay ports.  mh_id: {mh_id}"
                );
@@ -283,7 +334,7 @@ impl App<'_> {
                   .map(|s| format!("disconnect {s}"))
                   .collect::<Vec<String>>();
                eprintln!("INFO Disconnect commands: {disconnect_cmds:?}");
-               let control_commands: Vec<String>;
+               let _control_commands: Vec<String>;
                let input_commands: Vec<String>;
                let output_commands: Vec<String>;
                {
@@ -295,18 +346,18 @@ impl App<'_> {
                      Some(l) => l,
                      None => panic!("Getting Lv2 by url"),
                   };
-                  control_commands = self
-                     .ports
-                     .iter()
-                     .filter(|&p| {
-                        p.types
-                           .iter()
-                           .any(|t| matches!(t, PortType::Control(_)))
-                           && p.types.contains(&PortType::Input)
-                        //&& p.value.is_none()
-                     })
-                     .map(|p| format!("param_get {mh_id} {}", p.symbol))
-                     .collect::<Vec<String>>();
+                  // control_commands = self
+                  //    .ports(url.as_str())
+                  //    .iter()
+                  //    .filter(|&p| {
+                  //       p.types
+                  //          .iter()
+                  //          .any(|t| matches!(t, PortType::Control(_)))
+                  //          && p.types.contains(&PortType::Input)
+                  //       //&& p.value.is_none()
+                  //    })
+                  //    .map(|p| format!("param_get {mh_id} {}", p.symbol))
+                  //    .collect::<Vec<String>>();
 
                   let output_ports = lv2
                      .ports
@@ -351,8 +402,7 @@ impl App<'_> {
                   "INFO: Issuing {} commands to mod-host",
                   disconnect_cmds.len()
                      + input_commands.len()
-                     + output_commands.len()
-                     + control_commands.len()
+                     + output_commands.len() // + control_commands.len()
                );
                for cmd in disconnect_cmds.iter() {
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
@@ -363,9 +413,9 @@ impl App<'_> {
                for cmd in output_commands.iter() {
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
                }
-               for cmd in control_commands.iter() {
-                  self.mod_host_controller.send_mh_cmd(cmd.as_str());
-               }
+               // for cmd in control_commands.iter() {
+               //    self.mod_host_controller.send_mh_cmd(cmd.as_str());
+               // }
                eprintln!("INFO: Commands all sent");
             }
          }
@@ -615,67 +665,35 @@ impl App<'_> {
    }
 
    /// Set a value displayed for the port named by `symbol` to the LV2
-   /// with `instance_number`
+   /// with `instance_number`.  Port values are a matter for mod-host
+   /// to maintain.  Here they are just displayed.  SO check if
+   /// `instance_number` matches the currently loaded simulater, and
+   /// if so the port's value is stored in `self.control_port_vales`.
    fn update_port(
       &mut self,
       instance_number: usize,
       symbol: &str,
       value: &str,
    ) {
-      // let idx:usize = self.get_stateful_list_mut().state.selected().expect("Get selected");
-      eprintln!(
-         "INFO: update_port {instance_number} {symbol} {value} {}",
-         self.lv2_loaded_list.items.iter().fold(
-            "".to_string(),
-            |a, b| format!(
-               "{a}({} {} {}) ",
-               b.mh_id,
-               b.name,
-               b.control_ports.len()
-            )
-         )
-      );
-
-      let item = self
-         .lv2_loaded_list
-         .items
-         .iter_mut()
-         .find(|x| x.mh_id == instance_number)
-         .expect("Find LV2 with mh_id");
-
-      if let Some(port) = item
-         .control_ports
-         .iter_mut()
-         .find(|p| p.param_symbol.as_str() == symbol)
-      {
-         port.value = Some(value.into());
-      } else {
-         eprintln!(
-            "INFO: Cannot find port {symbol} of {} in {}",
-            item.name,
-            item.control_ports.len()
-         );
-      }
-      // self
-      //    .lv2_stateful_list
-      //    .items
-      //    .iter_mut()
-      //    .find(|x| x.mh_id == instance_number)
-      //    .expect("Find LV2 with mh_id")
-      //    .control_ports
-      //    .iter()
-      //    .find(|p| p.param_symbol.as_str() == symbol)
-      //    .expect("Cannot find port to set value")
-      //    .value = Some(value.into());
-
-      // Update cached version
-      // for p in self.ports.iter_mut() {
-      //    if p.symbol == symbol {
-      //       p.value = Some(value.to_string());
-      //    }
-      // }
-   }
-
+       // Currently loaded simulator
+		 if let Some(idx) = self.get_stateful_list_mut().state.selected() {
+			  let mh_id = self.get_stateful_list().items[idx].mh_id;
+			  if mh_id != instance_number {
+					// Simulator was unloaded while command was in flight
+					eprintln!(
+						 "INFO: update_port {instance_number} {symbol} {value}: Simulator not loaded.");
+					return;
+			  }
+			  if self
+					.port_values
+					.insert(symbol.to_string(), Some(value.to_string()))
+					.is_none()
+			  {
+					eprintln!(
+						 "INFO: update_port {instance_number} {symbol} {value}: That symbol was not in `port_values`.");
+			  }
+		 }
+	}
    /// When responding to a param_get or param_set extract the
    /// instance number   and the
    /// symbol for the simulator from the last command
@@ -931,7 +949,7 @@ impl App<'_> {
                            // In LV2 Control view (F2) move down a port
                            let i = match self.table_state.selected() {
                               Some(i) => {
-                                 if i >= self.ports.len() - 1 {
+                                 if i >= self.control_ports.len() - 1 {
                                     0
                                  } else {
                                     i + 1
@@ -952,7 +970,7 @@ impl App<'_> {
                            let i = match self.table_state.selected() {
                               Some(i) => {
                                  if i == 0 {
-                                    self.ports.len() - 1
+                                    self.control_ports.len() - 1
                                  } else {
                                     i - 1
                                  }
@@ -1312,9 +1330,9 @@ impl App<'_> {
 
       // Render the controls into `inner_info_area`
       self.scroll_bar_state =
-         ScrollbarState::new((self.ports.len()) * ITEM_HEIGHT);
+         ScrollbarState::new((self.control_ports.len()) * ITEM_HEIGHT);
       // Get the table widget
-      let table = port_table(&self.ports.to_vec());
+      let table = port_table(&self.control_ports, &self.port_values); //.to_vec());
       ratatui::widgets::StatefulWidget::render(
          table,
          inner_info_area,

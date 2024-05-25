@@ -1,11 +1,9 @@
 ///App code taken from https://ratatui.rs/tutorials/counter-app/
 use app::App;
-
-use lv2::get_lv2_controller;
+use mod_host_controller::ModHostController;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use crate::mod_host_controller::ModHostController;
 mod app;
 mod colours;
 mod lv2;
@@ -15,6 +13,7 @@ mod mod_host_controller;
 mod port;
 mod port_table;
 mod run_executable;
+mod test_data;
 fn main() -> std::io::Result<()> {
    let file = if let Ok(f) = File::open("../../lv2.dat") {
       f
@@ -28,7 +27,9 @@ fn main() -> std::io::Result<()> {
    // let mut mod_host_controller: ModHostController =
    //    get_lv2_controller(lines.map(|r| r.map_err(Into::into)))?;
    let mut mod_host_controller: ModHostController =
-      get_lv2_controller(reader.lines().map(|r| r.map_err(Into::into)))?;
+      ModHostController::get_lv2_controller(
+         reader.lines().map(|r| r.map_err(Into::into)),
+      )?;
    // Start user interface.  Loop until user quits
    App::run(&mut mod_host_controller).expect("Running app");
 

@@ -8,7 +8,7 @@
 ///     * Integer
 ///     * Decimal
 ///     * Float
-use crate::lv2::ScaleDescription;
+use crate::mod_host_controller::ScaleDescription;
 
 #[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub enum ContinuousType {
@@ -26,8 +26,8 @@ pub struct ContinuousControlPort {
    pub logarithmic: bool,
    // When the LV2 is loaded the port values will be loaded.  In
    // useful cases it is an integer or a decimal, but it depends on
-   // the type of simulator
-   pub value: Option<String>,
+   // the type of simulator.  S
+   // pub value: Option<String>,
 }
 
 impl ContinuousControlPort {
@@ -53,10 +53,11 @@ impl ContinuousControlPort {
 
 #[derive(Clone, PartialEq, Debug, PartialOrd)]
 pub struct ScaleControlPort {
+   /// FIXME! ["Are there default values for these?"];
    pub labels_values: Vec<(String, String)>,
-   // When the LV2 is loaded the port values will be loaded.  In
-   // useful cases it is an integer or a decimal, but it depends on
-   // the type of simulator.  Implemented as an index into `labels_values`
+   /// When the LV2 is loaded the port values will be loaded.  In
+   /// useful cases it is an integer or a decimal, but it depends on
+   /// the type of simulator.  Implemented as an index into `labels_values`
    pub value: Option<usize>,
 }
 
@@ -111,7 +112,7 @@ impl ControlPortProperties {
             max,
             default,
             logarithmic,
-            value: None,
+            // value: None,
          })
       }
    }

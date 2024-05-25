@@ -20,6 +20,7 @@ impl Lv2StatefulList {
    pub fn get_selected_url(&self) -> Option<String> {
       self.state.selected().map(|t| self.items[t].url.clone())
    }
+   #[allow(dead_code)]
    pub fn get_selected_mh_id(&self) -> Option<usize> {
       self.state.selected().map(|t| self.items[t].mh_id)
    }
