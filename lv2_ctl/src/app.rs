@@ -25,6 +25,7 @@ use crate::port::PortType;
 use crate::port_table::port_table;
 use color_eyre::config::HookBuilder;
 use crossterm::event::KeyEvent;
+use crossterm::event::KeyModifiers;
 use crossterm::{
    event::{self, Event, KeyCode},
    terminal::{
@@ -729,7 +730,7 @@ impl App<'_> {
 
    /// There is a port in the UI focus
    /// being adjusted up, or down
-   fn handle_port_adj(&mut self, _adj: PortAdj, _k: &KeyEvent) {
+   fn handle_port_adj(&mut self, adj: PortAdj, k: &KeyEvent) {
       // Get the port
       // let port = self.control_ports.iter().nth(self.table_state.selected().unwrap()).unwrap();
       let mh_id: usize;
@@ -773,21 +774,46 @@ impl App<'_> {
                      .parse::<f64>()
                      .expect("Value should be a valid number");
                   let n: f64 = if cppc.logarithmic { v.ln() } else { v };
-                  let n: f64 = n
-                     + _step
-                        * match _adj {
+                  let n = if k.modifiers.contains(KeyModifiers::SHIFT) {
+                     // Shift key pressed.  Move half the distance
+                     // between `v` and `max` for adj == PortAdj::Up
+                     // and `min` if PortAdj::Down
+                      let max = if cppc.logarithmic {
+                        cppc.max.ln()
+                     } else {
+                        cppc.max
+                     };
+                     let min = if cppc.logarithmic {
+                        cppc.min.ln()
+                     } else {
+                        cppc.min
+                     };
+                      let res = match adj {
+                        PortAdj::Down => min + (v - min)/2.0,
+                        PortAdj::Up => max - (max - v)/2.0,
+                      };
+							 eprintln!("DBG SHIFT {adj:?} pressed v: {v} res: {res}");
+							 res
+
+                  } else {
+                      let res = n + _step
+                        * match adj {
                            PortAdj::Down => -1_f64,
                            PortAdj::Up => 1_f64,
                         };
+							 eprintln!("DBG SHIFT {adj:?} not pressed v: {v} res: {res}");
+							 res
+                  };
+
                   let n: f64 = if cppc.logarithmic { n.exp() } else { n };
                   let n = if n > cppc.max { cppc.max } else { n };
                   let n = if n < cppc.min { cppc.min } else { n };
 
                   // `n` is the updated value
                   let new_value = match cppc.kind {
-                     ContinuousType::Decimal => format!("{n:2}"),
-                     ContinuousType::Integer => format!("{n:0}"),
-                     ContinuousType::Float => format!("{n:4}"),
+                     ContinuousType::Decimal => format!("{:.2}", n),
+                     ContinuousType::Integer => format!("{:.0}", n),
+                     ContinuousType::Float => format!("{n:.4}"),
                   };
                   let new_value = new_value.trim();
                   eprintln!("DBG: handle_port_adj: Continuous.  min: {} value: {} -> {} max: {} log {} step: {_step}",
@@ -798,7 +824,7 @@ impl App<'_> {
                }
                ControlPortProperties::Scale(_cpps) => {
                   // Move up or down the set values
-                  eprintln!("DBG Adjust port {port_symbol} {_adj:?} {value} Unimplemented for Scale Port");
+                  eprintln!("DBG Adjust port {port_symbol} {adj:?} {value} Unimplemented for Scale Port");
                }
             }
          }
