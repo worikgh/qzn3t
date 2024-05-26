@@ -516,7 +516,7 @@ impl ModHostController {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
 
-         eprintln!("CMD: {}", cmd.trim());
+         eprintln!("MH CMD: {}", cmd.trim());
          self.last_mh_command = Some(cmd.trim().to_string());
          self
             .input_tx

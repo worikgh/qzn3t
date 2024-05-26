@@ -440,6 +440,7 @@ impl App<'_> {
    /// resp status [value]
    fn process_resp(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
+      eprintln!("MH RESP {response}");
       let last_mh_command = match self.mod_host_controller.get_last_mh_command()
       {
          Some(s) => s.trim().to_string(),
@@ -506,6 +507,8 @@ impl App<'_> {
             }
          }
          "param_get" => {
+            // Command e.g: param_get 50 threshold
+            // Response e.g: resp 0 0.1250
             // Got the current value of a Port.
             // Get the symbol for the port from the command
             let q = Self::get_instance_symbol_res(
@@ -686,7 +689,8 @@ impl App<'_> {
    ) -> (usize, &'a str, &'a str) {
       // Got the current value of a Port.
       // Get the symbol for the port from the command
-      // Eg: param_set 0 IN_DELAY 61
+      // E.g: param_set 2 Volume 0.16717 -> RESP resp 0
+      // E.g: param_get 2 Volume -> resp 0 0.3078
       // eprintln!("get_instance_symbol_res:  last_mh_command: {last_mh_command}  response: {response}");
       let instance_symbol = last_mh_command["param_get".len()..].trim();
       let sp = instance_symbol
