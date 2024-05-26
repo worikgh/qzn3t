@@ -18,6 +18,8 @@ use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 use crate::lv2_stateful_list::Lv2StatefulList;
 use crate::mod_host_controller::ModHostController;
+use crate::port::ContinuousType;
+use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
 use crate::port_table::port_table;
@@ -46,6 +48,7 @@ const ITEM_HEIGHT: usize = 1;
 /// Encodes whether a port value is being incremented `up` or
 /// decremented `down` when adjusting the port value.
 /// This allows the same code do be used for both cases
+#[derive(Debug)]
 enum PortAdj {
    Up,
    Down,
@@ -88,29 +91,19 @@ pub struct App<'a> {
    /// views, for views which display such information.  Updated when
    /// the simulater selected
    control_ports: Vec<Port>,
-   /// For view that display port values this structure holds them.
+   /// For views that display port values this structure holds them.
    /// It is initialised at the same time the `control_ports` member
-   /// is.  It maps port symbol -> port value.  WHen first
-   /// initialised the value is unknown, hence being an option.  Some
-   /// views will have values ready for the port when thi sis created
-   /// and will set the value and issue `param_set` commands.  Others
-   /// will not and will issue param_get commands and update the
-   /// value when it arrives.
+   /// is.  It maps port symbol -> port value.  When first initialised
+   /// the value is unknown, hence being an option.  Some views will
+   /// have values ready for the port when this is created and will
+   /// set the value and issue `param_set` commands.  Others will not
+   /// and will issue param_get commands and update the value when it
+   /// arrives.
    port_values: HashMap<String, Option<String>>,
 
    table_state: TableState,
    scroll_bar_state: ScrollbarState,
 
-   // /// The last command sent to mod-host.  It is command orientated
-   // /// so a "resp..." from mod-host refers to the last command sent.
-   // /// This programme is asynchronous, so a command is sent, and
-   // /// later a response is received.  This allows the two to be
-   // /// connected.  When a response is received set this back to None.
-   // last_mh_command: Option<String>,
-
-   // /// Commands are queued when they arrive.  They are sent in the
-   // /// order they are received.
-   // mh_command_queue: VecDeque<String>,
    /// Store the last status output so do not thrash status reporting
    /// mechanism (eprintln! as I write) with repeated status messages
    status: Option<String>,
@@ -230,6 +223,7 @@ impl App<'_> {
    }
 
    /// Changes the status of the selected list item.  
+   #[allow(clippy::iter_kv_map)]
    fn change_status(&mut self) {
       if self.get_stateful_list().items.is_empty() {
          // Nothing to do
@@ -305,7 +299,8 @@ impl App<'_> {
                   .filter(|p| {
                      p.types.iter().any(|t| matches!(t, PortType::Control(_)))
                   })
-                  .map(|t| t.clone())
+                  .cloned()
+                  // .map(|t| t.clone())
                   .collect();
                self.port_values = self
                   .control_ports
@@ -346,18 +341,6 @@ impl App<'_> {
                      Some(l) => l,
                      None => panic!("Getting Lv2 by url"),
                   };
-                  // control_commands = self
-                  //    .ports(url.as_str())
-                  //    .iter()
-                  //    .filter(|&p| {
-                  //       p.types
-                  //          .iter()
-                  //          .any(|t| matches!(t, PortType::Control(_)))
-                  //          && p.types.contains(&PortType::Input)
-                  //       //&& p.value.is_none()
-                  //    })
-                  //    .map(|p| format!("param_get {mh_id} {}", p.symbol))
-                  //    .collect::<Vec<String>>();
 
                   let output_ports = lv2
                      .ports
@@ -675,25 +658,25 @@ impl App<'_> {
       symbol: &str,
       value: &str,
    ) {
-       // Currently loaded simulator
-		 if let Some(idx) = self.get_stateful_list_mut().state.selected() {
-			  let mh_id = self.get_stateful_list().items[idx].mh_id;
-			  if mh_id != instance_number {
-					// Simulator was unloaded while command was in flight
-					eprintln!(
+      // Currently loaded simulator
+      if let Some(idx) = self.get_stateful_list_mut().state.selected() {
+         let mh_id = self.get_stateful_list().items[idx].mh_id;
+         if mh_id != instance_number {
+            // Simulator was unloaded while command was in flight
+            eprintln!(
 						 "INFO: update_port {instance_number} {symbol} {value}: Simulator not loaded.");
-					return;
-			  }
-			  if self
-					.port_values
-					.insert(symbol.to_string(), Some(value.to_string()))
-					.is_none()
-			  {
-					eprintln!(
+            return;
+         }
+         if self
+            .port_values
+            .insert(symbol.to_string(), Some(value.to_string()))
+            .is_none()
+         {
+            eprintln!(
 						 "INFO: update_port {instance_number} {symbol} {value}: That symbol was not in `port_values`.");
-			  }
-		 }
-	}
+         }
+      }
+   }
    /// When responding to a param_get or param_set extract the
    /// instance number   and the
    /// symbol for the simulator from the last command
@@ -703,6 +686,7 @@ impl App<'_> {
    ) -> (usize, &'a str, &'a str) {
       // Got the current value of a Port.
       // Get the symbol for the port from the command
+      // Eg: param_set 0 IN_DELAY 61
       // eprintln!("get_instance_symbol_res:  last_mh_command: {last_mh_command}  response: {response}");
       let instance_symbol = last_mh_command["param_get".len()..].trim();
       let sp = instance_symbol
@@ -726,9 +710,8 @@ impl App<'_> {
       let r = &response[5..];
       let sp: usize = r.chars().position(|x| x.is_whitespace()).unwrap_or(
          // No whitespace, till end of string
-         r.len(),
+         0,
       );
-      // eprintln!("get_instance_symbol_resr: {r} sp: {sp}");
 
       let n = r[sp..].trim();
       // eprintln!(
@@ -738,139 +721,84 @@ impl App<'_> {
       (instance_number, symbol, n)
    }
 
+   /// Called from main event loop
+
+   /// There is a port in the UI focus
+   /// being adjusted up, or down
    fn handle_port_adj(&mut self, _adj: PortAdj, _k: &KeyEvent) {
-      // {
+      // Get the port
+      // let port = self.control_ports.iter().nth(self.table_state.selected().unwrap()).unwrap();
+      let mh_id: usize;
+      let port: &Port;
+      if let Some(idx) = self.get_stateful_list_mut().state.selected() {
+         // Connect the selected effect to system in/out
+         eprintln!("INFO change_status AppViewState::Command idx: {idx}");
+         mh_id = self.get_stateful_list().items[idx].mh_id;
+         if let Some(i) = self.table_state.selected() {
+            port = self.control_ports.get(i).unwrap();
+         } else {
+            return;
+         }
+      } else {
+         eprintln!("ERR Attempting to adjust a port when there is no simulator selected");
+         return;
+      }
+      // Symbol
+      let port_symbol = port.symbol.clone();
+      let value: String = match self.port_values.get(port_symbol.as_str()) {
+         Some(v) => match v {
+            Some(s) => s.clone(),
+            _ => panic!("Musr have a value to adjust"),
+         },
+         None => panic!("Unknown port symbol"),
+      };
 
-      // Implement when ControlPortProperties.values() is implemented
-      // 	 if let Some(url) = &self.lv2_loaded_list.get_selected_url() {
-      //       //          if let Some(idx) = self.get_stateful_list().last_selected {
-      //       eprintln!("DNG handle_port_adj url: {url}");
-      // 		 // Get symbol of selected port
-      // 		 let idx = self.table_state.selected().expect("Expected aport selected in handle_port_adj");
-      // 		 let symbol = &self.ports[idx].symbol;
-      // 		 let port = self
-      //          .ports.iter().find(|p| &p.symbol == symbol).expect("Should be a port present in handle_port_adj");
-      //        if let Some(value) =
-      // 			  port.value{
-      // 					// The value is loaded.  It takes tme to load
-      // 			  }
+      // Get the ControlPort interface
+      for pt in port.types.iter() {
+         if let PortType::Control(ptc) = pt {
+            // Do adjustment
+            let cpp: &ControlPortProperties = ptc;
+            match cpp {
+               ControlPortProperties::Continuous(cppc) => {
+                  // Adjust between max and min
+                  let range = cppc.max - cppc.min;
+                  let n: usize = 128; // 128 graduations of a MIDI control
+                  let _step = range / n as f64;
 
-      //       eprintln!("DNG handle_port_adj value: {value}");
-      //       if let Some(port_table_row) = self.table_state.selected() {
-      //          // Got index to a Port  Get its name
-      //          let n = self.ports[port_table_row].name.as_str();
-      //          eprintln!("INFO handle_port_adj port_table_row: {port_table_row} name: {n}   url: {url} {value}");
+                  let v = value
+                     .parse::<f64>()
+                     .expect("Value should be a valid number");
+                  let n: f64 = if cppc.logarithmic { v.ln() } else { v };
+                  let n: f64 = n
+                     + _step
+                        * match _adj {
+                           PortAdj::Down => -1_f64,
+                           PortAdj::Up => 1_f64,
+                        };
+                  let n: f64 = if cppc.logarithmic { n.exp() } else { n };
+                  let n = if n > cppc.max { cppc.max } else { n };
+                  let n = if n < cppc.min { cppc.min } else { n };
 
-      //          // Get a reference to the LV2 simulator whoes port is
-      //          // to be adjusted for min/max information
-      //          let port = self
-      //             .mod_host_controller
-      //             .get_lv2_by_url(&url)
-      //             .expect("Cannot get LV2 by URL")
-      //             .ports
-      //             .iter()
-      //             .find(|p| p.name == n)
-      //             .expect("Find port by name");
-
-      //          // This must be a ControlPort
-      //          let f = port.types.iter().any(|x| match x {
-      //             PortType::Control(cp) => {
-      //                let (_new_value, _new_label) = match cp {
-      //                   ControlPortProperties::Continuous(cont) => {
-      //                      let max = cont.max;
-      //                      let min = cont.min;
-      //                      let delta = (max - min) / 128.0;
-      //                      let v = value
-      //                         .parse::<f64>()
-      //                         .expect("Expected a valid value");
-      //                      let new_v = match adj {
-      //                         PortAdj::Up => {
-      //                            if v + delta < max {
-      //                               v + delta
-      //                            } else {
-      //                               max
-      //                            }
-      //                         }
-      //                         PortAdj::Down => {
-      //                            if v - delta > min {
-      //                               v - delta
-      //                            } else {
-      //                               min
-      //                            }
-      //                         }
-      //                      };
-
-      //                      // Label.
-      //                      let label = match cont.kind {
-      //                         ContinuousType::Integer => format!("{new_v:0}"),
-      //                         ContinuousType::Decimal => format!("{new_v:2}"),
-      //                         ContinuousType::Float => format!("{new_v:4}"),
-      //                      };
-      //                      (format!("{new_v}"), label)
-      //                   }
-      //                   ControlPortProperties::Scale(_s) => {
-      //                      ("".to_string(), "".to_string())
-      //                   }
-      //                };
-      //                true
-      //             }
-      //             _ => false,
-      //          });
-      //          assert!(f);
-      //          // Values are encoded as String (by accident TODO Fix it)
-      //          // let mdml = p
-      //          //    .get_min_def_max_def()
-      //          //    .expect("Getting min, default, max, log adjusting port");
-
-      //          // let v = if let Some(ref v) = p.value {
-      //          //    v.parse::<f64>().expect("Translate value to f64")
-      //          // } else {
-      //          //    panic!("No value for port in adj");
-      //          // };
-
-      //          // let v = if mdml.3 {
-      //          //    // Logarithmic
-      //          //    // Make linear
-      //          //    let min_ln = mdml.0.ln();
-      //          //    let max_ln = mdml.2.ln();
-      //          //    let step_size_ln = (max_ln - min_ln) / 127.0_f64;
-
-      //          //    // Adjust value in linear scale then convert back
-      //          //    let vn = v.ln();
-      //          //    match adj {
-      //          //       PortAdj::Down => (vn - step_size_ln).exp(),
-      //          //       PortAdj::Up => (vn + step_size_ln).exp(),
-      //          //    }
-      //          // } else {
-      //          //    // Linear
-      //          //    v + (mdml.2 - mdml.0) / 127.0_f64
-      //          //       * match adj {
-      //          //          PortAdj::Down => -1.0_f64,
-      //          //          PortAdj::Up => 1.0_f64,
-      //          //       }
-      //          // };
-
-      //          // // Adjust value so within bounds
-      //          // let v = if v < mdml.0 {
-      //          //    0.0_f64
-      //          // } else if v > mdml.2 {
-      //          //    mdml.2
-      //          // } else {
-      //          //    v
-      //          // };
-      //          // p.value = Some(format!("{v}"));
-      //          let symbol = ' '; //p.symbol.clone();
-
-      //          let instance_number = self
-      //             .get_stateful_list()
-      //             .get_selected_mh_id()
-      //             .expect("handle_port_adj: A selected item");
-      //          let cmd =
-      //             format!("param_set {instance_number} {symbol} {value}",);
-      //          self.send_mh_cmd(cmd.as_str());
-      //       }
-      //    }
-      // }
+                  // `n` is the updated value
+                  let new_value = match cppc.kind {
+                     ContinuousType::Decimal => format!("{n:2}"),
+                     ContinuousType::Integer => format!("{n:0}"),
+                     ContinuousType::Float => format!("{n:4}"),
+                  };
+                  let new_value = new_value.trim();
+                  eprintln!("DBG: handle_port_adj: Continuous.  min: {} value: {} -> {} max: {} log {} step: {_step}",
+									  cppc.min, v, new_value, cppc.max, cppc.logarithmic);
+                  let cmd =
+                     format!("param_set {mh_id} {port_symbol} {new_value}");
+                  self.mod_host_controller.send_mh_cmd(cmd.as_str());
+               }
+               ControlPortProperties::Scale(_cpps) => {
+                  // Move up or down the set values
+                  eprintln!("DBG Adjust port {port_symbol} {_adj:?} {value} Unimplemented for Scale Port");
+               }
+            }
+         }
+      }
    }
 
    /// The main body of the App
@@ -883,17 +811,24 @@ impl App<'_> {
 
       // Set this to false to make process exit on next loop
       let mut run = true;
+
+      // Record the instant the loop started for debugging
+      let _instant_loop_started = Instant::now();
+      let mut _tick_counter = 0; // Reset every debug report
       loop {
+         // Provide the world with a message that the event loop is
+         // spinning
+         _tick_counter += 1;
+         if _tick_counter % (60 * target_fps) == 0 {
+            let d = _instant_loop_started.elapsed();
+            eprintln!("Event loop tick {_tick_counter}  {d:?}");
+            //_tick_counter = 0;
+         }
+
          let start_time = Instant::now();
          if !run {
             break;
          }
-
-         // If queue has gotten too big, something has gone wrong.
-         // if self.mod_host_controller.get_queued_count() > 100 {
-         //     eprintln!("ERR Aborting.  Queue too large {}", self.status_string());
-         //     break;
-         // }
 
          // let status = "".to_string();
          let status = self.status_string();
@@ -909,7 +844,9 @@ impl App<'_> {
 
          self.draw(&mut terminal)?;
 
-         if event::poll(Duration::from_secs(0)).expect("Polling for event") {
+         if event::poll(Duration::from_secs(0))
+            .expect("Polling for event from Ratatui")
+         {
             let ev = event::read();
             match ev {
                Ok(Event::Key(key)) => {
@@ -1011,6 +948,7 @@ impl App<'_> {
             self.process_buffer();
          }
 
+         // Maintain timing of loop
          let elapsed_time = Instant::now() - start_time;
          if elapsed_time < frame_time {
             thread::sleep(frame_time - elapsed_time);

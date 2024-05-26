@@ -33,7 +33,7 @@ pub struct ContinuousControlPort {
 impl ContinuousControlPort {
    /// ?The 128 values the port can take on
    #[allow(dead_code)]
-   fn values(&self) -> Vec<String> {
+   pub fn values(&self) -> Vec<String> {
       let range = self.max - self.min;
       let n: usize = 128; // 128 graduations of a MIDI control
       let step = range / n as f64;
@@ -55,9 +55,8 @@ impl ContinuousControlPort {
 pub struct ScaleControlPort {
    /// FIXME! ["Are there default values for these?"];
    pub labels_values: Vec<(String, String)>,
-   /// When the LV2 is loaded the port values will be loaded.  In
-   /// useful cases it is an integer or a decimal, but it depends on
-   /// the type of simulator.  Implemented as an index into `labels_values`
+   /// When the LV2 is loaded the port values will be loaded.
+   /// Implemented as an index into `labels_values`
    pub value: Option<usize>,
 }
 

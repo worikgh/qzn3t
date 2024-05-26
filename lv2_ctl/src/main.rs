@@ -2,7 +2,7 @@
 use app::App;
 use mod_host_controller::ModHostController;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
 
 mod app;
 mod colours;
@@ -14,21 +14,33 @@ mod port;
 mod port_table;
 mod run_executable;
 mod test_data;
+use std::env;
+use std::io::Cursor;
+use test_data::test_data;
 fn main() -> std::io::Result<()> {
-   let file = if let Ok(f) = File::open("../../lv2.dat") {
-      f
-   } else if let Ok(f) = File::open("lv2.dat") {
-      f
+   let args: Vec<String> = env::args().collect();
+   let reader: Box<dyn std::io::BufRead> = if args.len() == 1 || &args[1] != "d"
+   {
+      let fnm = if args.len() == 1 {
+         "../../lv2.dat"
+      } else {
+         &args[1]
+      };
+      let file = if let Ok(f) = File::open(fnm) {
+         f
+      } else if let Ok(f) = File::open("lv2.dat") {
+         f
+      } else {
+         panic!("Cannot find data")
+      };
+      Box::new(std::io::BufReader::new(file))
    } else {
-      panic!("Cannot find data")
+      let test_data = test_data();
+      Box::new(std::io::BufReader::new(Cursor::new(test_data)))
    };
-   let reader = BufReader::new(file);
-   // let lines: Lines<StdinLock> = io::stdin().lines();
-   // let mut mod_host_controller: ModHostController =
-   //    get_lv2_controller(lines.map(|r| r.map_err(Into::into)))?;
    let mut mod_host_controller: ModHostController =
       ModHostController::get_lv2_controller(
-         reader.lines().map(|r| r.map_err(Into::into)),
+         reader.lines(), //.map(|r| r)
       )?;
    // Start user interface.  Loop until user quits
    App::run(&mut mod_host_controller).expect("Running app");

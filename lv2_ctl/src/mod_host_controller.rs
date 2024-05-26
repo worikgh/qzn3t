@@ -229,7 +229,6 @@ impl ModHostController {
 												// println!("Symbol: '{a}' + '{}'", b.object);
 												a + remove_quotes(b.object.as_str())
 										  });
-
 									 let index: usize = plugin_data
 										  .iter()
 										  .filter(|&l| l.predicate == "<http://lv2plug.in/ns/lv2core#index>")
