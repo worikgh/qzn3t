@@ -69,13 +69,12 @@ pub struct App<'a> {
    /// JACK audio Connections as pairs of ports "<from> <to>"
    jack_connections: HashSet<String>,
 
-   /// Interface to `mod-host`
+   /// Interface to `mod-host`.  Stores the definition of all the
+   /// available simulators
    mod_host_controller: &'a mut ModHostController,
 
-   /// Maintain the view for the first screen, and the main data
-   /// model for the simulators.  ?? Should the stateful model of
-   /// LV2s (state is loaded/unloaded and connections) be in
-   /// `ModHostController` ??
+   /// Maintain the UI view of all the simulators for the first
+   /// screen
    lv2_stateful_list: Lv2StatefulList,
 
    /// Maintain the view for the second screen of loaded simulators
@@ -83,10 +82,6 @@ pub struct App<'a> {
 
    /// The current view
    app_view_state: AppViewState,
-
-   /// Internal state to prevent complaining too much about
-   /// unrecogised responses from mod-host
-   unrecognised_resp: HashSet<String>,
 
    /// The control ports of the simulator selected in the current
    /// views, for views which display such information.  Updated when
@@ -182,7 +177,6 @@ impl App<'_> {
          mod_host_controller,
          lv2_loaded_list: Lv2StatefulList::empty(),
          lv2_stateful_list: Lv2StatefulList::new(simulators),
-         unrecognised_resp: HashSet::new(),
 
          table_state: TableState::default().with_selected(0),
          scroll_bar_state: ScrollbarState::default(),
@@ -248,14 +242,10 @@ impl App<'_> {
                         self.send_mh_cmd(cmd.as_str());
 
                         // TODO:  Move this into the handler for received messages
-                        self.lv2_loaded_list.items.insert(
-                           if i > self.lv2_loaded_list.items.len() {
-                              self.lv2_loaded_list.items.len()
-                           } else {
-                              i
-                           },
+                        self.lv2_loaded_list.items.push(
                            lv2,
                         );
+								 self.lv2_loaded_list.items.sort_by(|a,b| a.mh_id.cmp(&b.mh_id ));
                         Status::Pending
                      }
 
@@ -422,7 +412,7 @@ impl App<'_> {
       let terminal = init_terminal()?;
       let mut app = App::new(mod_host_controller);
 
-      app._run(terminal).expect("Calling _run");
+      app.run_app(terminal).expect("Calling _run");
 
       restore_terminal()?;
 
@@ -530,27 +520,29 @@ impl App<'_> {
             let instance_number = q.0;
             let symbol = q.1;
             let n = q.2;
-            let n = n.parse::<isize>().expect("Expect iszize from param_set");
-            if n < 0 {
-               eprintln!(
+            let n: isize =
+               n.parse::<isize>().expect("Expect iszize from param_set");
+            match n.cmp(&0) {
+               Ordering::Greater => eprintln!(
                   "ERR: {n}.  Command: {:?}: {}",
                   self.mod_host_controller.get_last_mh_command(),
                   ModHostController::translate_error_code(n as isize)
-               );
-            } else if n == 0 {
-               // Set the value in the LV2, update our records
-               // Get the value from the command
-               let sp = last_mh_command.len()
-                  - last_mh_command
-                     .chars()
-                     .rev()
-                     .position(|c| c.is_whitespace())
-                     .unwrap_or(0);
-               let value = last_mh_command.as_str()[sp..].trim();
-               self.update_port(instance_number, symbol, value);
-            } else {
-               panic!("Bad n {n} from mod-host in resp");
-            }
+               ),
+
+               Ordering::Equal => {
+                  // Set the value in the LV2, update our records
+                  // Get the value from the command
+                  let sp = last_mh_command.len()
+                     - last_mh_command
+                        .chars()
+                        .rev()
+                        .position(|c| c.is_whitespace())
+                        .unwrap_or(0);
+                  let value = last_mh_command.as_str()[sp..].trim();
+                  self.update_port(instance_number, symbol, value);
+               }
+               _ => panic!("Bad n {n} from mod-host in resp"),
+            };
          }
          "remove" => {
             // Removing an LV2.  Get the instance number from the command
@@ -613,38 +605,35 @@ impl App<'_> {
    fn process_buffer(&mut self) {
       // If there is no '\n' in buffer, do not process it, leave it
       // till next time.  But process all lines that are available
-      while let Some(s) = self.buffer.as_str().find('\n') {
+      while let Some(resp_line) = self.buffer.as_str().find('\n') {
          // There is a line available
-         let r = self.buffer.as_str()[0..s].trim().to_string();
-         if !r.is_empty() {
+         let resp = self.buffer.as_str()[0..resp_line].trim().to_string();
+         if !resp.is_empty() {
             // Skip blank lines.
             // eprintln!("INFO m-h: {r}");
-            if r == "mod-host>" || r == "using block size: 1024" {
-            } else if r.len() > 5 && &r.as_str()[0..5] == "resp " {
-               self.process_resp(r.as_str());
+            if resp == "mod-host>" || resp == "using block size: 1024" {
+            } else if resp.len() > 5 && &resp.as_str()[0..5] == "resp " {
+               self.process_resp(resp.as_str());
             } else {
                match &self.mod_host_controller.get_last_mh_command() {
-                  Some(s) => {
-                     if s.trim() == r.trim()
-                        || format!("mod-host> {}", s.trim()).as_str()
-                           == r.trim()
+                  Some(last_cmd) => {
+                     if last_cmd.trim() == resp.trim()
+                        || format!("mod-host> {}", last_cmd.trim()).as_str()
+                           == resp.trim()
                      {
-                        // All good mod-host repeats back commands
-                        // Command is not complete yet
+                        // All good. `mod-host` repeats back commands
                      } else {
-                        eprintln!("ERR: '{s}': Un-handled response: '{r}'");
+                        eprintln!(
+                           "ERR: '{last_cmd}': Un-handled response: '{resp}'"
+                        );
                      }
                   }
-                  None => {
-                     if self.unrecognised_resp.insert(r.clone()) {
-                        eprintln!("INFO Unrecognised: {r}")
-                     }
-                  }
+                  None => panic!("No `last_mh_command` command.  Unrecognised response: {resp}"),
                };
             }
          }
-         self.buffer = if s < self.buffer.len() {
-            self.buffer.as_str()[(s + 1)..].to_string()
+         self.buffer = if resp_line < self.buffer.len() {
+            self.buffer.as_str()[(resp_line + 1)..].to_string()
          } else {
             "".to_string()
          };
@@ -778,7 +767,7 @@ impl App<'_> {
                      // Shift key pressed.  Move half the distance
                      // between `v` and `max` for adj == PortAdj::Up
                      // and `min` if PortAdj::Down
-                      let max = if cppc.logarithmic {
+                     let max = if cppc.logarithmic {
                         cppc.max.ln()
                      } else {
                         cppc.max
@@ -788,21 +777,23 @@ impl App<'_> {
                      } else {
                         cppc.min
                      };
-                      let res = match adj {
-                        PortAdj::Down => min + (v - min)/2.0,
-                        PortAdj::Up => max - (max - v)/2.0,
-                      };
-							 eprintln!("DBG SHIFT {adj:?} pressed v: {v} res: {res}");
-							 res
-
+                     let res = match adj {
+                        PortAdj::Down => min + (v - min) / 2.0,
+                        PortAdj::Up => max - (max - v) / 2.0,
+                     };
+                     eprintln!("DBG SHIFT {adj:?} pressed v: {v} res: {res}");
+                     res
                   } else {
-                      let res = n + _step
-                        * match adj {
-                           PortAdj::Down => -1_f64,
-                           PortAdj::Up => 1_f64,
-                        };
-							 eprintln!("DBG SHIFT {adj:?} not pressed v: {v} res: {res}");
-							 res
+                     let res = n
+                        + _step
+                           * match adj {
+                              PortAdj::Down => -1_f64,
+                              PortAdj::Up => 1_f64,
+                           };
+                     eprintln!(
+                        "DBG SHIFT {adj:?} not pressed v: {v} res: {res}"
+                     );
+                     res
                   };
 
                   let n: f64 = if cppc.logarithmic { n.exp() } else { n };
@@ -832,7 +823,10 @@ impl App<'_> {
    }
 
    /// The main body of the App
-   fn _run(&mut self, mut terminal: Terminal<impl Backend>) -> io::Result<()> {
+   fn run_app(
+      &mut self,
+      mut terminal: Terminal<impl Backend>,
+   ) -> io::Result<()> {
       // init_error_hooks().expect("App::run error hooks");
 
       // Control the event loop.  `frame_time` is the Duration of a loop.
