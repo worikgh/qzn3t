@@ -49,7 +49,7 @@ const ITEM_HEIGHT: usize = 1;
 /// Encodes whether a port value is being incremented `up` or
 /// decremented `down` when adjusting the port value.
 /// This allows the same code do be used for both cases
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum PortAdj {
    Up,
    Down,
@@ -242,10 +242,11 @@ impl App<'_> {
                         self.send_mh_cmd(cmd.as_str());
 
                         // TODO:  Move this into the handler for received messages
-                        self.lv2_loaded_list.items.push(
-                           lv2,
-                        );
-								 self.lv2_loaded_list.items.sort_by(|a,b| a.mh_id.cmp(&b.mh_id ));
+                        self.lv2_loaded_list.items.push(lv2);
+                        self
+                           .lv2_loaded_list
+                           .items
+                           .sort_by(|a, b| a.mh_id.cmp(&b.mh_id));
                         Status::Pending
                      }
 
@@ -444,10 +445,24 @@ impl App<'_> {
       let sp: usize = last_mh_command
          .chars()
          .position(|x| x.is_whitespace())
-         .expect("No space in resp string");
+         .expect("No space in last_mh_command");
       // First word is command
       let cmd = &last_mh_command[0..sp];
 
+      // Check the error code was 0
+      let n = Self::get_resp_error_code(response);
+      match n.cmp(&0) {
+         Ordering::Greater => {
+            eprintln!(
+               "ERR: {n}.  Command: {:?}: {}",
+               self.mod_host_controller.get_last_mh_command(),
+               ModHostController::translate_error_code(n)
+            );
+            return;
+         }
+         Ordering::Equal => (),
+         _ => panic!("Bad n {n} from mod-host in resp"),
+      };
       match cmd {
          "add" => {
             // Adding an LV2.  Get the instance number from the
@@ -502,47 +517,28 @@ impl App<'_> {
             // Response e.g: resp 0 0.1250
             // Got the current value of a Port.
             // Get the symbol for the port from the command
-            let q = Self::get_instance_symbol_res(
-               last_mh_command.as_str(),
-               response,
-            );
+            let q = Self::get_instance_symbol_res(last_mh_command.as_str());
             let instance_number = q.0;
             let symbol = q.1;
-            let value = q.2;
+            let value = Self::get_resp_value(response);
             self.update_port(instance_number, symbol, value);
          }
          "param_set" => {
             // E.g: "param_set 1 Gain 0"
-            let q = Self::get_instance_symbol_res(
-               last_mh_command.as_str(),
-               response,
-            );
+            // REsponse e.g: resp 0
+            let q = Self::get_instance_symbol_res(last_mh_command.as_str());
             let instance_number = q.0;
             let symbol = q.1;
-            let n = q.2;
-            let n: isize =
-               n.parse::<isize>().expect("Expect iszize from param_set");
-            match n.cmp(&0) {
-               Ordering::Greater => eprintln!(
-                  "ERR: {n}.  Command: {:?}: {}",
-                  self.mod_host_controller.get_last_mh_command(),
-                  ModHostController::translate_error_code(n as isize)
-               ),
-
-               Ordering::Equal => {
-                  // Set the value in the LV2, update our records
-                  // Get the value from the command
-                  let sp = last_mh_command.len()
-                     - last_mh_command
-                        .chars()
-                        .rev()
-                        .position(|c| c.is_whitespace())
-                        .unwrap_or(0);
-                  let value = last_mh_command.as_str()[sp..].trim();
-                  self.update_port(instance_number, symbol, value);
-               }
-               _ => panic!("Bad n {n} from mod-host in resp"),
-            };
+            // Set the value in the LV2, update our records
+            // Get the value from the command
+            let sp = last_mh_command.len()
+               - last_mh_command
+                  .chars()
+                  .rev()
+                  .position(|c| c.is_whitespace())
+                  .unwrap_or(0);
+            let value = last_mh_command.as_str()[sp..].trim();
+            self.update_port(instance_number, symbol, value);
          }
          "remove" => {
             // Removing an LV2.  Get the instance number from the command
@@ -670,16 +666,32 @@ impl App<'_> {
          }
       }
    }
+
+   /// Get the new value from the response to a `param_get`
+   fn get_resp_value(resp: &str) -> &str {
+      // resp 0 0.5000
+      assert!(resp.len() > 6);
+      let r = &resp[6..];
+      r.trim()
+   }
+
+   fn get_resp_error_code(resp: &str) -> isize {
+      let r = &resp[5..];
+      let sp: usize = r.chars().position(|x| x.is_whitespace()).unwrap_or(
+         // No whitespace, till end of string
+         r.len(),
+      );
+      let res = r[..sp].trim();
+      res.parse::<isize>().unwrap()
+   }
+
    /// When responding to a param_get or param_set extract the
-   /// instance number   and the
-   /// symbol for the simulator from the last command
-   fn get_instance_symbol_res<'a>(
-      last_mh_command: &'a str,
-      response: &'a str,
-   ) -> (usize, &'a str, &'a str) {
+   /// instance number, the symbol, and the value (if param_get) from the
+   /// simulator from the last command
+   fn get_instance_symbol_res(last_mh_command: &str) -> (usize, &str) {
       // Got the current value of a Port.
       // Get the symbol for the port from the command
-      // E.g: param_set 2 Volume 0.16717 -> RESP resp 0
+      // E.g: param_set 2 Volume 0.16717 -> resp 0
       // E.g: param_get 2 Volume -> resp 0 0.3078
       // eprintln!("get_instance_symbol_res:  last_mh_command: {last_mh_command}  response: {response}");
       let instance_symbol = last_mh_command["param_get".len()..].trim();
@@ -698,21 +710,7 @@ impl App<'_> {
       // param_set has extra data after the symbol, param_get does not
       let sp = symbol.find(char::is_whitespace).unwrap_or(symbol.len());
       let symbol = symbol[..sp].trim();
-
-      // Got `instance` and `symbol` from command
-      // Get the `status` and `value` from `response`
-      let r = &response[5..];
-      let sp: usize = r.chars().position(|x| x.is_whitespace()).unwrap_or(
-         // No whitespace, till end of string
-         0,
-      );
-
-      let n = r[sp..].trim();
-      // eprintln!(
-      //    "get_instance_symbol_res response: {:?}",
-      //    (instance_number, symbol, n)
-      // );
-      (instance_number, symbol, n)
+      (instance_number, symbol)
    }
 
    /// Called from main event loop
@@ -814,8 +812,24 @@ impl App<'_> {
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
                }
                ControlPortProperties::Scale(_cpps) => {
-                  // Move up or down the set values
-                  eprintln!("DBG Adjust port {port_symbol} {adj:?} {value} Unimplemented for Scale Port");
+                  if let Some(value_idx) = _cpps.value {
+                     let new_value = if adj == PortAdj::Down {
+                        if value_idx == 0 {
+                           // Nothing to do,  Cannot go below zero
+                           return;
+                        }
+                        _cpps.labels_values[value_idx - 1].1.clone()
+                     } else {
+                        if value_idx + 1 == _cpps.labels_values.len() {
+                           // Nothing to do.  Cannot go any higher
+                           return;
+                        }
+                        _cpps.labels_values[value_idx + 1].1.clone()
+                     };
+                     let cmd =
+                        format!("param_set {mh_id} {port_symbol} {new_value}");
+                     self.mod_host_controller.send_mh_cmd(cmd.as_str());
+                  }
                }
             }
          }

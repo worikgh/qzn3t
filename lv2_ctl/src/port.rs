@@ -127,29 +127,7 @@ pub enum PortType {
    AtomPort,
    Other(String),
 }
-impl PortType {
-   // Return the strings  to asign to the control values.  These are sent to mod-host
-   fn _values(pt: PortType) -> Vec<String> {
-      match pt {
-         PortType::Control(properties) => {
-            match properties {
-               ControlPortProperties::Continuous(_cp) => {
-                  // struct ContinuousControlPort {
-                  // 	 kind: ContinuousType,
-                  // 	 max: f64,
-                  // 	 min: f64,
-                  // 	 default: f64,
-                  // 	 logarithmic: bool,
-                  // }
-               }
-               ControlPortProperties::Scale(_sp) => (),
-            }
-         }
-         _ => panic!("Only implemented for Control ports"),
-      };
-      vec![]
-   }
-}
+impl PortType {}
 #[derive(Debug, Clone)]
 pub struct Port {
    pub name: String,   // For display

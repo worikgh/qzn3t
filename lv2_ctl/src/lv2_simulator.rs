@@ -31,7 +31,8 @@ pub struct Lv2Simulator {
    /// Display name
    pub name: String,
 
-   /// Unique identifier
+   /// Unique identifier.  There can be more than one Lv2Simulator in
+   /// a list, each with a different `mh_id`.
    pub url: String,
 
    /// Status loaded, unloaded, or pending
@@ -48,11 +49,6 @@ pub struct Lv2Simulator {
 
    /// The output ports.
    pub output_ports: Vec<String>,
-   // If the simulater is loaded it will have a value.  In most
-   // useful cases it is an integer or a decimal, but it depends on
-   // the type of simulator
-   // No!  Control ports have values not Lv2Simulators
-   // pub value: Option<String>,
 }
 
 impl Lv2Simulator {}

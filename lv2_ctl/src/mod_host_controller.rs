@@ -576,33 +576,6 @@ fn control_number(object: &str) -> (f64, String) {
    (n, schema)
 }
 
-#[allow(dead_code)]
-fn make_control_port_values(
-   min: f64,
-   max: f64,
-   logarithmic: bool,
-) -> [f64; 128] {
-   let mut result = [0_f64; 128];
-   if logarithmic {
-      let log_min = min.ln();
-      let log_max = max.ln();
-
-      for (i, item) in result.iter_mut().enumerate() {
-         //      for i in 0..128 {
-         let t = i as f64 / 127.0;
-         *item = (log_min + (log_max - log_min) * t.exp()).exp();
-      }
-   } else {
-      let increment = (max - min) / 127.0;
-
-      for (i, item) in result.iter_mut().enumerate() {
-         *item = min + increment * i as f64;
-      }
-   }
-   // eprintln!("INFO: control_port_values: {result:?}");
-   result
-}
-
 fn get_number_from_object(object: &str) -> &str {
    // "29"^^<http://www.w3.org/2001/XMLSchema#integer> not usize
    let c = object[1..]
