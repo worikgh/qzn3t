@@ -426,6 +426,23 @@ impl App<'_> {
       eprintln!("3 INFO Status: {status}");
    }
 
+   /// The first integer in the response is <=0 except when a
+   /// response to a `param_add` when it is the instance number of
+   /// the added simulator,  
+   fn validate_resp(&self, resp_code: isize) -> bool {
+      if let Ordering::Greater = 0.cmp(&resp_code) {
+         // match 0.cmp(&resp_code) {
+         //   Ordering::Less => {
+         eprintln!(
+            "ERR: {resp_code}.  Command: {:?}: {}",
+            self.mod_host_controller.get_last_mh_command(),
+            ModHostController::translate_error_code(resp_code)
+         );
+         return false;
+      }
+      return true;
+   }
+
    /// Handle a response from mod-host that starts with "resp ".  It
    /// is a response to a command, so what happens here is dependant
    /// on that command    
@@ -433,6 +450,12 @@ impl App<'_> {
    fn process_resp(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
       eprintln!("MH RESP {response}");
+
+      let resp_code = Self::get_resp_code(response);
+      if !self.validate_resp(resp_code) {
+			 // No action to take if response not valid
+          return;
+      }
       let last_mh_command = match self.mod_host_controller.get_last_mh_command()
       {
          Some(s) => s.trim().to_string(),
@@ -446,23 +469,10 @@ impl App<'_> {
          .chars()
          .position(|x| x.is_whitespace())
          .expect("No space in last_mh_command");
+
       // First word is command
       let cmd = &last_mh_command[0..sp];
 
-      // Check the error code was 0
-      let n = Self::get_resp_error_code(response);
-      match n.cmp(&0) {
-         Ordering::Greater => {
-            eprintln!(
-               "ERR: {n}.  Command: {:?}: {}",
-               self.mod_host_controller.get_last_mh_command(),
-               ModHostController::translate_error_code(n)
-            );
-            return;
-         }
-         Ordering::Equal => (),
-         _ => panic!("Bad n {n} from mod-host in resp"),
-      };
       match cmd {
          "add" => {
             // Adding an LV2.  Get the instance number from the
@@ -492,10 +502,7 @@ impl App<'_> {
             // Get the instance number from the response.  If this
             // is > 0 it is the `instace_number`, else it is an
             // error code
-            let n = response[5..]
-               .parse::<isize>()
-               .expect("No instance number at end of response");
-
+            let n = resp_code;
             if n >= 0 {
                // `n` is the instance_number of the simulator
                assert!(n as usize == instance_number);
@@ -554,28 +561,24 @@ impl App<'_> {
 
             // Get response.  If 0, all is good.  Otherwise there
             // is an error.  Leave item pending
-            if let Ok(n) = response[5..].parse::<isize>() {
-               match n.cmp(&0) {
-                  Ordering::Equal => {
-                     self
-                        .lv2_stateful_list
-                        .items
-                        .iter_mut()
-                        .find(|x| x.mh_id == instance_number)
-                        .expect("Cannot find LV2 instance: {instance_number}")
-                        .status = Status::Unloaded
-                  }
-                  Ordering::Greater => {
-                     eprintln!("ERR: Bad response.  n > 0: {response}")
-                  }
-                  Ordering::Less => eprintln!(
-                     "M-H Err: {n} => {}",
-                     ModHostController::translate_error_code(n)
-                  ),
-               };
-            } else {
-               eprintln!("ERR Bad resp: {response}");
-            }
+            match resp_code.cmp(&0) {
+               Ordering::Equal => {
+                  self
+                     .lv2_stateful_list
+                     .items
+                     .iter_mut()
+                     .find(|x| x.mh_id == instance_number)
+                     .expect("Cannot find LV2 instance: {instance_number}")
+                     .status = Status::Unloaded
+               }
+               Ordering::Greater => {
+                  eprintln!("ERR: Bad response for {last_mh_command}.  n > 0: {response}")
+               }
+               Ordering::Less => eprintln!(
+                  "M-H Err: {resp_code} => {}",
+                  ModHostController::translate_error_code(resp_code)
+               ),
+            };
             self.mod_host_controller.set_last_mh_command(None);
          }
          "connect" => {
@@ -675,7 +678,7 @@ impl App<'_> {
       r.trim()
    }
 
-   fn get_resp_error_code(resp: &str) -> isize {
+   fn get_resp_code(resp: &str) -> isize {
       let r = &resp[5..];
       let sp: usize = r.chars().position(|x| x.is_whitespace()).unwrap_or(
          // No whitespace, till end of string
