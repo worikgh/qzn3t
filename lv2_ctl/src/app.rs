@@ -202,8 +202,8 @@ impl App<'_> {
       format!(
          "{:?} queued cmd# {} Last Command: {:?}",
          self.app_view_state,
-         self.mod_host_controller.get_queued_count(),
-         self.mod_host_controller.get_last_mh_command()
+         self.mod_host_controller.mh_command_queue.len(),
+         self.mod_host_controller.last_mh_command.len(),
       )
    }
 
@@ -423,7 +423,7 @@ impl App<'_> {
    /// Set a status line
    fn set_status(&self, status: &str) {
       // No actual status yet
-      eprintln!("3 INFO Status: {status}");
+      eprintln!("INFO Status: {status}");
    }
 
    /// The first integer in the response is <=0 except when a
@@ -431,39 +431,32 @@ impl App<'_> {
    /// the added simulator,  
    fn validate_resp(&self, resp_code: isize) -> bool {
       if let Ordering::Greater = 0.cmp(&resp_code) {
-         // match 0.cmp(&resp_code) {
-         //   Ordering::Less => {
-         eprintln!(
-            "ERR: {resp_code}.  Command: {:?}: {}",
-            self.mod_host_controller.get_last_mh_command(),
-            ModHostController::translate_error_code(resp_code)
-         );
          return false;
       }
-      return true;
+      true
    }
 
    /// Handle a response from mod-host that starts with "resp ".  It
    /// is a response to a command, so what happens here is dependant
-   /// on that command    
-   /// resp status [value]
+   /// on that command.  TRhe commands are pushed on the queue
+   /// `self.mod_host_controller.last_mh_command` resp status [value]
    fn process_resp(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
-      eprintln!("MH RESP {response}");
 
       let resp_code = Self::get_resp_code(response);
       if !self.validate_resp(resp_code) {
-			 // No action to take if response not valid
-          return;
+         // No action to take if response not valid
+         return;
       }
-      let last_mh_command = match self.mod_host_controller.get_last_mh_command()
-      {
-         Some(s) => s.trim().to_string(),
-         None => panic!(
-            "Handeling 'resp' response but there is no `last_mh_command`"
-         ),
-      };
+      let last_mh_command =
+         match self.mod_host_controller.last_mh_command.pop_front() {
+            Some(s) => s.trim().to_string(),
+            None => panic!(
+               "Handeling 'resp' response but there is no `last_mh_command`"
+            ),
+         };
 
+      eprintln!("MH RESP '{last_mh_command}' =>  {response} ");
       // Get the first word as a slice
       let sp: usize = last_mh_command
          .chars()
@@ -505,7 +498,7 @@ impl App<'_> {
             let n = resp_code;
             if n >= 0 {
                // `n` is the instance_number of the simulator
-               assert!(n as usize == instance_number);
+                assert!(n as usize == instance_number, "n:{n} == instance_number:{instance_number}");
 
                item.status = Status::Loaded;
             } else {
@@ -513,7 +506,7 @@ impl App<'_> {
                let errno = n;
                eprintln!(
                   "ERR: {errno}.  Command: {:?}: {}",
-                  self.mod_host_controller.get_last_mh_command(),
+                  last_mh_command,
                   ModHostController::translate_error_code(n)
                );
                item.status = Status::Unloaded;
@@ -579,7 +572,6 @@ impl App<'_> {
                   ModHostController::translate_error_code(resp_code)
                ),
             };
-            self.mod_host_controller.set_last_mh_command(None);
          }
          "connect" => {
             // A connection was established
@@ -595,9 +587,6 @@ impl App<'_> {
          }
          _ => panic!("Unknown command: {last_mh_command}"),
       };
-
-      // Having handled the command, one way or another, delete it
-      self.mod_host_controller.set_last_mh_command(None);
    }
 
    /// Process data coming from mod-host.  Line orientated and asynchronous
@@ -614,21 +603,7 @@ impl App<'_> {
             } else if resp.len() > 5 && &resp.as_str()[0..5] == "resp " {
                self.process_resp(resp.as_str());
             } else {
-               match &self.mod_host_controller.get_last_mh_command() {
-                  Some(last_cmd) => {
-                     if last_cmd.trim() == resp.trim()
-                        || format!("mod-host> {}", last_cmd.trim()).as_str()
-                           == resp.trim()
-                     {
-                        // All good. `mod-host` repeats back commands
-                     } else {
-                        eprintln!(
-                           "ERR: '{last_cmd}': Un-handled response: '{resp}'"
-                        );
-                     }
-                  }
-                  None => panic!("No `last_mh_command` command.  Unrecognised response: {resp}"),
-               };
+               eprintln!("INFO Unhandled response: {resp}");
             }
          }
          self.buffer = if resp_line < self.buffer.len() {
@@ -651,12 +626,13 @@ impl App<'_> {
       value: &str,
    ) {
       // Currently loaded simulator
+      eprintln!("DBG update_port({instance_number}, {symbol}, {value})");
       if let Some(idx) = self.get_stateful_list_mut().state.selected() {
          let mh_id = self.get_stateful_list().items[idx].mh_id;
          if mh_id != instance_number {
             // Simulator was unloaded while command was in flight
             eprintln!(
-						 "INFO: update_port {instance_number} {symbol} {value}: Simulator not loaded.");
+						 "DBG: update_port {instance_number} {symbol} {value}: Simulator not loaded.");
             return;
          }
          if self
@@ -665,15 +641,17 @@ impl App<'_> {
             .is_none()
          {
             eprintln!(
-						 "INFO: update_port {instance_number} {symbol} {value}: That symbol was not in `port_values`.");
+						 "DBG: update_port {instance_number} {symbol} {value}: That symbol was not in `port_values`.");
          }
+      } else {
+         eprintln!("DBG update_port: No loaded simulator");
       }
    }
 
    /// Get the new value from the response to a `param_get`
    fn get_resp_value(resp: &str) -> &str {
       // resp 0 0.5000
-      assert!(resp.len() > 6);
+      assert!(resp.len() > 5, "get_resp_value({resp})");
       let r = &resp[6..];
       r.trim()
    }
@@ -782,7 +760,6 @@ impl App<'_> {
                         PortAdj::Down => min + (v - min) / 2.0,
                         PortAdj::Up => max - (max - v) / 2.0,
                      };
-                     eprintln!("DBG SHIFT {adj:?} pressed v: {v} res: {res}");
                      res
                   } else {
                      let res = n
@@ -791,9 +768,6 @@ impl App<'_> {
                               PortAdj::Down => -1_f64,
                               PortAdj::Up => 1_f64,
                            };
-                     eprintln!(
-                        "DBG SHIFT {adj:?} not pressed v: {v} res: {res}"
-                     );
                      res
                   };
 
@@ -808,8 +782,6 @@ impl App<'_> {
                      ContinuousType::Float => format!("{n:.4}"),
                   };
                   let new_value = new_value.trim();
-                  eprintln!("DBG: handle_port_adj: Continuous.  min: {} value: {} -> {} max: {} log {} step: {_step}",
-									  cppc.min, v, new_value, cppc.max, cppc.logarithmic);
                   let cmd =
                      format!("param_set {mh_id} {port_symbol} {new_value}");
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());

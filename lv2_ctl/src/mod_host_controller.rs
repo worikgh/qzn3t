@@ -36,7 +36,7 @@ pub struct ModHostController {
    /// This programme is asynchronous, so a command is sent, and
    /// later a response is received.  This allows the two to be
    /// connected.  When a response is received set this back to None.
-   pub last_mh_command: Option<String>,
+   pub last_mh_command: VecDeque<String>,
 }
 
 impl ModHostController {
@@ -319,7 +319,7 @@ impl ModHostController {
          simulators,
          input_tx,
          output_rx,
-         last_mh_command: None,
+         last_mh_command: VecDeque::new(),
          mh_command_queue: VecDeque::new(),
       };
       {
@@ -512,12 +512,12 @@ impl ModHostController {
    /// Called from the event loop to send a message to mod-host
    pub fn pump_mh_queue(&mut self) {
       self.reduce_queue();
-      if self.last_mh_command.is_none() && !self.mh_command_queue.is_empty() {
+      if !self.mh_command_queue.is_empty() {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
 
          eprintln!("MH CMD: {}", cmd.trim());
-         self.last_mh_command = Some(cmd.trim().to_string());
+         self.last_mh_command.push_back(cmd.trim().to_string());
          self
             .input_tx
             .send(cmd.as_bytes().to_vec())
@@ -526,12 +526,6 @@ impl ModHostController {
    }
    pub fn get_queued_count(&self) -> usize {
       self.mh_command_queue.len()
-   }
-   pub fn get_last_mh_command(&self) -> Option<String> {
-      self.last_mh_command.clone()
-   }
-   pub fn set_last_mh_command(&mut self, cmd: Option<String>) {
-      self.last_mh_command = cmd;
    }
 }
 
