@@ -512,7 +512,10 @@ impl ModHostController {
    /// Called from the event loop to send a message to mod-host
    pub fn pump_mh_queue(&mut self) {
       self.reduce_queue();
-      if !self.mh_command_queue.is_empty() {
+      if !self.mh_command_queue.is_empty() &&
+			  // Only push a command if there is no or one command in flight
+			  self.last_mh_command.len() < 2
+      {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
 

@@ -200,10 +200,12 @@ impl App<'_> {
    }
    fn status_string(&self) -> String {
       format!(
-         "{:?} queued cmd# {} Last Command: {:?}",
+         "AppViewState({:?}) queued cmd({}) {:?} Last Command({}): {:?}",
          self.app_view_state,
          self.mod_host_controller.mh_command_queue.len(),
+         self.mod_host_controller.mh_command_queue,
          self.mod_host_controller.last_mh_command.len(),
+         self.mod_host_controller.last_mh_command,
       )
    }
 
@@ -276,9 +278,9 @@ impl App<'_> {
             // TODO: Optimisation - check the same LV2 is not selected twice
             if let Some(idx) = self.get_stateful_list_mut().state.selected() {
                // Connect the selected effect to system in/out
-               eprintln!("INFO change_status AppViewState::Command idx: {idx}");
                let mh_id = self.get_stateful_list().items[idx].mh_id;
                let url = self.get_stateful_list().items[idx].url.clone();
+               eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
                self.control_ports = self
                   .mod_host_controller
                   .simulators
@@ -498,7 +500,10 @@ impl App<'_> {
             let n = resp_code;
             if n >= 0 {
                // `n` is the instance_number of the simulator
-                assert!(n as usize == instance_number, "n:{n} == instance_number:{instance_number}");
+               assert!(
+                  n as usize == instance_number,
+                  "n:{n} == instance_number:{instance_number}"
+               );
 
                item.status = Status::Loaded;
             } else {
@@ -582,7 +587,7 @@ impl App<'_> {
          "disconnect" => {
             let jacks = &last_mh_command.as_str()[sp + 1..];
             if !self.jack_connections.remove(jacks) {
-               panic!("Failed to remove {jacks} from connections");
+               eprintln!("Failed to remove {jacks} from connections");
             }
          }
          _ => panic!("Unknown command: {last_mh_command}"),
