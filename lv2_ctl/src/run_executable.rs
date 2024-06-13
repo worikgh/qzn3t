@@ -102,9 +102,13 @@ pub fn run_executable(
       let elapsed_time = start_time.elapsed();
       if elapsed_time < target_frame_time {
          thread::sleep(target_frame_time - elapsed_time);
-      }else{
-			 eprintln!("Slow in run_executable loop: {}/{}",elapsed_time.as_micros(), target_frame_time.as_micros());
-		}
+      } else {
+         eprintln!(
+            "Slow in run_executable loop: {}/{}",
+            elapsed_time.as_micros(),
+            target_frame_time.as_micros()
+         );
+      }
    }
 
    // Kill the process

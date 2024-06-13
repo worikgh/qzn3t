@@ -325,7 +325,7 @@ impl ModHostController {
       {
          // Ensure mod-host is going.  This is taking a gamble.  The
          // gamble is that we will get the whole response all at once.
-         let resp = result.get_data()?;
+         let resp = result.get_resp()?;
          // const MOD_HOST: &str = "mod-host> ";
          const MOD_HOST: &str = "mod-host>";
          let resp = resp.as_str().trim();
@@ -386,7 +386,7 @@ impl ModHostController {
 
    /// Get a response from mod-host if one is available.  Will block
    /// until some is available.  
-   pub fn get_data(&self) -> Result<String> {
+   pub fn get_resp(&self) -> Result<String> {
       let resp = match self.output_rx.recv() {
          Ok(t) => t,
          Err(err) => {
@@ -405,7 +405,7 @@ impl ModHostController {
 
    /// Get a response from mod-host if one is available.  Will not block
    /// and returns Ok(None) if no data availale
-   pub fn try_get_data(&self) -> Result<Option<String>> {
+   pub fn try_get_resp(&self) -> Result<Option<String>> {
       match self.output_rx.try_recv() {
          Ok(t) => {
             // Got some data
@@ -513,7 +513,7 @@ impl ModHostController {
    pub fn pump_mh_queue(&mut self) {
       self.reduce_queue();
       if !self.mh_command_queue.is_empty() &&
-			  // Only push a command if there is no or one command in flight
+			  // Only push a command if there is none or one command in flight
 			  self.last_mh_command.len() < 2
       {
          // Safe because queue is not empty

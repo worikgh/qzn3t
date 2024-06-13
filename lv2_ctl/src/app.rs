@@ -203,9 +203,9 @@ impl App<'_> {
          "AppViewState({:?}) queued cmd({}) {:?} Last Command({}): {:?}",
          self.app_view_state,
          self.mod_host_controller.mh_command_queue.len(),
-         self.mod_host_controller.mh_command_queue,
+         self.mod_host_controller.mh_command_queue.as_slices(),
          self.mod_host_controller.last_mh_command.len(),
-         self.mod_host_controller.last_mh_command,
+         self.mod_host_controller.last_mh_command.as_slices(),
       )
    }
 
@@ -603,7 +603,7 @@ impl App<'_> {
          let resp = self.buffer.as_str()[0..resp_line].trim().to_string();
          if !resp.is_empty() {
             // Skip blank lines.
-            // eprintln!("INFO m-h: {r}");
+            eprintln!("INFO m-h: {resp}");
             if resp == "mod-host>" || resp == "using block size: 1024" {
             } else if resp.len() > 5 && &resp.as_str()[0..5] == "resp " {
                self.process_resp(resp.as_str());
@@ -761,19 +761,16 @@ impl App<'_> {
                      } else {
                         cppc.min
                      };
-                     let res = match adj {
+                     match adj {
                         PortAdj::Down => min + (v - min) / 2.0,
                         PortAdj::Up => max - (max - v) / 2.0,
-                     };
-                     res
+                     }
                   } else {
-                     let res = n
-                        + _step
-                           * match adj {
-                              PortAdj::Down => -1_f64,
-                              PortAdj::Up => 1_f64,
-                           };
-                     res
+                     n + _step
+                        * match adj {
+                           PortAdj::Down => -1_f64,
+                           PortAdj::Up => 1_f64,
+                        }
                   };
 
                   let n: f64 = if cppc.logarithmic { n.exp() } else { n };
@@ -961,7 +958,7 @@ impl App<'_> {
          self.pump_mh_queue();
 
          // Is there any data from mod-host
-         if let Ok(Some(data)) = self.mod_host_controller.try_get_data() {
+         if let Ok(Some(data)) = self.mod_host_controller.try_get_resp() {
             self.buffer += data.as_str();
             self.process_buffer();
          }
