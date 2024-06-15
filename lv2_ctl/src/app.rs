@@ -594,6 +594,9 @@ impl App<'_> {
       };
    }
 
+   fn process_cmdack(&mut self, cmdack: &str) {
+      eprintln!("DBG process_cmdack({cmdack}")
+   }
    /// Process data coming from mod-host.  Line orientated and asynchronous
    fn process_buffer(&mut self) {
       // If there is no '\n' in buffer, do not process it, leave it
@@ -605,6 +608,8 @@ impl App<'_> {
             // Skip blank lines.
             eprintln!("INFO m-h: {resp}");
             if resp == "mod-host>" || resp == "using block size: 1024" {
+            } else if resp.len() > 10 && &resp.as_str()[0..10] == "mod-host> " {
+               self.process_cmdack(&resp[10..]);
             } else if resp.len() > 5 && &resp.as_str()[0..5] == "resp " {
                self.process_resp(resp.as_str());
             } else {
