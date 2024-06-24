@@ -89,7 +89,6 @@ impl ModHostController {
             object_store.insert(object.clone(), index_sbj);
             index_sbj += 1;
          }
-         // eprintln!("SPO {subject} {predicate} {object}");
          lv2_data.push(Lv2Datum {
             subject,
             predicate,
@@ -111,7 +110,6 @@ impl ModHostController {
                // This subject has been processed
                continue;
             }
-            // eprintln!("TRIPPLE: {} {} {}", l.subject, l.predicate, l.object);
             // It is a plugin that has not been processed yet
 
             // Collect all data for this plugin identified by `subject`
@@ -258,7 +256,6 @@ impl ModHostController {
 													 // Other(String),
 													 "InputPort" => PortType::Input,
 													 "ControlPort" => {
-														  // eprintln!("Control port: {name} {symbol}");
 														  let (min, max, default, logarthmic, scale, tp) = get_mmdls(&plugin_data, &lv2_data);
 														  PortType::Control(ControlPortProperties::new(min, max, default, logarthmic,  scale.clone(), tp,))
 													 },
@@ -408,28 +405,25 @@ impl ModHostController {
       match self.output_rx.try_recv() {
          Ok(t) => {
             // Got some data
-            eprintln!(
-               "resp bytes 1: {}",
-               t.iter()
-                  .map(|t| format!("{:x}", t))
-                  .collect::<Vec<_>>()
-                  .join(", ")
-            );
+            // eprintln!(
+            //    "resp bytes 1: {}",
+            //    t.iter()
+            //       .map(|t| format!("{:x}", t))
+            //       .collect::<Vec<_>>()
+            //       .join(", ")
+            // );
             let t1: Vec<u8> = t.clone();
-            let resp: Vec<u8> = rem_trail_0(t1);
-            eprintln!(
-               "resp bytes 2: {}",
-               resp
-                  .iter()
-                  .map(|t| format!("{:x}", t))
-                  .collect::<Vec<_>>()
-                  .join(", ")
-            );
+            // let resp: Vec<u8> = rem_trail_0(t1);
+            // eprintln!(
+            //    "resp bytes 2: {}",
+            //    resp
+            //       .iter()
+            //       .map(|t| format!("{:x}", t))
+            //       .collect::<Vec<_>>()
+            //       .join(", ")
+            // );
             match String::from_utf8(resp) {
-               Ok(s) => {
-                  eprintln!("resp String: {s}");
-                  Ok(Some(s))
-               }
+               Ok(s) => Ok(Some(s)),
                Err(err) => Err(io::Error::new(
                   io::ErrorKind::InvalidData,
                   err.to_string(),
@@ -539,11 +533,11 @@ impl ModHostController {
          let cmd = self.mh_command_queue.pop_front().unwrap();
 
          let new_cmd = self.sent_commands.insert(cmd.trim().to_string());
-         eprintln!(
-            "MH {} CMD: {}",
-            if new_cmd { "N" } else { "R" },
-            cmd.trim()
-         );
+         // eprintln!(
+         //    "MH {} CMD: {}",
+         //    if new_cmd { "N" } else { "R" },
+         //    cmd.trim()
+         // );
          self
             .input_tx
             .send(cmd.as_bytes().to_vec())
@@ -642,7 +636,6 @@ fn get_mmdls(
          .collect();
 
    if min_set.is_empty() {
-      eprintln!("Oh dear");
       assert!(min_set.len() == 1);
    }
    let min_set = control_number(&min_set[0].object);
@@ -756,7 +749,7 @@ fn get_mmdls(
    } else if min_type == def_type {
       min_type
    } else {
-      eprintln!("All three types are diferent");
+      eprintln!("All three types are diferent: {l:?}");
       "double".to_string()
    };
 

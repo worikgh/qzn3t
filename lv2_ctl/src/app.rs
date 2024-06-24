@@ -253,10 +253,10 @@ impl App<'_> {
             } else {
                true
             };
-            eprintln!(
-               "DBG {mh_id}: {} last cmd: {cmd}",
-               if res { "Keep" } else { "Trash" }
-            );
+            // eprintln!(
+            //    "DBG {mh_id}: {} last cmd: {cmd}",
+            //    if res { "Keep" } else { "Trash" }
+            // );
             res
          })
          .map(|x| x.to_string())
@@ -327,7 +327,7 @@ impl App<'_> {
                let mh_id = self.get_stateful_list().items[idx].mh_id;
                self.filter_command_lists(mh_id);
                let url = self.get_stateful_list().items[idx].url.clone();
-               eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
+               // eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
                self.control_ports = self
                   .mod_host_controller
                   .simulators
@@ -359,7 +359,7 @@ impl App<'_> {
                   self.send_mh_cmd(cmd.as_str());
                }
                eprintln!(
-                  "INFO Effect: effect_{idx} dispay ports.  mh_id: {mh_id}"
+                  "INFO Effect: effect_{idx} display ports.  mh_id: {mh_id}"
                );
 
                //  Disconnect any existing connections.  This
@@ -369,7 +369,7 @@ impl App<'_> {
                   .iter()
                   .map(|s| format!("disconnect {s}"))
                   .collect::<Vec<String>>();
-               eprintln!("INFO Disconnect commands: {disconnect_cmds:?}");
+
                let _control_commands: Vec<String>;
                let input_commands: Vec<String>;
                let output_commands: Vec<String>;
@@ -422,12 +422,6 @@ impl App<'_> {
                      })
                      .collect();
                }
-               eprintln!(
-                  "INFO: Issuing {} commands to mod-host",
-                  disconnect_cmds.len()
-                     + input_commands.len()
-                     + output_commands.len() // + control_commands.len()
-               );
                for cmd in disconnect_cmds.iter() {
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
                }
@@ -437,10 +431,7 @@ impl App<'_> {
                for cmd in output_commands.iter() {
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
                }
-               // for cmd in control_commands.iter() {
-               //    self.mod_host_controller.send_mh_cmd(cmd.as_str());
-               // }
-               eprintln!("INFO: Commands all sent");
+
             }
          }
       }
@@ -518,23 +509,6 @@ impl App<'_> {
       .expect("Trim command");
       self.mod_host_controller.resp_command = None;
 
-      // // Debugging code.  What commands are being missed?  Are they out of order?
-      // eprintln!("DBG Match CMD {command}");
-      // loop {
-      //    if let Some(cmd) = self.mod_host_controller.last_mh_command.pop_front()
-      //    {
-      //       if cmd == command {
-      //          break;
-      //       }
-      //       eprintln!("DBG Unmatched CMD: {cmd}");
-      //    }
-      //    if self.mod_host_controller.last_mh_command.is_empty() {
-      //       eprintln!("DBG Unknown: {command}");
-      //       break;
-      //    }
-      // }
-
-      eprintln!("MH RESP '{command}' =>  {response} ");
       // Get the first word as a slice
       let sp: usize = command
          .chars()
@@ -552,7 +526,7 @@ impl App<'_> {
             let sp = command
                .rfind(' ')
                .unwrap_or_else(|| panic!("Malformed command: '{command}'"));
-            eprintln!("DBG add command: {command}({sp})");
+
             let instance_number = command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
                     panic!(
                         "No instance number at end of add command: '{command}'  sp: {sp} => '{}'",
@@ -670,15 +644,10 @@ impl App<'_> {
          }
          _ => panic!("Unknown command: {command}"),
       };
-      if self
+		 self
          .mod_host_controller
          .sent_commands
-         .remove(command.as_str())
-      {
-         eprintln!("DBG Removed {command} from last_mh_command");
-      } else {
-         eprintln!("DBG Could not find {command} in last_mh_command");
-      }
+         .remove(command.as_str());
    }
 
    /// Process data coming from mod-host.  Line orientated and asynchronous
@@ -702,7 +671,6 @@ impl App<'_> {
                resp.as_str().trim()
             };
             if !resp.is_empty() {
-               eprintln!("INFO m-h: {resp}");
                if resp.len() > 5 && &resp[0..5] == "resp " {
                   self.process_responce(resp);
                } else if resp == "using block size: 1024"
@@ -712,7 +680,6 @@ impl App<'_> {
                   || resp.find(' ').is_none()
                {
                } else {
-                  eprintln!("INFO Unhandled response: {resp}");
 
                   self.mod_host_controller.resp_command =
                      Some(resp.to_string());
@@ -739,7 +706,7 @@ impl App<'_> {
       value: &str,
    ) {
       // Currently loaded simulator
-      eprintln!("DBG update_port({instance_number}, {symbol}, {value})");
+
       if let Some(idx) = self.get_stateful_list_mut().state.selected() {
          let mh_id = self.get_stateful_list().items[idx].mh_id;
          if mh_id != instance_number {
@@ -787,7 +754,7 @@ impl App<'_> {
       // Get the symbol for the port from the command
       // E.g: param_set 2 Volume 0.16717 -> resp 0
       // E.g: param_get 2 Volume -> resp 0 0.3078
-      // eprintln!("get_instance_symbol_res:  last_mh_command: {last_mh_command}  response: {response}");
+
       let instance_symbol = last_mh_command["param_get".len()..].trim();
       let sp = instance_symbol
          .find(char::is_whitespace)
@@ -818,7 +785,7 @@ impl App<'_> {
       let port: &Port;
       if let Some(idx) = self.get_stateful_list_mut().state.selected() {
          // Connect the selected effect to system in/out
-         eprintln!("INFO change_status AppViewState::Command idx: {idx}");
+
          mh_id = self.get_stateful_list().items[idx].mh_id;
          if let Some(i) = self.table_state.selected() {
             port = self.control_ports.get(i).unwrap();
@@ -1069,13 +1036,6 @@ impl App<'_> {
          if let Ok(Some(data)) = self.mod_host_controller.try_get_resp() {
             // Clean up the data.
             let data_b = data.as_bytes();
-            // let data_b = if let Some(&dn)  = data_b.iter().find(|c| *c<&0x20_u8 ){
-            // 	  eprintln!("Trim data Keep:     {}", String::from_utf8(data_b[0..dn as usize].to_vec()).unwrap());
-            // 	  eprintln!("Trim data expunged: {}", String::from_utf8(data_b[dn as usize..].to_vec()).unwrap());
-            // 	  &data_b[0..dn as usize]
-            // }else{
-            // 	  data_b
-            // };
 
             let data = String::from_utf8(data_b.to_vec())
                .expect("Create a data string");
