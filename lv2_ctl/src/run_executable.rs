@@ -6,13 +6,13 @@ use std::{thread, time};
 /// Remove the zero bytes from the end of a`resp`
 pub fn rem_trail_0(resp: Vec<u8>) -> Vec<u8> {
    let mut i = resp.as_slice().iter();
-   let n = i.position(|&x| x == 0); //.unwrap_or(resp.len());
+   let n = i.position(|&x| x == 0); // || x == 13 || x == 10); //.unwrap_or(resp.len());
    let n = n.unwrap_or(resp.len());
    resp[..n].to_vec()
 }
 
-/// Cannot to a blocking read on the ChildStdout.  Can do a blocking
-/// read on the Receiver end of `output_tx`
+/// Cannot do a non-blocking read on the ChildStdout.  Can do a
+/// non-blocking read on the Receiver end of `output_tx`
 fn read_child_stdout(
    mut child_stdout: ChildStdout,
    output_tx: Sender<Vec<u8>>,
@@ -25,7 +25,7 @@ fn read_child_stdout(
                output_tx.send(output_data.to_vec()).unwrap()
             }
          }
-         Err(err) => panic!("{err}: Failed reading ChileStdout"),
+         Err(err) => panic!("{err}: Failed reading ChildStdout"),
       };
    });
 }
@@ -52,7 +52,7 @@ pub fn run_executable(
    let stdout = child.stdout.take().unwrap();
    let mut stdin = child.stdin.take().unwrap();
 
-   let target_fps = 20;
+   let target_fps = 30;
    let target_frame_time = time::Duration::from_secs(1) / target_fps;
 
    let (stdout_tx, stdout_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();

@@ -23,6 +23,7 @@ use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
 use crate::port_table::port_table;
+use crate::run_executable;
 use color_eyre::config::HookBuilder;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
@@ -198,14 +199,19 @@ impl App<'_> {
          .expect("Get the Lv2 for Ports in App");
       sim.ports.iter().collect()
    }
+
    fn status_string(&self) -> String {
       format!(
-         "AppViewState({:?}) queued cmd({}) {:?} Last Command({}): {:?}",
+         "AppViewState({:?}) queued command({})  Last last_command({}): {:?}",
          self.app_view_state,
          self.mod_host_controller.mh_command_queue.len(),
-         self.mod_host_controller.mh_command_queue.as_slices(),
-         self.mod_host_controller.last_mh_command.len(),
-         self.mod_host_controller.last_mh_command.as_slices(),
+         // self.mod_host_controller.mh_command_queue.iter().fold("".to_string(), |a, b| format!("{a}{b}, ")),
+         self.mod_host_controller.sent_commands.len(),
+         self
+            .mod_host_controller
+            .sent_commands
+            .iter()
+            .fold("".to_string(), |a, b| format!("{a}{b}, ")),
       )
    }
 
@@ -219,6 +225,46 @@ impl App<'_> {
       self.mod_host_controller.pump_mh_queue();
    }
 
+   /// In command mode (f2) when entering this state clean out old
+   /// commands that make no sense
+   fn filter_command_lists(&mut self, mh_id: usize) {
+      let new_commands: HashSet<String> = self
+         .mod_host_controller
+         .sent_commands
+         .iter()
+         .filter(|cmd| {
+            // Get the first word of cmd to decide if it is out of date
+            let res = if cmd.starts_with("disconnect") {
+               // Do not keep disconnect commands
+               false
+            } else if cmd.starts_with("param_get ") {
+               let p = cmd.as_str()[9..].trim();
+               let sp = p.find(' ').unwrap_or(p.len());
+               p[0..sp]
+                  .parse::<usize>()
+                  .expect("param_get should be followed by a usize")
+                  == mh_id
+            } else if cmd.starts_with("connect effect_") {
+               if cmd.starts_with(format!("connect effect_{mh_id}").as_str()) {
+                  true
+               } else {
+                  false
+               }
+            } else {
+               true
+            };
+            eprintln!(
+               "DBG {mh_id}: {} last cmd: {cmd}",
+               if res { "Keep" } else { "Trash" }
+            );
+            res
+         })
+         .map(|x| x.to_string())
+         .collect();
+      self.mod_host_controller.sent_commands = new_commands;
+   }
+
+   // param_get 44 meter_R2, param_get 44 meter_L2, param_get 44 meter_R, param_get 44 meter_L1, param_get 45 meter_outR, param_get 45 clip_outR, param_get 44 meter_L, param_get 44 meter_R1
    /// Changes the status of the selected list item.  
    #[allow(clippy::iter_kv_map)]
    fn change_status(&mut self) {
@@ -279,6 +325,7 @@ impl App<'_> {
             if let Some(idx) = self.get_stateful_list_mut().state.selected() {
                // Connect the selected effect to system in/out
                let mh_id = self.get_stateful_list().items[idx].mh_id;
+               self.filter_command_lists(mh_id);
                let url = self.get_stateful_list().items[idx].url.clone();
                eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
                self.control_ports = self
@@ -442,45 +489,74 @@ impl App<'_> {
    /// is a response to a command, so what happens here is dependant
    /// on that command.  TRhe commands are pushed on the queue
    /// `self.mod_host_controller.last_mh_command` resp status [value]
-   fn process_resp(&mut self, response: &str) {
+   fn process_responce(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
 
       let resp_code = Self::get_resp_code(response);
       if !self.validate_resp(resp_code) {
          // No action to take if response not valid
+         eprintln!(
+            "ERR: Error from mod-host: {}({resp_code})",
+            ModHostController::translate_error_code(resp_code)
+         );
          return;
       }
-      let last_mh_command =
-         match self.mod_host_controller.last_mh_command.pop_front() {
-            Some(s) => s.trim().to_string(),
-            None => panic!(
-               "Handeling 'resp' response but there is no `last_mh_command`"
-            ),
-         };
 
-      eprintln!("MH RESP '{last_mh_command}' =>  {response} ");
+      // The command this is in response to
+      if self.mod_host_controller.resp_command.is_none() {
+         return;
+      }
+      let command = self
+         .mod_host_controller
+         .resp_command
+         .as_ref()
+         .unwrap()
+         .to_string();
+      let command = String::from_utf8(run_executable::rem_trail_0(
+         command.as_bytes().to_vec(),
+      ))
+      .expect("Trim command");
+      self.mod_host_controller.resp_command = None;
+
+      // // Debugging code.  What commands are being missed?  Are they out of order?
+      // eprintln!("DBG Match CMD {command}");
+      // loop {
+      //    if let Some(cmd) = self.mod_host_controller.last_mh_command.pop_front()
+      //    {
+      //       if cmd == command {
+      //          break;
+      //       }
+      //       eprintln!("DBG Unmatched CMD: {cmd}");
+      //    }
+      //    if self.mod_host_controller.last_mh_command.is_empty() {
+      //       eprintln!("DBG Unknown: {command}");
+      //       break;
+      //    }
+      // }
+
+      eprintln!("MH RESP '{command}' =>  {response} ");
       // Get the first word as a slice
-      let sp: usize = last_mh_command
+      let sp: usize = command
          .chars()
          .position(|x| x.is_whitespace())
          .expect("No space in last_mh_command");
 
       // First word is command
-      let cmd = &last_mh_command[0..sp];
+      let cmd = &command[0..sp];
 
       match cmd {
          "add" => {
             // Adding an LV2.  Get the instance number from the
             // command, the instance number that the cammand was
             // addressed to
-
-            let sp = last_mh_command.rfind(' ').unwrap_or_else(|| {
-               panic!("Malformed command: '{last_mh_command}'")
-            });
-            let instance_number = last_mh_command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
+            let sp = command
+               .rfind(' ')
+               .unwrap_or_else(|| panic!("Malformed command: '{command}'"));
+            eprintln!("DBG add command: {command}({sp})");
+            let instance_number = command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
                     panic!(
-                        "No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
-			&last_mh_command[sp..]
+                        "No instance number at end of add command: '{command}'  sp: {sp} => '{}'",
+			&command[sp..]
                     )
                 });
 
@@ -511,7 +587,7 @@ impl App<'_> {
                let errno = n;
                eprintln!(
                   "ERR: {errno}.  Command: {:?}: {}",
-                  last_mh_command,
+                  command,
                   ModHostController::translate_error_code(n)
                );
                item.status = Status::Unloaded;
@@ -522,7 +598,7 @@ impl App<'_> {
             // Response e.g: resp 0 0.1250
             // Got the current value of a Port.
             // Get the symbol for the port from the command
-            let q = Self::get_instance_symbol_res(last_mh_command.as_str());
+            let q = Self::get_instance_symbol_res(command.as_str());
             let instance_number = q.0;
             let symbol = q.1;
             let value = Self::get_resp_value(response);
@@ -531,29 +607,29 @@ impl App<'_> {
          "param_set" => {
             // E.g: "param_set 1 Gain 0"
             // REsponse e.g: resp 0
-            let q = Self::get_instance_symbol_res(last_mh_command.as_str());
+            let q = Self::get_instance_symbol_res(command.as_str());
             let instance_number = q.0;
             let symbol = q.1;
             // Set the value in the LV2, update our records
             // Get the value from the command
-            let sp = last_mh_command.len()
-               - last_mh_command
+            let sp = command.len()
+               - command
                   .chars()
                   .rev()
                   .position(|c| c.is_whitespace())
                   .unwrap_or(0);
-            let value = last_mh_command.as_str()[sp..].trim();
+            let value = command.as_str()[sp..].trim();
             self.update_port(instance_number, symbol, value);
          }
          "remove" => {
             // Removing an LV2.  Get the instance number from the command
-            let sp = last_mh_command.rfind(' ').unwrap_or_else(|| {
-               panic!("Malformed command: '{last_mh_command}'")
-            });
-            let instance_number = last_mh_command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
+            let sp = command
+               .rfind(' ')
+               .unwrap_or_else(|| panic!("Malformed command: '{command}'"));
+            let instance_number = command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
                     panic!(
-                        "No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
-			&last_mh_command[sp..]
+                        "No instance number at end of add command: '{command}'  sp: {sp} => '{}'",
+			&command[sp..]
                     )
                 });
 
@@ -570,7 +646,9 @@ impl App<'_> {
                      .status = Status::Unloaded
                }
                Ordering::Greater => {
-                  eprintln!("ERR: Bad response for {last_mh_command}.  n > 0: {response}")
+                  eprintln!(
+                     "ERR: Bad response for {command}.  n > 0: {response}"
+                  )
                }
                Ordering::Less => eprintln!(
                   "M-H Err: {resp_code} => {}",
@@ -581,41 +659,66 @@ impl App<'_> {
          "connect" => {
             // A connection was established
             // TODO:  Record connections in model data
-            let jacks = &last_mh_command.as_str()[sp + 1..];
+            let jacks = &command.as_str()[sp + 1..];
             self.jack_connections.insert(jacks.to_string());
          }
          "disconnect" => {
-            let jacks = &last_mh_command.as_str()[sp + 1..];
+            let jacks = &command.as_str()[sp + 1..];
             if !self.jack_connections.remove(jacks) {
                eprintln!("Failed to remove {jacks} from connections");
             }
          }
-         _ => panic!("Unknown command: {last_mh_command}"),
+         _ => panic!("Unknown command: {command}"),
       };
+      if self
+         .mod_host_controller
+         .sent_commands
+         .remove(command.as_str())
+      {
+         eprintln!("DBG Removed {command} from last_mh_command");
+      } else {
+         eprintln!("DBG Could not find {command} in last_mh_command");
+      }
    }
 
-   fn process_cmdack(&mut self, cmdack: &str) {
-      eprintln!("DBG process_cmdack({cmdack}")
-   }
    /// Process data coming from mod-host.  Line orientated and asynchronous
    fn process_buffer(&mut self) {
       // If there is no '\n' in buffer, do not process it, leave it
       // till next time.  But process all lines that are available
-      while let Some(resp_line) = self.buffer.as_str().find('\n') {
+      while let Some(resp_line) =
+         self.buffer.as_str().find(&['\n', '\r', '\u{1b}'])
+      {
          // There is a line available
+
          let resp = self.buffer.as_str()[0..resp_line].trim().to_string();
+
          if !resp.is_empty() {
             // Skip blank lines.
-            eprintln!("INFO m-h: {resp}");
-            if resp == "mod-host>" || resp == "using block size: 1024" {
-            } else if resp.len() > 10 && &resp.as_str()[0..10] == "mod-host> " {
-               self.process_cmdack(&resp[10..]);
-            } else if resp.len() > 5 && &resp.as_str()[0..5] == "resp " {
-               self.process_resp(resp.as_str());
+            // The CLI input prompt needs to be filtered out
+            let resp = if resp.len() > 8 && &resp.as_str()[0..9] == "mod-host>"
+            {
+               resp[9..].trim()
             } else {
-               eprintln!("INFO Unhandled response: {resp}");
+               resp.as_str().trim()
+            };
+            if !resp.is_empty() {
+               eprintln!("INFO m-h: {resp}");
+               if resp.len() > 5 && &resp[0..5] == "resp " {
+                  self.process_responce(resp);
+               } else if resp == "using block size: 1024"
+                  || resp == "chump"
+                  || resp == "bigchump"
+                  || resp == "vibrochump"
+                  || resp.find(' ').is_none()
+               {
+               } else {
+                  eprintln!("INFO Unhandled response: {resp}");
+
+                  self.mod_host_controller.resp_command =
+                     Some(resp.to_string());
+               }
             }
-         }
+         };
          self.buffer = if resp_line < self.buffer.len() {
             self.buffer.as_str()[(resp_line + 1)..].to_string()
          } else {
@@ -964,9 +1067,21 @@ impl App<'_> {
 
          // Is there any data from mod-host
          if let Ok(Some(data)) = self.mod_host_controller.try_get_resp() {
+            // Clean up the data.
+            let data_b = data.as_bytes();
+            // let data_b = if let Some(&dn)  = data_b.iter().find(|c| *c<&0x20_u8 ){
+            // 	  eprintln!("Trim data Keep:     {}", String::from_utf8(data_b[0..dn as usize].to_vec()).unwrap());
+            // 	  eprintln!("Trim data expunged: {}", String::from_utf8(data_b[dn as usize..].to_vec()).unwrap());
+            // 	  &data_b[0..dn as usize]
+            // }else{
+            // 	  data_b
+            // };
+
+            let data = String::from_utf8(data_b.to_vec())
+               .expect("Create a data string");
             self.buffer += data.as_str();
             self.process_buffer();
-         }
+         };
 
          // Maintain timing of loop
          let elapsed_time = Instant::now() - start_time;

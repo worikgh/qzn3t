@@ -1,3 +1,5 @@
+use crate::mod_host_controller::ModHostController;
+use std::cmp::Ordering;
 /// Object to handle a response, and call a function as a result
 pub trait ModhostResp {
    /// Pass the complete mod-host response in `resp`.  The UI
@@ -14,6 +16,15 @@ pub struct ModhostGet {
 
 impl ModhostResp for ModhostGet {
    fn act_on_response(&self, resp: &str) -> String {
+      let resp_code = Self::get_resp_code(resp);
+      if !self.validate_resp(resp_code) {
+         eprintln!(
+            "ERR: Error from mod-host: {}({resp_code})",
+            ModHostController::translate_error_code(resp_code)
+         );
+         // No action to take if response not valid
+         return "".to_string();
+      }
       "".to_string()
    }
 }
@@ -31,11 +42,9 @@ impl ModhostGet {
 
    fn get_resp_code(resp: &str) -> isize {
       let r = &resp[5..];
-      let sp: usize = r.chars().position(|x| x.is_whitespace()).unwrap_or(
-         // No whitespace, till end of string
-         r.len(),
-      );
+      let sp: usize =
+         r.chars().position(|x| x.is_whitespace()).unwrap_or(r.len());
       let res = r[..sp].trim();
       res.parse::<isize>().unwrap()
    }
-}	 
+}

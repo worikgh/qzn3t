@@ -31,12 +31,11 @@ pub struct ModHostController {
    /// They are sent in the order they are received.
    pub mh_command_queue: VecDeque<String>,
 
-   /// The last command sent to mod-host.  It is command orientated
-   /// so a "resp..." from mod-host refers to the last command sent.
-   /// This programme is asynchronous, so a command is sent, and
-   /// later a response is received.  This allows the two to be
-   /// connected.  When a response is received set this back to None.
-   pub last_mh_command: VecDeque<String>,
+   /// The commands sent to mod-host.  
+   pub sent_commands: HashSet<String>,
+
+   /// The last command as reported by mod-host
+   pub resp_command: Option<String>,
 }
 
 impl ModHostController {
@@ -319,8 +318,9 @@ impl ModHostController {
          simulators,
          input_tx,
          output_rx,
-         last_mh_command: VecDeque::new(),
+         sent_commands: HashSet::new(),
          mh_command_queue: VecDeque::new(),
+         resp_command: None,
       };
       {
          // Ensure mod-host is going.  This is taking a gamble.  The
@@ -393,7 +393,6 @@ impl ModHostController {
             return Err(io::Error::new(io::ErrorKind::Other, err.to_string()))
          }
       };
-
       let resp = rem_trail_0(resp);
       match String::from_utf8(resp) {
          Ok(s) => Ok(s),
@@ -409,9 +408,28 @@ impl ModHostController {
       match self.output_rx.try_recv() {
          Ok(t) => {
             // Got some data
-            let resp = rem_trail_0(t);
+            eprintln!(
+               "resp bytes 1: {}",
+               t.iter()
+                  .map(|t| format!("{:x}", t))
+                  .collect::<Vec<_>>()
+                  .join(", ")
+            );
+            let t1: Vec<u8> = t.clone();
+            let resp: Vec<u8> = rem_trail_0(t1);
+            eprintln!(
+               "resp bytes 2: {}",
+               resp
+                  .iter()
+                  .map(|t| format!("{:x}", t))
+                  .collect::<Vec<_>>()
+                  .join(", ")
+            );
             match String::from_utf8(resp) {
-               Ok(s) => Ok(Some(s)),
+               Ok(s) => {
+                  eprintln!("resp String: {s}");
+                  Ok(Some(s))
+               }
                Err(err) => Err(io::Error::new(
                   io::ErrorKind::InvalidData,
                   err.to_string(),
@@ -512,15 +530,20 @@ impl ModHostController {
    /// Called from the event loop to send a message to mod-host
    pub fn pump_mh_queue(&mut self) {
       self.reduce_queue();
-      if !self.mh_command_queue.is_empty() &&
-			  // Only push a command if there is none or one command in flight
-			  self.last_mh_command.len() < 2
+      if !self.mh_command_queue.is_empty()
+      &&
+      // Only push a command if there is none or one command in flight
+      self.sent_commands.len() < 8
       {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
 
-         eprintln!("MH CMD: {}", cmd.trim());
-         self.last_mh_command.push_back(cmd.trim().to_string());
+         let new_cmd = self.sent_commands.insert(cmd.trim().to_string());
+         eprintln!(
+            "MH {} CMD: {}",
+            if new_cmd { "N" } else { "R" },
+            cmd.trim()
+         );
          self
             .input_tx
             .send(cmd.as_bytes().to_vec())
