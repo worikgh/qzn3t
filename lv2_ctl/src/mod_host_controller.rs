@@ -403,25 +403,9 @@ impl ModHostController {
    /// and returns Ok(None) if no data availale
    pub fn try_get_resp(&self) -> Result<Option<String>> {
       match self.output_rx.try_recv() {
-         Ok(t) => {
+         Ok(resp) => {
             // Got some data
-            // eprintln!(
-            //    "resp bytes 1: {}",
-            //    t.iter()
-            //       .map(|t| format!("{:x}", t))
-            //       .collect::<Vec<_>>()
-            //       .join(", ")
-            // );
-            let t1: Vec<u8> = t.clone();
-            // let resp: Vec<u8> = rem_trail_0(t1);
-            // eprintln!(
-            //    "resp bytes 2: {}",
-            //    resp
-            //       .iter()
-            //       .map(|t| format!("{:x}", t))
-            //       .collect::<Vec<_>>()
-            //       .join(", ")
-            // );
+            let resp: Vec<u8> = rem_trail_0(resp);
             match String::from_utf8(resp) {
                Ok(s) => Ok(Some(s)),
                Err(err) => Err(io::Error::new(
@@ -532,12 +516,7 @@ impl ModHostController {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
 
-         let new_cmd = self.sent_commands.insert(cmd.trim().to_string());
-         // eprintln!(
-         //    "MH {} CMD: {}",
-         //    if new_cmd { "N" } else { "R" },
-         //    cmd.trim()
-         // );
+         self.sent_commands.insert(cmd.trim().to_string());
          self
             .input_tx
             .send(cmd.as_bytes().to_vec())

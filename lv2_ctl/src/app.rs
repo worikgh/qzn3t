@@ -245,11 +245,7 @@ impl App<'_> {
                   .expect("param_get should be followed by a usize")
                   == mh_id
             } else if cmd.starts_with("connect effect_") {
-               if cmd.starts_with(format!("connect effect_{mh_id}").as_str()) {
-                  true
-               } else {
-                  false
-               }
+                cmd.starts_with(format!("connect effect_{mh_id}").as_str())
             } else {
                true
             };
@@ -431,7 +427,6 @@ impl App<'_> {
                for cmd in output_commands.iter() {
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
                }
-
             }
          }
       }
@@ -644,7 +639,7 @@ impl App<'_> {
          }
          _ => panic!("Unknown command: {command}"),
       };
-		 self
+      self
          .mod_host_controller
          .sent_commands
          .remove(command.as_str());
@@ -655,7 +650,7 @@ impl App<'_> {
       // If there is no '\n' in buffer, do not process it, leave it
       // till next time.  But process all lines that are available
       while let Some(resp_line) =
-         self.buffer.as_str().find(&['\n', '\r', '\u{1b}'])
+         self.buffer.as_str().find(['\n', '\r', '\u{1b}'])
       {
          // There is a line available
 
@@ -680,7 +675,6 @@ impl App<'_> {
                   || resp.find(' ').is_none()
                {
                } else {
-
                   self.mod_host_controller.resp_command =
                      Some(resp.to_string());
                }
