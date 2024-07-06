@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::process::{ChildStdout, Command, Stdio};
+use std::process::{ChildStderr, ChildStdout, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::{thread, time};
 
@@ -13,10 +13,7 @@ pub fn rem_trail_0(resp: Vec<u8>) -> Vec<u8> {
 
 /// Cannot do a non-blocking read on the ChildStdout.  Can do a
 /// non-blocking read on the Receiver end of `output_tx`
-fn read_child_stdout(
-   mut child_stdout: ChildStdout,
-   output_tx: Sender<Vec<u8>>,
-) {
+fn read_child_out(mut child_stdout: ChildStdout, output_tx: Sender<Vec<u8>>) {
    thread::spawn(move || loop {
       let mut output_data = [0; 1024];
       match child_stdout.read(&mut output_data) {
@@ -26,6 +23,21 @@ fn read_child_stdout(
             }
          }
          Err(err) => panic!("{err}: Failed reading ChildStdout"),
+      };
+   });
+}
+/// Cannot do a non-blocking read on the ChildStderr.  Can do a
+/// non-blocking read on the Receiver end of `errput_tx`
+fn read_child_err(mut child_stderr: ChildStderr, errput_tx: Sender<Vec<u8>>) {
+   thread::spawn(move || loop {
+      let mut errput_data = [0; 1024];
+      match child_stderr.read(&mut errput_data) {
+         Ok(n) => {
+            if n > 0 {
+               errput_tx.send(errput_data.to_vec()).unwrap()
+            }
+         }
+         Err(err) => panic!("{err}: Failed reading ChildStderr"),
       };
    });
 }
@@ -50,13 +62,17 @@ pub fn run_executable(
       .expect("Failed to start process");
 
    let stdout = child.stdout.take().unwrap();
+   let stderr = child.stderr.take().unwrap();
    let mut stdin = child.stdin.take().unwrap();
 
-   let target_fps = 30;
+   let target_fps = 100;
    let target_frame_time = time::Duration::from_secs(1) / target_fps;
 
    let (stdout_tx, stdout_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
-   read_child_stdout(stdout, stdout_tx);
+   read_child_out(stdout, stdout_tx);
+
+   let (stderr_tx, stderr_rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel();
+   read_child_err(stderr, stderr_tx);
 
    loop {
       // Note the time at the top of the loop, and sleep at the
@@ -96,6 +112,12 @@ pub fn run_executable(
 
          // Send the output from mod-host to the UI
          output_tx.send(s).unwrap();
+      }
+      if let Ok(s) = stderr_rx.try_recv() {
+         // Non-blocking send to errput channel
+         let s = rem_trail_0(s); // Strip zeros
+         let s = String::from_utf8(s).unwrap();
+         eprint!("{s}");
       }
 
       // enforce duration

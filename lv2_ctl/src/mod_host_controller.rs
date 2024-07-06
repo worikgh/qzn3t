@@ -18,6 +18,13 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
 #[derive(Debug)]
+pub enum ConDisconFlight {
+   Connected,
+   Disconnected,
+   InFlight,
+}
+
+#[derive(Debug)]
 /// Interface to mod-host
 pub struct ModHostController {
    pub simulators: Vec<Lv2>,
@@ -36,6 +43,8 @@ pub struct ModHostController {
 
    /// The last command as reported by mod-host
    pub resp_command: Option<String>,
+
+   pub connections: HashMap<String, ConDisconFlight>,
 }
 
 impl ModHostController {
@@ -318,6 +327,7 @@ impl ModHostController {
          sent_commands: HashSet::new(),
          mh_command_queue: VecDeque::new(),
          resp_command: None,
+         connections: HashMap::new(),
       };
       {
          // Ensure mod-host is going.  This is taking a gamble.  The
@@ -333,6 +343,7 @@ impl ModHostController {
       }
       Ok(result)
    }
+
    /// Get the default value of a port
    pub fn get_default(&self, lv2_url: &str, port_symb: &str) -> String {
       let cpp = match self
@@ -366,6 +377,7 @@ impl ModHostController {
 
    /// Queue a command to send to mod-host
    pub fn send_mh_cmd(&mut self, cmd: &str) {
+      // eprintln!("DBG send_mh_cmd {cmd}");
       self.mh_command_queue.push_back(cmd.to_string());
    }
 
@@ -466,7 +478,7 @@ impl ModHostController {
    /// Check for redundant commands in command queue.
    fn reduce_queue(&mut self) {
       // Start at the far end of the queue.  A command there that
-      // sets a parameter means that any earlier commands (in thye
+      // sets a parameter means that any earlier commands (in the
       // queue) that set the same parameter will be over ridden so
       // no point keeping them
 
@@ -491,7 +503,7 @@ impl ModHostController {
             let cmd_key = &c[..cmd_end];
             if commands.contains(cmd_key) {
                // Do not process this
-               eprintln!("INFO: reduce_queue - delete: {c}");
+               eprintln!("DBG Reduce queue - out with {cmd_key}");
                continue;
             }
             commands.insert(cmd_key.to_string());
@@ -515,8 +527,42 @@ impl ModHostController {
       {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
-
+         if cmd.starts_with("connect") || cmd.starts_with("disconnect") {
+            let (sp, _) = cmd
+               .char_indices()
+               .find(|x| x.1 == ' ')
+               .expect("No space in (dis)connect command");
+            let connection = &cmd[sp + 1..];
+            match (self.connections.get(connection), &cmd[0..sp]) {
+               (Some(ConDisconFlight::Connected), "connect") => {
+                  eprintln!("DBGy connect connect");
+                  return;
+               }
+               (Some(ConDisconFlight::Disconnected), "connect") => {
+                  eprintln!("DBGy disconnect connect")
+               }
+               (Some(ConDisconFlight::InFlight), b) => {
+                  eprintln!("DBGy  inflight {b}");
+                  return;
+               }
+               (Some(ConDisconFlight::Connected), "disconnect") => {
+                  eprintln!("DBGy connect disconnect")
+               }
+               (Some(ConDisconFlight::Disconnected), "disconnect") => {
+                  eprintln!("DBGy disconnect disconnect");
+                  return;
+               }
+               (None, _b) => {
+                  // eprintln!("DBGy No connection state. {b:?} for: {connection}")
+               }
+               (a, b) => panic!("DBGy Reality discontinuity: {a:?} {b:?}"),
+            }
+            self
+               .connections
+               .insert(connection.to_string(), ConDisconFlight::InFlight);
+         }
          self.sent_commands.insert(cmd.trim().to_string());
+         eprintln!("DBG CMD SEND {cmd}");
          self
             .input_tx
             .send(cmd.as_bytes().to_vec())
@@ -717,9 +763,6 @@ fn get_mmdls(
       Some(scale_description)
    };
 
-   // if max_type != min_type || max_type != def_type {
-   //     eprint!("Control port types differ:  {l:?} {default} - {max}");
-   // }
    // For some reason it is sometimes true that not all the minimum,
    // maximum, and default values are the same type.  Use a "majority
    // rules" algorithm.

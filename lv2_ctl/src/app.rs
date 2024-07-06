@@ -17,6 +17,7 @@ use crate::lv2::Lv2;
 use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 use crate::lv2_stateful_list::Lv2StatefulList;
+use crate::mod_host_controller::ConDisconFlight;
 use crate::mod_host_controller::ModHostController;
 use crate::port::ContinuousType;
 use crate::port::ControlPortProperties;
@@ -88,6 +89,7 @@ pub struct App<'a> {
    /// views, for views which display such information.  Updated when
    /// the simulater selected
    control_ports: Vec<Port>,
+
    /// For views that display port values this structure holds them.
    /// It is initialised at the same time the `control_ports` member
    /// is.  It maps port symbol -> port value.  When first initialised
@@ -189,8 +191,8 @@ impl App<'_> {
          status: None,
       }
    }
-   #[allow(dead_code)]
-   fn ports(&self, lv2_url: &str) -> Vec<&Port> {
+
+   fn _ports(&self, lv2_url: &str) -> Vec<&Port> {
       let sim = self
          .mod_host_controller
          .simulators
@@ -228,16 +230,13 @@ impl App<'_> {
    /// In command mode (f2) when entering this state clean out old
    /// commands that make no sense
    fn filter_command_lists(&mut self, mh_id: usize) {
-      let new_commands: HashSet<String> = self
-         .mod_host_controller
-         .sent_commands
-         .iter()
-         .filter(|cmd| {
-            // Get the first word of cmd to decide if it is out of date
-            let res = if cmd.starts_with("disconnect") {
-               // Do not keep disconnect commands
-               false
-            } else if cmd.starts_with("param_get ") {
+      let mut new_commands: HashSet<String> = HashSet::new();
+      let len = self.mod_host_controller.sent_commands.len();
+      let mut itr = self.mod_host_controller.sent_commands.iter();
+      for _i in 0..len {
+         let cmd = itr.nth(0).unwrap();
+         let res =
+            if cmd.starts_with("param_get ") || cmd.starts_with("param_get ") {
                let p = cmd.as_str()[9..].trim();
                let sp = p.find(' ').unwrap_or(p.len());
                p[0..sp]
@@ -245,18 +244,18 @@ impl App<'_> {
                   .expect("param_get should be followed by a usize")
                   == mh_id
             } else if cmd.starts_with("connect effect_") {
-                cmd.starts_with(format!("connect effect_{mh_id}").as_str())
+               cmd.starts_with(format!("connect effect_{mh_id}").as_str())
             } else {
                true
             };
+         if res {
+            new_commands.insert(cmd.to_owned());
+         } else {
             // eprintln!(
-            //    "DBG {mh_id}: {} last cmd: {cmd}",
-            //    if res { "Keep" } else { "Trash" }
+            //    "DBG filter_command_lists  Remove from sent_commands: {cmd}"
             // );
-            res
-         })
-         .map(|x| x.to_string())
-         .collect();
+         }
+      }
       self.mod_host_controller.sent_commands = new_commands;
    }
 
@@ -323,7 +322,7 @@ impl App<'_> {
                let mh_id = self.get_stateful_list().items[idx].mh_id;
                self.filter_command_lists(mh_id);
                let url = self.get_stateful_list().items[idx].url.clone();
-               // eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
+               eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
                self.control_ports = self
                   .mod_host_controller
                   .simulators
@@ -354,9 +353,6 @@ impl App<'_> {
                for cmd in update_port_vales_cmds {
                   self.send_mh_cmd(cmd.as_str());
                }
-               eprintln!(
-                  "INFO Effect: effect_{idx} display ports.  mh_id: {mh_id}"
-               );
 
                //  Disconnect any existing connections.  This
                //  connects one, and only one, LV2
@@ -365,6 +361,21 @@ impl App<'_> {
                   .iter()
                   .map(|s| format!("disconnect {s}"))
                   .collect::<Vec<String>>();
+
+               // let mut dbg: String = String::new();
+               // for k in self.mod_host_controller.connections.keys() {
+               //    dbg = format!(
+               //       "{dbg}\nDBG CONNS {k:?}/{:?}",
+               //       self.mod_host_controller.connections.get(k)
+               //    );
+               // }
+               // eprintln!("{dbg}\n");
+
+               // dbg = "".to_string();
+               // for k in self.jack_connections.iter() {
+               //    dbg = format!("{dbg}\nDBG JACK {k:?}");
+               // }
+               // eprintln!("{dbg}\n");
 
                let _control_commands: Vec<String>;
                let input_commands: Vec<String>;
@@ -470,21 +481,46 @@ impl App<'_> {
       }
       true
    }
-
+   fn jack_disconnect(&mut self, cmd: &str) -> bool {
+      self.jack_connections.remove(cmd)
+   }
    /// Handle a response from mod-host that starts with "resp ".  It
    /// is a response to a command, so what happens here is dependant
    /// on that command.  TRhe commands are pushed on the queue
    /// `self.mod_host_controller.last_mh_command` resp status [value]
-   fn process_responce(&mut self, response: &str) {
+   fn process_response(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
 
       let resp_code = Self::get_resp_code(response);
       if !self.validate_resp(resp_code) {
          // No action to take if response not valid
-         eprintln!(
-            "ERR: Error from mod-host: {}({resp_code})",
-            ModHostController::translate_error_code(resp_code)
-         );
+         let failed_cmd: String = self
+            .mod_host_controller
+            .resp_command
+            .as_ref()
+            .unwrap_or(&"<No resp command>".to_string())
+            .to_string();
+         let error_str = ModHostController::translate_error_code(resp_code);
+         eprintln!("DBG CMD FAILED RESP {failed_cmd} -> {error_str}:({resp_code})");
+         // Take remedial action if possible
+         match resp_code {
+            -206 | -205 => {
+               // ERR_JACK_PORT_DISCONNECTION
+               // A disconnect or connect failed
+               assert!(
+                  &failed_cmd[0.."disconnect".len()] == "disconnect"
+                     || &failed_cmd[0.."connect".len()] == "connect"
+               );
+               // Resend the command.  Hope not to get into an
+               // infinite loop of doom.....
+					 eprintln!("DBG Resend ({error_str}:{resp_code}): {failed_cmd}");
+                self.mod_host_controller.send_mh_cmd(&failed_cmd);
+            }
+            _ => eprintln!(
+               "ERR: Error from mod-host: {error_str}({resp_code}) {failed_cmd}",                
+            ),
+         };
+
          return;
       }
 
@@ -498,10 +534,52 @@ impl App<'_> {
          .as_ref()
          .unwrap()
          .to_string();
+      eprintln!("DBG CMD RESP {command} -> {resp_code} 1");
       let command = String::from_utf8(run_executable::rem_trail_0(
          command.as_bytes().to_vec(),
       ))
       .expect("Trim command");
+      if command.starts_with("connect") || command.starts_with("disconnect") {
+         let (sp, _) = command
+            .char_indices()
+            .find(|x| x.1 == ' ')
+            .expect("No space in (dis)connect command");
+         let connection = &command[sp + 1..];
+         match (
+            self.mod_host_controller.connections.get(connection),
+            &command[0..sp],
+         ) {
+            (Some(ConDisconFlight::Connected), "connect") => {
+               eprintln!("DBGz connect connect");
+            }
+            (Some(ConDisconFlight::Disconnected), "connect") => {
+               eprintln!("DBGz disconnect connect")
+            }
+            (Some(ConDisconFlight::InFlight), "connect") => {
+               self
+                  .mod_host_controller
+                  .connections
+                  .insert(connection.to_string(), ConDisconFlight::Connected);
+               eprintln!("DBGz inflight connect {connection}");
+            }
+            (Some(ConDisconFlight::InFlight), "disconnect") => {
+               self.mod_host_controller.connections.insert(
+                  connection.to_string(),
+                  ConDisconFlight::Disconnected,
+               );
+               eprintln!("DBGz inflight disconnect {connection}");
+            }
+            (Some(ConDisconFlight::Connected), "disconnect") => {
+               eprintln!("DBGz connect disconnect")
+            }
+            (Some(ConDisconFlight::Disconnected), "disconnect") => {
+               eprintln!("DBGz disconnect disconnect");
+            }
+            (None, b) => eprintln!("No connection state. {b:?}"),
+            (a, b) => panic!("Reality discontinuity: {a:?} {b:?}"),
+         };
+      }
+
       self.mod_host_controller.resp_command = None;
 
       // Get the first word as a slice
@@ -509,7 +587,6 @@ impl App<'_> {
          .chars()
          .position(|x| x.is_whitespace())
          .expect("No space in last_mh_command");
-
       // First word is command
       let cmd = &command[0..sp];
 
@@ -633,12 +710,13 @@ impl App<'_> {
          }
          "disconnect" => {
             let jacks = &command.as_str()[sp + 1..];
-            if !self.jack_connections.remove(jacks) {
-               eprintln!("Failed to remove {jacks} from connections");
+            if !self.jack_disconnect(jacks) {
+               eprintln!("ERR Failed to remove {jacks} from connections");
             }
          }
          _ => panic!("Unknown command: {command}"),
       };
+
       self
          .mod_host_controller
          .sent_commands
@@ -667,7 +745,7 @@ impl App<'_> {
             };
             if !resp.is_empty() {
                if resp.len() > 5 && &resp[0..5] == "resp " {
-                  self.process_responce(resp);
+                  self.process_response(resp);
                } else if resp == "using block size: 1024"
                   || resp == "chump"
                   || resp == "bigchump"
@@ -705,20 +783,13 @@ impl App<'_> {
          let mh_id = self.get_stateful_list().items[idx].mh_id;
          if mh_id != instance_number {
             // Simulator was unloaded while command was in flight
-            eprintln!(
-						 "DBG: update_port {instance_number} {symbol} {value}: Simulator not loaded.");
             return;
          }
          if self
             .port_values
             .insert(symbol.to_string(), Some(value.to_string()))
             .is_none()
-         {
-            eprintln!(
-						 "DBG: update_port {instance_number} {symbol} {value}: That symbol was not in `port_values`.");
-         }
-      } else {
-         eprintln!("DBG update_port: No loaded simulator");
+         {}
       }
    }
 
@@ -890,7 +961,7 @@ impl App<'_> {
       // init_error_hooks().expect("App::run error hooks");
 
       // Control the event loop.  `frame_time` is the Duration of a loop.
-      let target_fps = 60; // 400 is about the limit on Raspberry Pi 5
+      let target_fps = 100; // 400 is about the limit on Raspberry Pi 5
       let frame_time = Duration::from_secs(1) / target_fps as u32;
 
       // Set this to false to make process exit on next loop
@@ -1028,11 +1099,11 @@ impl App<'_> {
 
          // Is there any data from mod-host
          if let Ok(Some(data)) = self.mod_host_controller.try_get_resp() {
-            // Clean up the data.
-            let data_b = data.as_bytes();
+            // // Clean up the data.
+            // let data_b = data.as_bytes();
 
-            let data = String::from_utf8(data_b.to_vec())
-               .expect("Create a data string");
+            // let data = String::from_utf8(data_b.to_vec())
+            //    .expect("Create a data string");
             self.buffer += data.as_str();
             self.process_buffer();
          };

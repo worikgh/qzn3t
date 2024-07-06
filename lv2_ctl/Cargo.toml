@@ -19,3 +19,4 @@ ncurses = "5.101.0"
 ratatui = {path = "/home/puppy/ratatui"}
 regex = "1.10.3"
 tui-input = "0.8.0"
+
