@@ -501,7 +501,9 @@ impl App<'_> {
             .unwrap_or(&"<No resp command>".to_string())
             .to_string();
          let error_str = ModHostController::translate_error_code(resp_code);
-         eprintln!("DBG CMD FAILED RESP {failed_cmd} -> {error_str}:({resp_code})");
+         eprintln!(
+            "DBG CMD FAILED RESP {failed_cmd} -> {error_str}:({resp_code})"
+         );
          // Take remedial action if possible
          match resp_code {
             -206 | -205 => {
@@ -866,7 +868,10 @@ impl App<'_> {
       let value: String = match self.port_values.get(port_symbol.as_str()) {
          Some(v) => match v {
             Some(s) => s.clone(),
-            _ => panic!("Musr have a value to adjust"),
+            _ => {
+               eprintln!("Must have a value to adjust");
+               return;
+            }
          },
          None => panic!("Unknown port symbol"),
       };
