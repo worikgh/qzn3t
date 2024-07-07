@@ -24,6 +24,7 @@ use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
 use crate::port_table::port_table;
+use crate::port_table::value_from_scale_control;
 use crate::run_executable;
 use color_eyre::config::HookBuilder;
 use crossterm::event::KeyEvent;
@@ -320,7 +321,11 @@ impl App<'_> {
             if let Some(idx) = self.get_stateful_list_mut().state.selected() {
                // Connect the selected effect to system in/out
                let mh_id = self.get_stateful_list().items[idx].mh_id;
+
+               // Filter out commmands that are waiting to be sent
+               // that are not applicable in the new state
                self.filter_command_lists(mh_id);
+
                let url = self.get_stateful_list().items[idx].url.clone();
                eprintln!("INFO change_status AppViewState::Command idx: {idx} mh_id: {mh_id} url {url}");
                self.control_ports = self
@@ -481,9 +486,11 @@ impl App<'_> {
       }
       true
    }
+
    fn jack_disconnect(&mut self, cmd: &str) -> bool {
       self.jack_connections.remove(cmd)
    }
+
    /// Handle a response from mod-host that starts with "resp ".  It
    /// is a response to a command, so what happens here is dependant
    /// on that command.  TRhe commands are pushed on the queue
@@ -493,7 +500,7 @@ impl App<'_> {
 
       let resp_code = Self::get_resp_code(response);
       if !self.validate_resp(resp_code) {
-         // No action to take if response not valid
+         // No action to take if response not valid, except report the error
          let failed_cmd: String = self
             .mod_host_controller
             .resp_command
@@ -515,8 +522,8 @@ impl App<'_> {
                );
                // Resend the command.  Hope not to get into an
                // infinite loop of doom.....
-					 eprintln!("DBG Resend ({error_str}:{resp_code}): {failed_cmd}");
-                self.mod_host_controller.send_mh_cmd(&failed_cmd);
+					 eprintln!("DBG Despite error, do not Resend ({error_str}:{resp_code}): {failed_cmd}");
+                // self.mod_host_controller.send_mh_cmd(&failed_cmd);
             }
             _ => eprintln!(
                "ERR: Error from mod-host: {error_str}({resp_code}) {failed_cmd}",                
@@ -528,6 +535,7 @@ impl App<'_> {
 
       // The command this is in response to
       if self.mod_host_controller.resp_command.is_none() {
+         eprintln!("ERR No command for response: {response}");
          return;
       }
       let command = self
@@ -536,7 +544,7 @@ impl App<'_> {
          .as_ref()
          .unwrap()
          .to_string();
-      eprintln!("DBG CMD RESP {command} -> {resp_code} 1");
+      eprintln!("DBG CMD RESP {command} -> {resp_code}: {response}");
       let command = String::from_utf8(run_executable::rem_trail_0(
          command.as_bytes().to_vec(),
       ))
@@ -552,30 +560,24 @@ impl App<'_> {
             &command[0..sp],
          ) {
             (Some(ConDisconFlight::Connected), "connect") => {
-               eprintln!("DBGz connect connect");
             }
             (Some(ConDisconFlight::Disconnected), "connect") => {
-               eprintln!("DBGz disconnect connect")
             }
             (Some(ConDisconFlight::InFlight), "connect") => {
                self
                   .mod_host_controller
                   .connections
                   .insert(connection.to_string(), ConDisconFlight::Connected);
-               eprintln!("DBGz inflight connect {connection}");
             }
             (Some(ConDisconFlight::InFlight), "disconnect") => {
                self.mod_host_controller.connections.insert(
                   connection.to_string(),
                   ConDisconFlight::Disconnected,
                );
-               eprintln!("DBGz inflight disconnect {connection}");
             }
             (Some(ConDisconFlight::Connected), "disconnect") => {
-               eprintln!("DBGz connect disconnect")
             }
             (Some(ConDisconFlight::Disconnected), "disconnect") => {
-               eprintln!("DBGz disconnect disconnect");
             }
             (None, b) => eprintln!("No connection state. {b:?}"),
             (a, b) => panic!("Reality discontinuity: {a:?} {b:?}"),
@@ -933,25 +935,32 @@ impl App<'_> {
                      format!("param_set {mh_id} {port_symbol} {new_value}");
                   self.mod_host_controller.send_mh_cmd(cmd.as_str());
                }
-               ControlPortProperties::Scale(_cpps) => {
-                  if let Some(value_idx) = _cpps.value {
+               ControlPortProperties::Scale(cpps) => {
+                  if let Some(value_idx) =
+                     cpps.labels_values.iter().position(|lv| {
+                        lv.1 == value_from_scale_control(value.as_str())
+                     })
+                  {
+                     // if let Some(value_idx) = cpps.value {
                      let new_value = if adj == PortAdj::Down {
                         if value_idx == 0 {
                            // Nothing to do,  Cannot go below zero
                            return;
                         }
-                        _cpps.labels_values[value_idx - 1].1.clone()
+                        cpps.labels_values[value_idx - 1].1.clone()
                      } else {
-                        if value_idx + 1 == _cpps.labels_values.len() {
+                        if value_idx + 1 == cpps.labels_values.len() {
                            // Nothing to do.  Cannot go any higher
                            return;
                         }
-                        _cpps.labels_values[value_idx + 1].1.clone()
+                        cpps.labels_values[value_idx + 1].1.clone()
                      };
                      let cmd =
                         format!("param_set {mh_id} {port_symbol} {new_value}");
                      self.mod_host_controller.send_mh_cmd(cmd.as_str());
-                  }
+                  }else{
+							 eprintln!("ERR: handle_port_adj No value when adjusting {port_symbol}");
+						}
                }
             }
          }
@@ -1435,7 +1444,7 @@ impl App<'_> {
       self.scroll_bar_state =
          ScrollbarState::new((self.control_ports.len()) * ITEM_HEIGHT);
       // Get the table widget
-      let table = port_table(&self.control_ports, &self.port_values); //.to_vec());
+      let table: Table = port_table(&self.control_ports, &self.port_values); //.to_vec());
       ratatui::widgets::StatefulWidget::render(
          table,
          inner_info_area,
@@ -1460,8 +1469,7 @@ impl App<'_> {
    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
       match self.app_view_state {
          AppViewState::List => Paragraph::new(
-            "Use ↓↑ to move, ← to unselect, → to change status, \
-		 g/G to go top/bottom.\nAny other character to send instructions",
+            "Use ↓↑ to select simulators <enter> to load/unload, \ng/G to go top/bottom.",
          ),
          AppViewState::Command => Paragraph::new(
             "Use ↓↑ to move, ← to unselect, → to change status.\n\

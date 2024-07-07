@@ -17,6 +17,21 @@ use ratatui::widgets::Row;
 use ratatui::widgets::Table;
 use std::collections::HashMap;
 
+// `val` is a String representing an integer.  Somewhere along the way
+// it has become "0.000".  But in `labels_values` it is like ")".  Fix
+// it up here
+pub fn value_from_scale_control(val: &str) -> String {
+   let i = val.parse::<usize>();
+   let f = val.parse::<f64>();
+   if i.is_ok() {
+      format!("{}", i.unwrap())
+   } else if f.is_ok() {
+      format!("{}", f.unwrap().round())
+   } else {
+      "".to_string()
+   }
+}
+
 pub fn port_table<'a>(
    ports: &[Port],
    pv: &HashMap<String, Option<String>>,
@@ -55,17 +70,39 @@ pub fn port_table<'a>(
                   };
                   (min, max, val, log)
                }
-               ControlPortProperties::Scale(scale) => (
-                  scale.labels_values[0].0.clone(),
-                  scale
+               ControlPortProperties::Scale(scale) => {
+                  let val: String = match pv.get(port.symbol.as_str()) {
+                     None => panic!("Cannot find {}", port.symbol),
+                     Some(ov) => match ov {
+                        Some(v) => v.clone(),
+                        None => {
+                           eprintln!("DBG No port value for {}", port.symbol);
+                           "".to_string()
+                        }
+                     },
+                  };
+
+                  let value = value_from_scale_control(val.as_str());
+                  let label: String = match scale
                      .labels_values
-                     .last()
-                     .expect("Expect some labels for port table")
-                     .0
-                     .clone(),
-                  "".to_string(),
-                  "false".to_string(),
-               ),
+                     .iter()
+                     .find(|ll| ll.1 == value)
+                  {
+                     None => format!("?{val}"),
+                     Some(sv) => sv.0.clone(),
+                  };
+                  (
+                     scale.labels_values[0].0.clone(),
+                     scale
+                        .labels_values
+                        .last()
+                        .expect("Expect some labels for port table")
+                        .0
+                        .clone(),
+                     label,
+                     "false".to_string(),
+                  )
+               }
             }
          } else {
             panic!("A port in port table that is not a Controlport")

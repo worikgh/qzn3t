@@ -535,21 +535,16 @@ impl ModHostController {
             let connection = &cmd[sp + 1..];
             match (self.connections.get(connection), &cmd[0..sp]) {
                (Some(ConDisconFlight::Connected), "connect") => {
-                  eprintln!("DBGy connect connect");
                   return;
                }
                (Some(ConDisconFlight::Disconnected), "connect") => {
-                  eprintln!("DBGy disconnect connect")
                }
-               (Some(ConDisconFlight::InFlight), b) => {
-                  eprintln!("DBGy  inflight {b}");
+               (Some(ConDisconFlight::InFlight), _b) => {
                   return;
                }
                (Some(ConDisconFlight::Connected), "disconnect") => {
-                  eprintln!("DBGy connect disconnect")
                }
                (Some(ConDisconFlight::Disconnected), "disconnect") => {
-                  eprintln!("DBGy disconnect disconnect");
                   return;
                }
                (None, _b) => {
