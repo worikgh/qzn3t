@@ -38,9 +38,12 @@ use crossterm::{
    ExecutableCommand,
 };
 use ratatui::{prelude::*, widgets::*};
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fs::File;
+use std::io::prelude::*;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
@@ -60,8 +63,14 @@ enum PortAdj {
 
 #[derive(Debug, PartialEq, Eq)]
 enum AppViewState {
-   List,    // Listing all simulators
-   Command, // Interacting with mod-host
+   // Enter the name to save a LV2 simulator, and settings, as
+   Lv2SaveName,
+
+   // Listing all simulators
+   List,
+
+   // Interacting with mod-host
+   Command,
 }
 
 /// This struct holds the current state of the app.
@@ -93,12 +102,12 @@ pub struct App<'a> {
 
    /// For views that display port values this structure holds them.
    /// It is initialised at the same time the `control_ports` member
-   /// is.  It maps port symbol -> port value.  When first initialised
-   /// the value is unknown, hence being an option.  Some views will
-   /// have values ready for the port when this is created and will
-   /// set the value and issue `param_set` commands.  Others will not
-   /// and will issue param_get commands and update the value when it
-   /// arrives.
+   /// is, and maintained in `update_port`.  It maps port symbol
+   /// -> port value.  When first initialised the value is unknown,
+   /// hence being an option.  Some views will have values ready for
+   /// the port when this is created and will set the value and issue
+   /// `param_set` commands.  Others will not and will issue param_get
+   /// commands and update the value when it arrives.
    port_values: HashMap<String, Option<String>>,
 
    table_state: TableState,
@@ -107,6 +116,9 @@ pub struct App<'a> {
    /// Store the last status output so do not thrash status reporting
    /// mechanism (eprintln! as I write) with repeated status messages
    status: Option<String>,
+
+   /// Controls the main loop
+   run_app: bool,
 }
 
 impl Drop for App<'_> {
@@ -147,6 +159,11 @@ fn restore_terminal() -> color_eyre::Result<()> {
    Ok(())
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct SaveStruct {
+   lv2_simulator: Lv2Simulator,
+   port_values: HashMap<String, Option<String>>,
+}
 impl App<'_> {
    /// Initialise the App
    pub fn new(mod_host_controller: &mut ModHostController) -> App {
@@ -190,6 +207,10 @@ impl App<'_> {
          // last_mh_command: None,
          // mh_command_queue: VecDeque::new(),
          status: None,
+
+         // Default to running
+         // Reset `run` to stop App
+         run_app: true,
       }
    }
 
@@ -260,7 +281,6 @@ impl App<'_> {
       self.mod_host_controller.sent_commands = new_commands;
    }
 
-   // param_get 44 meter_R2, param_get 44 meter_L2, param_get 44 meter_R, param_get 44 meter_L1, param_get 45 meter_outR, param_get 45 clip_outR, param_get 44 meter_L, param_get 44 meter_R1
    /// Changes the status of the selected list item.  
    #[allow(clippy::iter_kv_map)]
    fn change_status(&mut self) {
@@ -269,6 +289,7 @@ impl App<'_> {
          return;
       }
       match self.app_view_state {
+         AppViewState::Lv2SaveName => (),
          AppViewState::List => {
             if let Some(i) = self.get_stateful_list_mut().state.selected() {
                // There is a selected item at index `i`
@@ -559,10 +580,8 @@ impl App<'_> {
             self.mod_host_controller.connections.get(connection),
             &command[0..sp],
          ) {
-            (Some(ConDisconFlight::Connected), "connect") => {
-            }
-            (Some(ConDisconFlight::Disconnected), "connect") => {
-            }
+            (Some(ConDisconFlight::Connected), "connect") => {}
+            (Some(ConDisconFlight::Disconnected), "connect") => {}
             (Some(ConDisconFlight::InFlight), "connect") => {
                self
                   .mod_host_controller
@@ -575,10 +594,8 @@ impl App<'_> {
                   ConDisconFlight::Disconnected,
                );
             }
-            (Some(ConDisconFlight::Connected), "disconnect") => {
-            }
-            (Some(ConDisconFlight::Disconnected), "disconnect") => {
-            }
+            (Some(ConDisconFlight::Connected), "disconnect") => {}
+            (Some(ConDisconFlight::Disconnected), "disconnect") => {}
             (None, b) => eprintln!("No connection state. {b:?}"),
             (a, b) => panic!("Reality discontinuity: {a:?} {b:?}"),
          };
@@ -795,6 +812,8 @@ impl App<'_> {
             .is_none()
          {}
       }
+      let ctl_ports = serde_json::to_string(&self.port_values).unwrap();
+      eprintln!("DBG JSON CTL >>>>>>\nDBGj {ctl_ports}\nDBG JSON <<<<");
    }
 
    /// Get the new value from the response to a `param_get`
@@ -843,7 +862,31 @@ impl App<'_> {
       (instance_number, symbol)
    }
 
-   /// Called from main event loop
+   pub fn save_lv2(&self, f_n: &str) {
+      if let Some(mh_id) = self.get_stateful_list().get_selected_mh_id() {
+         let lv2_simulator: Lv2Simulator = match self
+            .get_stateful_list()
+            .items
+            .iter()
+            .find(|l| l.mh_id == mh_id)
+         {
+            Some(s) => s.clone(),
+            None => panic!(""),
+         };
+         let port_values = self.port_values.clone();
+         let save_struct = SaveStruct {
+            lv2_simulator,
+            port_values,
+         };
+         let save_string = serde_json::to_string_pretty(&save_struct)
+            .expect("Serialising LV2 data to save");
+         let mut file =
+            File::create(f_n).expect("Saving LV2.  Failed to open file");
+         file
+            .write_all(save_string.as_bytes())
+            .expect("Writing data to save file");
+      };
+   }
 
    /// There is a port in the UI focus
    /// being adjusted up, or down
@@ -958,11 +1001,143 @@ impl App<'_> {
                      let cmd =
                         format!("param_set {mh_id} {port_symbol} {new_value}");
                      self.mod_host_controller.send_mh_cmd(cmd.as_str());
-                  }else{
-							 eprintln!("ERR: handle_port_adj No value when adjusting {port_symbol}");
-						}
+                  } else {
+                     eprintln!("ERR: handle_port_adj No value when adjusting {port_symbol}");
+                  }
                }
             }
+         }
+      }
+
+      let url = match self
+         .get_stateful_list()
+         .items
+         .iter()
+         .find(|l| l.mh_id == mh_id)
+      {
+         Some(s) => s.url.clone(),
+         None => panic!(""),
+      };
+      let lv2 = match self.mod_host_controller.get_lv2_by_url(url.as_str()) {
+         Some(l) => l,
+         None => panic!("url: {url}"),
+      };
+      let lv2_json = serde_json::to_string(&lv2).unwrap();
+      eprintln!("DBG JSON >>>>>>\nDBGj {lv2_json}\nDBG JSON <<<<");
+   }
+
+   fn handle_key_dialogue(&mut self, key: &KeyEvent) {
+      use KeyCode::*;
+
+      match key.code {
+         Esc => {
+            self.app_view_state = AppViewState::Command;
+         }
+         _ => {
+            eprint!("{:?} ", key.code);
+         }
+      }
+   }
+   fn handle_key_display(&mut self, key: &KeyEvent) {
+      use KeyCode::*;
+
+      match key.code {
+         Left => {
+            // In Port Control window decrease value of
+            // port by one unit
+            if self.app_view_state == AppViewState::Command {
+               self.handle_port_adj(PortAdj::Down, key);
+            }
+         }
+         Right => {
+            // In Port Control window increase value of
+            // port by one unit
+            if self.app_view_state == AppViewState::Command {
+               self.handle_port_adj(PortAdj::Up, key);
+            }
+         }
+         Char('q') | Esc => {
+            if self.app_view_state == AppViewState::Lv2SaveName {
+               if key.code == Esc {}
+            } else {
+               self.send_mh_cmd("quit");
+               // Move this to handler of data from mod-host?
+               //return Ok(());
+               self.run_app = false;
+            }
+         }
+         Char('u') => self.get_stateful_list_mut().unselect(),
+         Down => self.get_stateful_list_mut().next(),
+         Up => self.get_stateful_list_mut().previous(),
+         Enter => self.change_status(),
+         Char('g') => self.go_top(),
+         Char('G') => self.go_bottom(),
+         Char('n') => {
+            // In LV2 Control view (F2) move down
+            // on Port in Port display
+            if self.app_view_state == AppViewState::Command {
+               // In LV2 Control view (F2) move down a port
+               let i = match self.table_state.selected() {
+                  Some(i) => {
+                     if i >= self.control_ports.len() - 1 {
+                        0
+                     } else {
+                        i + 1
+                     }
+                  }
+                  None => 0,
+               };
+               self.table_state.select(Some(i));
+               self.scroll_bar_state =
+                  self.scroll_bar_state.position(i * ITEM_HEIGHT);
+            }
+         }
+         Char('p') => {
+            // In LV2 Control view (F2) move up
+            // on Port in Port display
+            if self.app_view_state == AppViewState::Command {
+               // In LV2 Control view (F2) move down
+               let i = match self.table_state.selected() {
+                  Some(i) => {
+                     if i == 0 {
+                        self.control_ports.len() - 1
+                     } else {
+                        i - 1
+                     }
+                  }
+                  None => 0,
+               };
+               self.table_state.select(Some(i));
+               self.scroll_bar_state =
+                  self.scroll_bar_state.position(i * ITEM_HEIGHT);
+            }
+         }
+         Char('s') => {
+            if self.app_view_state == AppViewState::Command {
+               self.app_view_state = AppViewState::Lv2SaveName;
+            }
+         }
+         // Function keys for setting modes
+         F(1) => self.app_view_state = AppViewState::List,
+         F(2) => self.app_view_state = AppViewState::Command,
+         _ => {
+            eprintln!(
+               "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
+               key.code,
+               key.modifiers,
+               key.modifiers & crossterm::event::KeyModifiers::CONTROL
+                  == crossterm::event::KeyModifiers::CONTROL
+            );
+         }
+      }
+   }
+   fn handle_key(&mut self, key: &KeyEvent) {
+      match self.app_view_state {
+         AppViewState::Command | AppViewState::List => {
+            self.handle_key_display(key);
+         }
+         AppViewState::Lv2SaveName => {
+            self.handle_key_dialogue(key);
          }
       }
    }
@@ -978,9 +1153,6 @@ impl App<'_> {
       let target_fps = 100; // 400 is about the limit on Raspberry Pi 5
       let frame_time = Duration::from_secs(1) / target_fps as u32;
 
-      // Set this to false to make process exit on next loop
-      let mut run = true;
-
       // Record the instant the loop started for debugging
       let _instant_loop_started = Instant::now();
       let mut _tick_counter = 0; // Reset every debug report
@@ -995,7 +1167,7 @@ impl App<'_> {
          }
 
          let start_time = Instant::now();
-         if !run {
+         if !self.run_app {
             break;
          }
 
@@ -1019,88 +1191,7 @@ impl App<'_> {
             let ev = event::read();
             match ev {
                Ok(Event::Key(key)) => {
-                  use KeyCode::*;
-                  match key.code {
-                     Left => {
-                        // In Port Control window decrease value of
-                        // port by one unit
-                        if self.app_view_state == AppViewState::Command {
-                           self.handle_port_adj(PortAdj::Down, &key);
-                        }
-                     }
-                     Right => {
-                        // In Port Control window increase value of
-                        // port by one unit
-                        if self.app_view_state == AppViewState::Command {
-                           self.handle_port_adj(PortAdj::Up, &key);
-                        }
-                     }
-                     Char('q') | Esc => {
-                        self.send_mh_cmd("quit");
-                        // Move this to handler of data from mod-host?
-                        //return Ok(());
-                        run = false;
-                     }
-                     Char('u') => self.get_stateful_list_mut().unselect(),
-                     Down => self.get_stateful_list_mut().next(),
-                     Up => self.get_stateful_list_mut().previous(),
-                     Enter => self.change_status(),
-                     Char('g') => self.go_top(),
-                     Char('G') => self.go_bottom(),
-
-                     Char('n') => {
-                        // In LV2 Control view (F2) move down
-                        // on Port in Port display
-                        if self.app_view_state == AppViewState::Command {
-                           // In LV2 Control view (F2) move down a port
-                           let i = match self.table_state.selected() {
-                              Some(i) => {
-                                 if i >= self.control_ports.len() - 1 {
-                                    0
-                                 } else {
-                                    i + 1
-                                 }
-                              }
-                              None => 0,
-                           };
-                           self.table_state.select(Some(i));
-                           self.scroll_bar_state =
-                              self.scroll_bar_state.position(i * ITEM_HEIGHT);
-                        }
-                     }
-                     Char('p') => {
-                        // In LV2 Control view (F2) move up
-                        // on Port in Port display
-                        if self.app_view_state == AppViewState::Command {
-                           // In LV2 Control view (F2) move down
-                           let i = match self.table_state.selected() {
-                              Some(i) => {
-                                 if i == 0 {
-                                    self.control_ports.len() - 1
-                                 } else {
-                                    i - 1
-                                 }
-                              }
-                              None => 0,
-                           };
-                           self.table_state.select(Some(i));
-                           self.scroll_bar_state =
-                              self.scroll_bar_state.position(i * ITEM_HEIGHT);
-                        }
-                     }
-                     // Function keys for setting modes
-                     F(1) => self.app_view_state = AppViewState::List,
-                     F(2) => self.app_view_state = AppViewState::Command,
-                     _ => {
-                        eprintln!(
-                           "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
-                           key.code,
-                           key.modifiers,
-                           key.modifiers & crossterm::event::KeyModifiers::CONTROL
-                              == crossterm::event::KeyModifiers::CONTROL
-                        );
-                     }
-                  }
+                  self.handle_key(&key);
                }
                Ok(Event::Resize(_, _)) => (),
                Err(err) => panic!("{err}: Reading event"),
@@ -1141,6 +1232,10 @@ impl App<'_> {
    /// Get the StateFulList that is currently in view
    fn get_stateful_list(&self) -> &Lv2StatefulList {
       match self.app_view_state {
+         AppViewState::Lv2SaveName => panic!(
+            "Do not call get_stateful_list in this state {:?}",
+            AppViewState::Lv2SaveName
+         ),
          AppViewState::List => &self.lv2_stateful_list,
          AppViewState::Command => &self.lv2_loaded_list,
       }
@@ -1150,10 +1245,16 @@ impl App<'_> {
    /// in view
    fn get_stateful_list_mut(&mut self) -> &mut Lv2StatefulList {
       match self.app_view_state {
+         AppViewState::Lv2SaveName => panic!(
+            "Do not call get_stateful_list_mut in this state {:?}",
+            AppViewState::Lv2SaveName
+         ),
          AppViewState::List => &mut self.lv2_stateful_list,
          AppViewState::Command => &mut self.lv2_loaded_list,
       }
    }
+
+   fn render_save_name(&mut self, _area: Rect, _buf: &mut Buffer) {}
 
    /// F1 The main screen with all known simulators displayed.
    /// Simulators can be loaded here.  Fo now simulators can only be
@@ -1224,6 +1325,7 @@ impl App<'_> {
 impl Widget for &mut App<'_> {
    fn render(self, area: Rect, buf: &mut Buffer) {
       match self.app_view_state {
+         AppViewState::Lv2SaveName => self.render_save_name(area, buf),
          AppViewState::List => self.render_list(area, buf),
          AppViewState::Command => self.render_selected_lv2(area, buf),
       };
@@ -1468,7 +1570,8 @@ impl App<'_> {
 
    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
       match self.app_view_state {
-         AppViewState::List => Paragraph::new(
+			 AppViewState::Lv2SaveName => Paragraph::new("Enter a name to save this simulator's state"),
+          AppViewState::List => Paragraph::new(
             "Use ↓↑ to select simulators <enter> to load/unload, \ng/G to go top/bottom.",
          ),
          AppViewState::Command => Paragraph::new(

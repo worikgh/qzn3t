@@ -537,13 +537,11 @@ impl ModHostController {
                (Some(ConDisconFlight::Connected), "connect") => {
                   return;
                }
-               (Some(ConDisconFlight::Disconnected), "connect") => {
-               }
+               (Some(ConDisconFlight::Disconnected), "connect") => {}
                (Some(ConDisconFlight::InFlight), _b) => {
                   return;
                }
-               (Some(ConDisconFlight::Connected), "disconnect") => {
-               }
+               (Some(ConDisconFlight::Connected), "disconnect") => {}
                (Some(ConDisconFlight::Disconnected), "disconnect") => {
                   return;
                }

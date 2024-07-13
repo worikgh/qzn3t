@@ -4,11 +4,12 @@ use crate::port::ControlPortProperties;
 use crate::port::Port;
 use crate::port::PortType;
 use core::fmt;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 /// The assembled simulator with all the data necessary to load it
 /// into a host
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Lv2 {
    pub types: HashSet<Lv2Type>,
    pub ports: Vec<Port>,
@@ -16,7 +17,9 @@ pub struct Lv2 {
    pub url: String,
 }
 
-#[derive(PartialEq, Eq, Hash, Debug, Ord, PartialOrd, Clone)]
+#[derive(
+   PartialEq, Eq, Hash, Debug, Ord, PartialOrd, Clone, Serialize, Deserialize,
+)]
 pub enum Lv2Type {
    Plugin,
    ReverbPlugin,

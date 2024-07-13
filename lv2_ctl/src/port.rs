@@ -9,15 +9,16 @@
 ///     * Decimal
 ///     * Float
 use crate::mod_host_controller::ScaleDescription;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd, Serialize, Deserialize)]
 pub enum ContinuousType {
    Integer,
    Decimal,
    Float,
 }
 
-#[derive(Clone, PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd, Serialize, Deserialize)]
 pub struct ContinuousControlPort {
    pub kind: ContinuousType,
    pub max: f64,
@@ -27,7 +28,7 @@ pub struct ContinuousControlPort {
    // When the LV2 is loaded the port values will be loaded.  In
    // useful cases it is an integer or a decimal, but it depends on
    // the type of simulator.  S
-   // pub value: Option<String>,
+   pub value: Option<String>,
 }
 
 impl ContinuousControlPort {
@@ -51,7 +52,7 @@ impl ContinuousControlPort {
    }
 }
 
-#[derive(Clone, PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd, Serialize, Deserialize)]
 pub struct ScaleControlPort {
    /// FIXME! ["Are there default values for these?"];
    pub labels_values: Vec<(String, String)>,
@@ -79,7 +80,7 @@ impl ScaleControlPort {
    }
 }
 
-#[derive(Clone, PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd, Serialize, Deserialize)]
 pub enum ControlPortProperties {
    Continuous(ContinuousControlPort),
    Scale(ScaleControlPort),
@@ -111,14 +112,14 @@ impl ControlPortProperties {
             max,
             default,
             logarithmic,
-            // value: None,
+            value: None,
          })
       }
    }
 }
 
 //#[derive(, Eq, Hash, Ord,)]
-#[derive(Clone, PartialEq, Debug, PartialOrd)]
+#[derive(Clone, PartialEq, Debug, PartialOrd, Serialize, Deserialize)]
 pub enum PortType {
    Input,
    Output,
@@ -128,7 +129,7 @@ pub enum PortType {
    Other(String),
 }
 impl PortType {}
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Port {
    pub name: String,   // For display
    pub symbol: String, // For sending to mod-host

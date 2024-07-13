@@ -1,7 +1,9 @@
 use crate::lv2_simulator::Lv2Simulator;
 /// Display LV2 simulators and select/deselect them
 use ratatui::widgets::ListState;
+use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Lv2StatefulList {
    // Ratatui object.  Size of List and selected item
    pub state: ListState,
@@ -16,10 +18,31 @@ impl Lv2StatefulList {
       self.state.selected().map(|t| self.items[t].clone())
    }
 
+   /// Update a port in the collection.  Return true if it existed,
+   /// false never because it must exist
+   #[allow(dead_code)]
+   pub fn update_port(&mut self, url: &str, symbol: &str, value: &str) -> bool {
+      match self.items.iter_mut().find(|i| i.url == url) {
+         Some(i) => match i
+            .control_ports
+            .iter_mut()
+            .find(|i| i.param_symbol == symbol)
+         {
+            Some(i) => {
+               i.value = Some(value.to_string());
+               true
+            }
+            None => panic!("No port {url}/{symbol}"),
+         },
+         None => panic!("No symulator {url}"),
+      }
+   }
+
    #[allow(dead_code)]
    pub fn get_selected_url(&self) -> Option<String> {
       self.state.selected().map(|t| self.items[t].url.clone())
    }
+
    #[allow(dead_code)]
    pub fn get_selected_mh_id(&self) -> Option<usize> {
       self.state.selected().map(|t| self.items[t].mh_id)
