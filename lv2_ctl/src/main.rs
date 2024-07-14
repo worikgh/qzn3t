@@ -6,6 +6,7 @@ use std::io::BufRead;
 
 mod app;
 mod colours;
+mod dialogue;
 mod lv2;
 mod lv2_simulator;
 mod lv2_stateful_list;

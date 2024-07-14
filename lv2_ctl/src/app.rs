@@ -13,6 +13,7 @@ use crate::colours::SELECTED_STYLE_FG;
 use crate::colours::SELECTED_TEXT_FG;
 use crate::colours::STATIC_TEXT_FG;
 use crate::colours::TEXT_COLOR;
+use crate::dialogue::Dialogue;
 use crate::lv2::Lv2;
 use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
@@ -119,6 +120,9 @@ pub struct App<'a> {
 
    /// Controls the main loop
    run_app: bool,
+
+   /// When input is needed
+   dialogue: Option<Dialogue>,
 }
 
 impl Drop for App<'_> {
@@ -211,6 +215,8 @@ impl App<'_> {
          // Default to running
          // Reset `run` to stop App
          run_app: true,
+
+         dialogue: None,
       }
    }
 
@@ -1031,6 +1037,7 @@ impl App<'_> {
 
       match key.code {
          Esc => {
+            self.dialogue = None;
             self.app_view_state = AppViewState::Command;
          }
          _ => {
@@ -1057,14 +1064,10 @@ impl App<'_> {
             }
          }
          Char('q') | Esc => {
-            if self.app_view_state == AppViewState::Lv2SaveName {
-               if key.code == Esc {}
-            } else {
-               self.send_mh_cmd("quit");
-               // Move this to handler of data from mod-host?
-               //return Ok(());
-               self.run_app = false;
-            }
+            self.send_mh_cmd("quit");
+            // Move this to handler of data from mod-host?
+            //return Ok(());
+            self.run_app = false;
          }
          Char('u') => self.get_stateful_list_mut().unselect(),
          Down => self.get_stateful_list_mut().next(),
@@ -1115,6 +1118,7 @@ impl App<'_> {
          Char('s') => {
             if self.app_view_state == AppViewState::Command {
                self.app_view_state = AppViewState::Lv2SaveName;
+               self.dialogue = Some(Dialogue::new("Enter name for simulator"));
             }
          }
          // Function keys for setting modes
@@ -1254,7 +1258,9 @@ impl App<'_> {
       }
    }
 
-   fn render_save_name(&mut self, _area: Rect, _buf: &mut Buffer) {}
+   fn render_save_name(&mut self, area: Rect, buf: &mut Buffer) {
+      self.dialogue.as_mut().map(|d| d.display(area, buf));
+   }
 
    /// F1 The main screen with all known simulators displayed.
    /// Simulators can be loaded here.  Fo now simulators can only be
@@ -1271,12 +1277,11 @@ impl App<'_> {
 
       // Create two chunks with equal vertical screen space. One for the list and the other for
       // the info block.
-      let vertical = Layout::vertical([
+      let v = Layout::vertical([
          Constraint::Percentage(50),
          Constraint::Percentage(50),
       ]);
-      let [upper_item_list_area, lower_item_list_area] =
-         vertical.areas(rest_area);
+      let [upper_item_list_area, lower_item_list_area] = v.areas(rest_area);
 
       self.render_title(header_area, buf);
       self.render_lv2_list(upper_item_list_area, buf);
