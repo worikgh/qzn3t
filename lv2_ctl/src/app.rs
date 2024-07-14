@@ -820,8 +820,6 @@ impl App<'_> {
             .is_none()
          {}
       }
-      let ctl_ports = serde_json::to_string(&self.port_values).unwrap();
-      eprintln!("DBG JSON CTL >>>>>>\nDBGj {ctl_ports}\nDBG JSON <<<<");
    }
 
    /// Get the new value from the response to a `param_get`
@@ -1030,22 +1028,6 @@ impl App<'_> {
             }
          }
       }
-
-      let url = match self
-         .get_stateful_list()
-         .items
-         .iter()
-         .find(|l| l.mh_id == mh_id)
-      {
-         Some(s) => s.url.clone(),
-         None => panic!(""),
-      };
-      let lv2 = match self.mod_host_controller.get_lv2_by_url(url.as_str()) {
-         Some(l) => l,
-         None => panic!("url: {url}"),
-      };
-      let lv2_json = serde_json::to_string(&lv2).unwrap();
-      eprintln!("DBG JSON >>>>>>\nDBGj {lv2_json}\nDBG JSON <<<<");
    }
 
    fn handle_key_dialogue(&mut self, key: &KeyEvent) {
