@@ -562,6 +562,11 @@ impl ModHostController {
             .expect("Send to mod-host");
       }
    }
+
+   pub fn save_current_lv2(&self, _save_name: &str) -> bool {
+      false
+   }
+
    pub fn get_queued_count(&self) -> usize {
       self.mh_command_queue.len()
    }

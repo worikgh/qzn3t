@@ -14,6 +14,8 @@ use crate::colours::SELECTED_TEXT_FG;
 use crate::colours::STATIC_TEXT_FG;
 use crate::colours::TEXT_COLOR;
 use crate::dialogue::Dialogue;
+use crate::dialogue::DialogueError;
+use crate::dialogue::DialogueValue;
 use crate::lv2::Lv2;
 use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
@@ -868,7 +870,7 @@ impl App<'_> {
       (instance_number, symbol)
    }
 
-   pub fn save_lv2(&self, f_n: &str) {
+   pub fn save_lv2(&self, f_n: &str) -> bool {
       if let Some(mh_id) = self.get_stateful_list().get_selected_mh_id() {
          let lv2_simulator: Lv2Simulator = match self
             .get_stateful_list()
@@ -886,12 +888,26 @@ impl App<'_> {
          };
          let save_string = serde_json::to_string_pretty(&save_struct)
             .expect("Serialising LV2 data to save");
-         let mut file =
-            File::create(f_n).expect("Saving LV2.  Failed to open file");
-         file
-            .write_all(save_string.as_bytes())
-            .expect("Writing data to save file");
-      };
+         let mut file = match File::create(f_n) {
+            Ok(f) => f,
+            Err(err) => {
+               eprintln!("Saving LV2 to {f_n}.  Failed to open file: {err:?}");
+               return false;
+            }
+         };
+         match file.write_all(save_string.as_bytes()) {
+            Ok(_) => true,
+            Err(err) => {
+               eprintln!(
+                  "ERR Saving LV2 to {f_n}.  Failed to write file: {err:?}"
+               );
+               false
+            }
+         }
+      } else {
+         eprintln!("ERR Saving LV2 to {f_n}.  Nothing selected");
+         false
+      }
    }
 
    /// There is a port in the UI focus
@@ -1033,15 +1049,22 @@ impl App<'_> {
    }
 
    fn handle_key_dialogue(&mut self, key: &KeyEvent) {
-      use KeyCode::*;
-
-      match key.code {
-         Esc => {
+      match self.dialogue.as_mut().map(|d| d.handle_key(key)) {
+         Some(Ok(DialogueValue::Continue)) => (),
+         Some(Ok(DialogueValue::Final(save_name))) => {
+            self.app_view_state = AppViewState::Command;
+            if self.save_lv2(save_name.as_str()) {
+               self.dialogue = None;
+            } else {
+               self.app_view_state = AppViewState::Lv2SaveName;
+            }
+         }
+         Some(Err(DialogueError::Close)) => {
             self.dialogue = None;
             self.app_view_state = AppViewState::Command;
          }
-         _ => {
-            eprint!("{:?} ", key.code);
+         None => {
+            panic!("{:?} No dialogue?", key.code);
          }
       }
    }
@@ -1259,7 +1282,9 @@ impl App<'_> {
    }
 
    fn render_save_name(&mut self, area: Rect, buf: &mut Buffer) {
-      self.dialogue.as_mut().map(|d| d.display(area, buf));
+      if let Some(d) = self.dialogue.as_mut() {
+         d.render(area, buf)
+      }
    }
 
    /// F1 The main screen with all known simulators displayed.
