@@ -117,7 +117,7 @@ pub fn run_executable(
          // Non-blocking send to errput channel
          let s = rem_trail_0(s); // Strip zeros
          let s = String::from_utf8(s).unwrap();
-         eprint!("{s}");
+         eprint!("DBG mod-host STDERR: {s}");
       }
 
       // enforce duration

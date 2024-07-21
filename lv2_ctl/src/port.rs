@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 pub enum ContinuousType {
    Integer,
    Decimal,
-   Float,
+   Double,
 }
 
 #[derive(Clone, PartialEq, Debug, PartialOrd, Serialize, Deserialize)]

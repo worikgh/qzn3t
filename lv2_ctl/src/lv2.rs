@@ -76,7 +76,7 @@ impl fmt::Display for ControlPortProperties {
                   match c.kind {
                      ContinuousType::Integer => "Int",
                      ContinuousType::Decimal => "Dec",
-                     ContinuousType::Float => "F  ",
+                     ContinuousType::Double => "F  ",
                   },
                   c.min,
                   c.default,

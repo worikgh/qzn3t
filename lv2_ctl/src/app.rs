@@ -47,6 +47,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::prelude::*;
+use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io, io::stdout};
@@ -167,7 +168,7 @@ fn restore_terminal() -> color_eyre::Result<()> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct SaveStruct {
-   lv2_simulator: Lv2Simulator,
+   lv2: Lv2,
    port_values: HashMap<String, Option<String>>,
 }
 impl App<'_> {
@@ -191,10 +192,7 @@ impl App<'_> {
             status: Status::Unloaded,
             url: t.1 .1.clone(),
             mh_id: t.0, // This is used as mod-host to communicate with loaded simulator
-            control_ports: vec![],
-            input_ports: vec![],
-            output_ports: vec![],
-            // value: None,
+                        // value: None,
          })
          .collect();
       App {
@@ -280,10 +278,6 @@ impl App<'_> {
             };
          if res {
             new_commands.insert(cmd.to_owned());
-         } else {
-            // eprintln!(
-            //    "DBG filter_command_lists  Remove from sent_commands: {cmd}"
-            // );
          }
       }
       self.mod_host_controller.sent_commands = new_commands;
@@ -315,6 +309,7 @@ impl App<'_> {
                         self.send_mh_cmd(cmd.as_str());
 
                         // TODO:  Move this into the handler for received messages
+
                         self.lv2_loaded_list.items.push(lv2);
                         self
                            .lv2_loaded_list
@@ -340,6 +335,7 @@ impl App<'_> {
                            panic!("A loaded LV2 was not om loaded_list.  {i}");
                         }
                      }
+
                      Status::Pending => Status::Pending,
                   }
             }
@@ -395,21 +391,6 @@ impl App<'_> {
                   .iter()
                   .map(|s| format!("disconnect {s}"))
                   .collect::<Vec<String>>();
-
-               // let mut dbg: String = String::new();
-               // for k in self.mod_host_controller.connections.keys() {
-               //    dbg = format!(
-               //       "{dbg}\nDBG CONNS {k:?}/{:?}",
-               //       self.mod_host_controller.connections.get(k)
-               //    );
-               // }
-               // eprintln!("{dbg}\n");
-
-               // dbg = "".to_string();
-               // for k in self.jack_connections.iter() {
-               //    dbg = format!("{dbg}\nDBG JACK {k:?}");
-               // }
-               // eprintln!("{dbg}\n");
 
                let _control_commands: Vec<String>;
                let input_commands: Vec<String>;
@@ -526,7 +507,6 @@ impl App<'_> {
    /// `self.mod_host_controller.last_mh_command` resp status [value]
    fn process_response(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
-
       let resp_code = Self::get_resp_code(response);
       if !self.validate_resp(resp_code) {
          // No action to take if response not valid, except report the error
@@ -551,7 +531,7 @@ impl App<'_> {
                );
                // Resend the command.  Hope not to get into an
                // infinite loop of doom.....
-					 eprintln!("DBG Despite error, do not Resend ({error_str}:{resp_code}): {failed_cmd}");
+					 eprintln!("ERR Despite error, do not Resend ({error_str}:{resp_code}): {failed_cmd}");
                 // self.mod_host_controller.send_mh_cmd(&failed_cmd);
             }
             _ => eprintln!(
@@ -868,39 +848,86 @@ impl App<'_> {
       (instance_number, symbol)
    }
 
+   pub fn load_lv2(&mut self, f_n: &str) -> bool {
+      let mut _file = match File::open(f_n) {
+         Ok(f) => f,
+         Err(err) => {
+            eprintln!("Saving LV2 to {f_n}.  Failed to open file: {err:?}");
+            return false;
+         }
+      };
+
+      let json: String = std::fs::read_to_string(f_n)
+         .expect("Reading LV2.  Failed to open and read file")
+         .lines()
+         .map(String::from)
+         .collect::<Vec<String>>()
+         .join("");
+      let sj: SaveStruct = match serde_json::from_str(json.as_str()) {
+         Ok(st) => st,
+         Err(err) => {
+            eprintln!("{err}: Failed to convert file: {f_n}");
+            return false;
+         }
+      };
+      let lv2: Lv2 = sj.lv2;
+
+      let port_values = sj.port_values;
+      // let mut new_items:Vec<Lv2Simulator> =
+      match self.lv2_stateful_list.mk_lv2_simulator(&lv2) {
+         Ok(s) => {
+            let cmd = format!("add {} {}\n", s.url.as_str(), s.mh_id,);
+
+            self.send_mh_cmd(cmd.as_str());
+            for (k, v) in port_values.iter() {
+               let cmd = format!(
+                  "param_set {} {k} {}\n",
+                  s.mh_id,
+                  v.as_ref().unwrap()
+               );
+
+               self.send_mh_cmd(cmd.as_str());
+            }
+            self.lv2_stateful_list.items.push(s.clone());
+            self.lv2_stateful_list =
+               Lv2StatefulList::new(self.lv2_stateful_list.items.clone());
+            self.lv2_loaded_list.items.push(s);
+         }
+         Err(_err) => panic!("Cannot make Lv2Simulator"),
+      };
+      self.mod_host_controller.simulators.push(lv2);
+
+      false
+   }
+
    pub fn save_lv2(&self, f_n: &str) -> bool {
-      if let Some(mh_id) = self.get_stateful_list().get_selected_mh_id() {
-         let lv2_simulator: Lv2Simulator = match self
-            .get_stateful_list()
-            .items
-            .iter()
-            .find(|l| l.mh_id == mh_id)
-         {
-            Some(s) => s.clone(),
-            None => panic!(""),
-         };
+      if let Some(url) = self.get_stateful_list().get_selected_url() {
+         let lv2: Lv2 =
+            match self.mod_host_controller.get_lv2_by_url(url.as_str()) {
+               Some(u) => u.clone(),
+               None => panic!("save LV2, cannot load url: {url}"),
+            };
          let port_values = self.port_values.clone();
-         let save_struct = SaveStruct {
-            lv2_simulator,
-            port_values,
-         };
+         let save_struct = SaveStruct { lv2, port_values };
          let save_string = serde_json::to_string_pretty(&save_struct)
             .expect("Serialising LV2 data to save");
          let mut file = match File::create(f_n) {
             Ok(f) => f,
             Err(err) => {
-               eprintln!("Saving LV2 to {f_n}.  Failed to open file: {err:?}");
+               eprintln!(
+                  "ERR Saving LV2 to {f_n}.  Failed to open file: {err:?}"
+               );
                return false;
             }
          };
          match file.write_all(save_string.as_bytes()) {
-            Ok(_) => true,
             Err(err) => {
                eprintln!(
                   "ERR Saving LV2 to {f_n}.  Failed to write file: {err:?}"
                );
                false
             }
+            Ok(_) => true,
          }
       } else {
          eprintln!("ERR Saving LV2 to {f_n}.  Nothing selected");
@@ -991,7 +1018,7 @@ impl App<'_> {
                   let new_value = match cppc.kind {
                      ContinuousType::Decimal => format!("{:.2}", n),
                      ContinuousType::Integer => format!("{:.0}", n),
-                     ContinuousType::Float => format!("{n:.4}"),
+                     ContinuousType::Double => format!("{n:.4}"),
                   };
                   let new_value = new_value.trim();
                   let cmd =
@@ -1030,12 +1057,18 @@ impl App<'_> {
       }
    }
 
-   fn handle_key_dialogue(&mut self, key: &KeyEvent) {
+   /// Entering a file name to use to save a LV2 as JSON.  
+   fn key_enter_filename(&mut self, key: &KeyEvent) {
       match self.dialogue.as_mut().map(|d| d.handle_key(key)) {
          Some(Ok(DialogueValue::Continue)) => (),
          Some(Ok(DialogueValue::Final(save_name))) => {
+            // Test to see if file exists.  If so, load it, if not create it
             self.app_view_state = AppViewState::Command;
-            if self.save_lv2(save_name.as_str()) {
+            let save_name = format!("data/{save_name}.json");
+            if Path::new(save_name.as_str()).exists() {
+               self.load_lv2(save_name.as_str());
+               self.dialogue = None;
+            } else if self.save_lv2(save_name.as_str()) {
                self.dialogue = None;
             } else {
                self.app_view_state = AppViewState::Lv2SaveName;
@@ -1050,6 +1083,7 @@ impl App<'_> {
          }
       }
    }
+
    fn handle_key_display(&mut self, key: &KeyEvent) {
       use KeyCode::*;
 
@@ -1140,13 +1174,15 @@ impl App<'_> {
          }
       }
    }
+
+   /// A key event is detected. User input
    fn handle_key(&mut self, key: &KeyEvent) {
       match self.app_view_state {
          AppViewState::Command | AppViewState::List => {
             self.handle_key_display(key);
          }
          AppViewState::Lv2SaveName => {
-            self.handle_key_dialogue(key);
+            self.key_enter_filename(key);
          }
       }
    }
@@ -1384,7 +1420,6 @@ impl App<'_> {
          .filter(|&l| l.1.status == Status::Loaded)
          .map(|(i, lv2_item)| Self::sim_to_static_list_item(lv2_item, i))
          .collect();
-
       // Create a List from all list items and highlight the currently selected one
       let items2 = List::new(items)
          .block(inner_block)
@@ -1582,13 +1617,13 @@ impl App<'_> {
 
    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
       match self.app_view_state {
-			 AppViewState::Lv2SaveName => Paragraph::new("Enter a name to save this simulator's state"),
+			 AppViewState::Lv2SaveName => Paragraph::new("Enter a new name to save this simulator's state\nExisting name to load a simulator"),
           AppViewState::List => Paragraph::new(
             "Use ↓↑ to select simulators <enter> to load/unload, \ng/G to go top/bottom.",
          ),
          AppViewState::Command => Paragraph::new(
-            "Use ↓↑ to move, ← to unselect, → to change status.\n\
-		 Any other characters fol to send instructions <Enter> to send",
+             "Use ↓↑ to move between simulators Enter to load \n \
+				  n/p move between ports.  ← decrease → increase port value"
          ),
       }
       .centered()

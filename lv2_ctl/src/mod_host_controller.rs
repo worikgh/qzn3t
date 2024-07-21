@@ -377,7 +377,6 @@ impl ModHostController {
 
    /// Queue a command to send to mod-host
    pub fn send_mh_cmd(&mut self, cmd: &str) {
-      // eprintln!("DBG send_mh_cmd {cmd}");
       self.mh_command_queue.push_back(cmd.to_string());
    }
 
@@ -439,7 +438,7 @@ impl ModHostController {
    }
 
    /// Return `Lv2` by URL
-   pub fn get_lv2_by_url(&mut self, url: &str) -> Option<&Lv2> {
+   pub fn get_lv2_by_url(&self, url: &str) -> Option<&Lv2> {
       self.simulators.iter().find(|l| l.url == url)
    }
    pub fn get_lv2_by_url_mut(&mut self, url: &str) -> Option<&mut Lv2> {
@@ -475,55 +474,13 @@ impl ModHostController {
       }
    }
 
-   /// Check for redundant commands in command queue.
-   fn reduce_queue(&mut self) {
-      // Start at the far end of the queue.  A command there that
-      // sets a parameter means that any earlier commands (in the
-      // queue) that set the same parameter will be over ridden so
-      // no point keeping them
-
-      // Put the commands here that can be removed from the rest of
-      // the queue
-      let mut commands: HashSet<String> = HashSet::new();
-
-      // This is the new queue without redundant commands
-      let mut new_queue: VecDeque<String> = VecDeque::new();
-
-      let cmd_iter = self.mh_command_queue.iter_mut().rev();
-      for c in cmd_iter {
-         let param_set_len = "param_set".len();
-         if c.len() > param_set_len && &c[..param_set_len] == "param_set" {
-            // param_set <instance_number> <param_symbol> <param_value>
-            //     e.g.: param_set 0 gain 2.50
-            let cmd_end = c
-               .chars()
-               .rev()
-               .position(|c| c.is_whitespace())
-               .expect("reduce_queue: Find end of param_set");
-            let cmd_key = &c[..cmd_end];
-            if commands.contains(cmd_key) {
-               // Do not process this
-               eprintln!("DBG Reduce queue - out with {cmd_key}");
-               continue;
-            }
-            commands.insert(cmd_key.to_string());
-            new_queue.push_back(c.to_string());
-            continue;
-         }
-
-         // Default is to keep command
-         new_queue.push_back(c.to_string());
-      }
-      self.mh_command_queue = new_queue;
-   }
-
    /// Called from the event loop to send a message to mod-host
    pub fn pump_mh_queue(&mut self) {
-      self.reduce_queue();
+      // self.reduce_queue();
       if !self.mh_command_queue.is_empty()
       &&
       // Only push a command if there is none or one command in flight
-      self.sent_commands.len() < 8
+      self.sent_commands.is_empty()
       {
          // Safe because queue is not empty
          let cmd = self.mh_command_queue.pop_front().unwrap();
@@ -545,10 +502,8 @@ impl ModHostController {
                (Some(ConDisconFlight::Disconnected), "disconnect") => {
                   return;
                }
-               (None, _b) => {
-                  // eprintln!("DBGy No connection state. {b:?} for: {connection}")
-               }
-               (a, b) => panic!("DBGy Reality discontinuity: {a:?} {b:?}"),
+               (None, _b) => {}
+               (a, b) => panic!("ERR Reality discontinuity: {a:?} {b:?}"),
             }
             self
                .connections
@@ -572,15 +527,9 @@ impl ModHostController {
    }
 }
 
-// fn main() {
-// 	 let test_data:String = test_data();
-// 	 let mhc = ModHostController::get_lv2_controller(test_data.lines().map(|s|Ok(s.to_string()))).unwrap();
-// 	 assert!(!mhc.simulators.is_empty());
-// }
-
 /// Helper functions below here
 /// For strings starting like `"1.0"^^<htt...` And the first quoted part
-/// (1.0) is wanted.  Panic if invalid string passed
+/// `1.0` is wanted.  Panic if invalid string passed
 fn remove_quotes(inp: &str) -> &str {
    // The first character is a quote.  Thence the string intil the
    // next quote
@@ -594,7 +543,7 @@ fn remove_quotes(inp: &str) -> &str {
 /// Numbers for control ports are in the data often without a decimal
 /// point.  This takes a LV2 object string and extracts the number.
 /// Or panics.  It also returns the LV2 type
-/// "0.5"^^<http://www.w3.org/2001/XMLSchema#decimal>
+/// "0.5"^^<http://www.w3.org/2001/XMLSchema#decimal> -> (0.5_f64, "decimal")
 fn control_number(object: &str) -> (f64, String) {
    let b = &object[1..];
    let c = b
@@ -782,7 +731,7 @@ fn get_mmdls(
       match con_type.as_str() {
          "integer" => ContinuousType::Integer,
          "decimal" => ContinuousType::Decimal,
-         "double" => ContinuousType::Float,
+         "double" => ContinuousType::Double,
          _ => panic!("{con_type}: Unknown conntrol port type"),
       },
    )
