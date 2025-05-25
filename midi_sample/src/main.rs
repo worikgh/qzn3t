@@ -23,11 +23,11 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-// There need to be enough of these that there is allways one channel
-// available.  If long samples (that tie up a channel) are being
-// played in quick succession each new (long) samlpe ties up another
-// channel.  The symptom is sample playing continues after triggering
-// stops as the backlog is processed.  Nothing gets dropped.
+/// There need to be enough of these that there is always one channel
+/// available.  If long samples (that tie up a channel) are being
+/// played in quick succession each new (long) sample ties up another
+/// channel.  The symptom is sample playing continues after triggering
+/// stops as the backlog is processed.  Nothing gets dropped.
 const NUM_RECEIVERS: usize = 300;
 
 /// Each sample is described by a path to an audio file and a MIDI
@@ -145,28 +145,30 @@ fn main() {
                 // Decode the packet into audio samples, ignoring any decode errors.
                 match decoder.decode(&packet) {
                     Ok(audio_buf) => {
-                        // The decoded audio samples may now be accessed via
-                        // the audio buffer if per-channel slices of samples
-                        // in their native decoded format is
-                        // desired. Use-cases where the samples need to be
-                        // accessed in an interleaved order or converted into
-                        // another sample format, or a byte buffer is
-                        // required, are covered by copying the audio buffer
-                        // into a sample buffer or raw sample buffer,
-                        // respectively. In the example below, we will copy
-                        // the audio buffer into a sample buffer in an
-                        // interleaved order while also converting to a f32
-                        // sample format.
+                        // The decoded audio samples may now be
+                        // accessed via the audio buffer if
+                        // per-channel slices of samples in their
+                        // native decoded format is desired. Use-cases
+                        // where the samples need to be accessed in an
+                        // interleaved order or converted into another
+                        // sample format, or a byte buffer is
+                        // required, are covered by copying the audio
+                        // buffer into a sample buffer or raw sample
+                        // buffer, respectively. In the example below,
+                        // we will copy the audio buffer into a sample
+                        // buffer in an interleaved order while also
+                        // converting to a f32 sample format.
 
-                        // If this is the *first* decoded packet, create a
-                        // sample buffer matching the decoded audio buffer
-                        // format.
+                        // If this is the *first* decoded packet,
+                        // create a sample buffer matching the decoded
+                        // audio buffer format.
                         if sample_buf.is_none() {
                             // Get the audio buffer specification.
                             let spec: SignalSpec = *audio_buf.spec();
 
-                            // Get the capacity of the decoded buffer. Note:
-                            // This is capacity, not length!
+                            // Get the capacity of the decoded
+                            // buffer. Note: This is capacity, not
+                            // length!
                             let duration = audio_buf.capacity() as u64;
 
                             // Create the f32 sample buffer.

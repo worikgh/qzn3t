@@ -1,7 +1,10 @@
 #!/usr/bin/perl -w
 use strict;
 
-# Input consists of two parts:
+# Make configuration files for lpx-ctl.
+#
+# Only argument is a configuration file.
+# The configuration file consists of two parts:
 # (1) Colour definitions: <r> <g> <b> <name>
 # <r>, <g>, <b> in 0..127
 # <name> is a label
@@ -51,8 +54,18 @@ while(my $line = <$cfg_fh>){
 	$colours{$4} = [$1, $2, $3];
 	next;
     }
+
+    ## A section name
+    ## s1 red red_active 33 [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]
     if($line =~ /^([\-\w]+)\s+(\w+)\s+(\w+)\s+(\d+)\s+\[([\d+,\s+]*)\]\s*$/){
+	## Section name: s1
+	
 	defined $section_definitions{$1} and die "$1 is defined section twice";
+	## $1 Name of section
+	## $2 Main colour, at rest
+	## $3 Active colour, a pad in group is pressed
+	## $4 MIDI to emit
+	## $5 The pads controlled by this line
 	my @pads = split(/,\s+?/, $5);
 	$section_definitions{$1} = [\@pads, $2, $3, $4 + $midi_adj];
 	next;
@@ -67,6 +80,7 @@ while(my $line = <$cfg_fh>){
 print "[\n";
 my @sects = ();
 foreach my $sec (sort keys %section_definitions){
+    ## s1 red red_active 33 [11, 12, 13, 14, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]
     my @pads = @{$section_definitions{$sec}->[0]};
     my $array_ref = $colours{$section_definitions{$sec}->[1]};
     my $main_colour = "[".join(", ", @{$array_ref})."]";
