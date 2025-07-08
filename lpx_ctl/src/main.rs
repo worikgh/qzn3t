@@ -24,36 +24,35 @@ use std::sync::mpsc::{self, Receiver, Sender};
 /// Initialise a vector of `Section` from a file.
 fn load_sections(filename: &str) -> Option<Vec<Section>> {
     let mut file = match File::open(filename) {
-	Ok(f) => f,
-	Err(err) => panic!("{err}"),
+        Ok(f) => f,
+        Err(err) => panic!("{err}"),
     };
     let mut content = String::new();
     match file.read_to_string(&mut content) {
-	Ok(_) => (),
-	Err(err) => panic!("{err}"),
+        Ok(_) => (),
+        Err(err) => panic!("{err}"),
     };
 
     // Create the sections from the file
-    let mut sections:Vec<Section> = Section::parse_json(&content).expect("Failed parsing JSON");
+    let mut sections: Vec<Section> = Section::parse_json(&content).expect("Failed parsing JSON");
     // If there is a default section with no pads put all unincluded pads in it
     if let Some(index) = sections.iter().position(|x| x.pads.is_empty()) {
-
-	// Collect all pads mentioned so far
-	let mut pads_here: Vec<u8> = sections.iter().flat_map(|x| x.pads.clone()).collect();
-	if pads_here.len() < 64 {
-	    // Need the default
-	    pads_here.sort();
-	    // Check each row for missing pads and add them to default
-	    for r in 1..=8 {
-		let pads:Vec<&u8> = pads_here.iter().filter(|x| *x / 10 == r).collect();
-		for c in 1..=8  {
-		    let pad = r * 10 + c;
-		    if !pads.iter().any(|x| x == &&pad){
-			sections[index].pads.push(pad);
-		    }
-		}
-	    }
-	}
+        // Collect all pads mentioned so far
+        let mut pads_here: Vec<u8> = sections.iter().flat_map(|x| x.pads.clone()).collect();
+        if pads_here.len() < 64 {
+            // Need the default
+            pads_here.sort();
+            // Check each row for missing pads and add them to default
+            for r in 1..=8 {
+                let pads: Vec<&u8> = pads_here.iter().filter(|x| *x / 10 == r).collect();
+                for c in 1..=8 {
+                    let pad = r * 10 + c;
+                    if !pads.iter().any(|x| x == &&pad) {
+                        sections[index].pads.push(pad);
+                    }
+                }
+            }
+        }
     }
     Some(sections)
 }
@@ -193,8 +192,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // Find the section the pad is in
             let pad: u8 = message[1];
 
-	    
-	    if let Some(section) = sections.iter().find(|x| x.pad_in(pad)){
+            if let Some(section) = sections.iter().find(|x| x.pad_in(pad)) {
                 // got the section for a pad
 
                 // Send out the note
@@ -213,7 +211,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     let main_colour = make_colour(section, section.main_colour);
                     colour_port.send(&main_colour).unwrap();
                 }
-		continue;
+                continue;
             }
         } else if message[0] == 176 {
             // A control signal
