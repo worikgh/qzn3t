@@ -55,11 +55,11 @@ impl Section {
     }
 
     // Check a set of `Section` to see if they are valid as a grouop
-    pub fn check_sections(sections: &Vec<Section>) -> bool {
+    pub fn check_sections(sections: &[Section]) -> bool {
         // Can only be one section with no pads.  It is the default section
         let default_section_count = sections
             .iter()
-            .filter(|x| x.pads.len() == 0)
+            .filter(|x| x.pads.is_empty())
             .collect::<Vec<&Section>>()
             .len();
         let a = if default_section_count < 2 {
@@ -111,7 +111,7 @@ impl Section {
                 }
             }
         }
-        return false;
+        false
     }
 
     pub fn parse_json(input: &str) -> Option<Vec<Section>> {
@@ -127,15 +127,15 @@ impl Section {
             }
         }
     }
-    pub fn row_col_to_pad(row: u8, col: u8) -> u8 {
-        row * 10 + col
-    }
-    pub fn pad_to_row(pad: u8) -> u8 {
-        pad / 10
-    }
-    pub fn pad_to_col(pad: u8) -> u8 {
-        pad % 10
-    }
+    // pub fn row_col_to_pad(row: u8, col: u8) -> u8 {
+    //     row * 10 + col
+    // }
+    // pub fn pad_to_row(pad: u8) -> u8 {
+    //     pad / 10
+    // }
+    // pub fn pad_to_col(pad: u8) -> u8 {
+    //     pad % 10
+    // }
     /// Detect if a pad on the LPX is in this section
     pub fn pad_in(&self, pad: u8) -> bool {
         self.pads.contains(&pad)
