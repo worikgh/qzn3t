@@ -25,7 +25,7 @@ jobs:
           cargo build --release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: lpx_ctl-macos
           path: lpx_ctl/target/release/lpx_ctl
