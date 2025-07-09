@@ -185,6 +185,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(m) => m,
             Err(err) => panic!("{}", err),
         };
+        eprint!(
+            "MIDI: {:2x} {:2x} {:2x}.  ",
+            message[0], message[1], message[2]
+        );
         if message[0] == 144 {
             // All MIDI notes from LPX start with 144, for initial
             // noteon and noteoff
@@ -198,6 +202,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // Send out the note
                 let velocity = message[2];
                 let message: [u8; 3] = [message[0], section.midi_note, velocity];
+                eprintln!(
+                    "SEND NoteOn: Type: {:2x} Note: {:2x} Velocity: {:2x}",
+                    message[0], message[1], message[2]
+                );
                 midi_note_out_port.send(&message)?;
 
                 if velocity > 0 {
@@ -215,7 +223,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         } else if message[0] == 176 {
             // A control signal
-            eprintln!("control_port On: Message{message:?}");
+            eprintln!(
+                "SEND Ctl: {:2x} {:2x} {:2x}",
+                message[0], message[1], message[2]
+            );
             midi_ctl_out_port.send(&message).unwrap();
         }
     }

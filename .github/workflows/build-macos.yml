@@ -1,0 +1,32 @@
+name: Build for MacOS
+
+on:
+  push:
+    branches:
+      - mistress
+    paths:
+      - lpx_ctl/**
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Rust
+        uses: actions/setup-rust@v2
+        with:
+          rust-version: stable
+
+      - name: Build and test
+        run: |
+          cd lpx_ctl
+          cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lpx_ctl-macos
+          path: lpx_ctl/target/release/lpx_ctl
+          if-no-files-found: error
