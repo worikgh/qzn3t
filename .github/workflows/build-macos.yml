@@ -12,10 +12,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Rust
-        uses: actions/setup-rust@v2
+        uses: actions/setup-rust@v5
         with:
           rust-version: stable
 
