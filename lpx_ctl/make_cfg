@@ -8,10 +8,10 @@ use strict;
 # (1) Colour definitions: <r> <g> <b> <name>
 # <r>, <g>, <b> in 0..127
 # <name> is a label
-# E.g: 127 0 0 red
-#      46 47 48 teal
-#       0  0 127 blue
-#       0  127 0 green
+# E.g: 127   0   0 red
+#       46  47  48 teal
+#       0    0 127 blue
+#       0  127   0 green
 #
 # (2) Section definitions
 # <section name> <colour name main> <colour name active> <MIDI>

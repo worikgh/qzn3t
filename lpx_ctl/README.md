@@ -2,6 +2,12 @@
 
 Group and light up LEDs on LPX Novation, and output MIDI signals - all pads in a group/have same colour, output same MIDI note.
 
+Provides two MIDI ports:
+1. `LpxCtlNote` for MIDI noteon/noteoff messages
+  Uses `0x90` MIDI messages with velocity == `0` for NiteOff
+2. `LpxCtlCtl` for MIDI control messages
+  Uses `0xb0` messages.  The tird of the tripple is `0x7f` for "pressed", `0` for "released"
+
 ## Sections - Colour and Note
 
 * Defined using sets of pads. Allows arbitrary, even discontinuous, sections
@@ -33,3 +39,7 @@ following properties:
   Each in range 0-127
 * midi_note: The note to attach note-on and note-off MIDI events to.
   
+
+## Building for Apple
+
+The `cross` crate is included

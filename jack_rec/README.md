@@ -16,8 +16,6 @@ The data is 1-channel raw audio.
 
 When `jack_rec` finishes it prints a JSON object containing the sample rate and an array of paths to the recorded files.  This is what is needed to convert them to more useful formats
 
-
-
 ## Control
 
 The programme runs all recordings in threads, a thread (via `jack::AsyncClient` and `jack::ProcessHandler`).  The main thread blocks on stdin, effectively waiting for a key press.

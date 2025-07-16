@@ -1,8 +1,6 @@
 //! Record all Jack audio channels playing audio output.  Output on
 //! stdout the sample rate and list of output files in JSON format
 
-extern crate chrono;
-extern crate serde;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::env;
@@ -32,7 +30,7 @@ fn main() {
 
     // Create client
     let (client, _status) =
-        jack::Client::new("jackrec_qzt", jack::ClientOptions::NO_START_SERVER).unwrap();
+        jack::Client::new("qzn3t_jack_rec", jack::ClientOptions::NO_START_SERVER).unwrap();
     // The `in_ports` that match "system:playback" are the audio output
 
     // `description` contains the paths to the generated files and the
@@ -47,13 +45,11 @@ fn main() {
     // Get all ports matching "system:playback"
     let system_playback = client.ports(Some("system:playback"), None, jack::PortFlags::IS_INPUT);
 
-    // All the output ports from every application
-    let out_ports = client.ports(None, None, jack::PortFlags::IS_OUTPUT);
-
     // Filter the output ports.  Keep any that are connected to a
     // "system:playback" port.
-    let ports: Vec<String> = out_ports
-        .to_vec()
+    let ports: Vec<String> = client
+        .ports(None, None, jack::PortFlags::IS_OUTPUT)
+        // .to_vec()
         .iter()
         .filter(|p| {
             let outport = client.port_by_name(p.as_str()).unwrap();

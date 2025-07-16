@@ -2,8 +2,9 @@ extern crate jack;
 extern crate midir;
 extern crate serde;
 extern crate symphonia;
+use jack::contrib::ClosureProcessHandler;
 use jack::ClientStatus;
-use jack::{Client, ClosureProcessHandler, Control};
+use jack::{Client, Control};
 use midir::{MidiInput, MidiInputConnection};
 use serde::Deserialize;
 use std::env;
@@ -231,7 +232,7 @@ fn main() {
     if status != ClientStatus::empty() {
         panic!("Failed");
     }
-    let mut port = client.register_port("output", jack::AudioOut);
+    let mut port = client.register_port("output", jack::AudioOut::default());
 
     // Activate the Jack client and start the audio processing thread
     let _as_client = client
@@ -241,7 +242,7 @@ fn main() {
                 move |_c: &Client, ps: &jack::ProcessScope| -> Control {
                     let output = port.as_mut().unwrap().as_mut_slice(ps);
 
-                    for (_frame, sample) in output.iter_mut().enumerate() {
+                    for sample in output.iter_mut() {
                         let mut f: f32 = 0.0;
                         for r in receivers.iter() {
                             if let Ok(_f) = r.try_recv() {
@@ -271,10 +272,7 @@ fn main() {
     // Create a virtual midi port to read in data
     let lpx_midi = MidiInput::new("MidiSampleQzn3t").unwrap();
     let in_ports = lpx_midi.ports();
-    let in_port = in_ports.get(0).ok_or("no input port available").unwrap();
-
-    // // Create the channel that the buf reading closure uses to send data
-    // let (sender, receiver) = channel::<f32>();
+    let in_port = in_ports.first().ok_or("no input port available").unwrap();
 
     // Index the clousre below maintains for output clients
     let mut idx = 0;
