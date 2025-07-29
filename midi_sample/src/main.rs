@@ -68,13 +68,14 @@ fn process_samples_json(
         Ok(s) => s,
         Err(err) => panic!("{err}: Processing JSON"),
     };
-    let path = Path::new(file_path);
-    let directory_path = path.parent().unwrap().display();
-    let binding = directory_path.to_string();
-    let directory_path = binding.as_str();
     for p in config.samples_descr.iter_mut() {
-        p.path = directory_path.to_string() + "/" + p.path.as_str();
-        eprintln!("p.path: {}", p.path);
+        let sample_path: &Path = Path::new(&p.path);
+        if sample_path.is_relative() {
+            // Relative to `file_path` make it absolute
+            let path = Path::new(file_path).parent().unwrap().join(sample_path);
+            p.path = path.to_str().unwrap().to_string();
+            eprintln!("DBG midi_sample: Sample path made absolute: {path:?}");
+        }
     }
 
     Ok(config.samples_descr)
