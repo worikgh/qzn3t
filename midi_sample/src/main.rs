@@ -74,7 +74,6 @@ fn process_samples_json(
             // Relative to `file_path` make it absolute
             let path = Path::new(file_path).parent().unwrap().join(sample_path);
             p.path = path.to_str().unwrap().to_string();
-            eprintln!("DBG midi_sample: Sample path made absolute: {path:?}");
         }
     }
 
@@ -205,7 +204,9 @@ fn main() {
         } else {
             path.as_str()
         };
-        eprintln!("{disp_path}  Total size() {sample_count}");
+        eprintln!(
+            "DBGT midi_sample: Sample file: {disp_path}  Size: {sample_count}"
+        );
 
         // Store prepared sample
         sample_data.push(SampleData { data, note });
@@ -290,7 +291,7 @@ fn main() {
                     let velocity = message[2];
                     if velocity != 0 {
                         // NoteOn
-                        // eprintln!("Message: {message:?}");
+                        // eprintln!("DBG midi_sample: Message: {message:?}");
                         if let Some(sample) =
                             sample_data.iter().find(|s| s.note == message[1])
                         {
@@ -313,11 +314,6 @@ fn main() {
             (),
         )
         .unwrap();
-    // Wait for the user to press enter to exit
-    // eprintln!("Press enter to exit...");
-    // let _ = std::io::stdin().read_line(&mut String::new());
-    // // Deactivate the Jack client and stop the audio processing thread
-    // as_client.deactivate().unwrap();
     loop {
         thread::sleep(Duration::from_secs(1_000));
     }
