@@ -6,7 +6,7 @@ use jack::contrib::ClosureProcessHandler;
 use jack::ClientStatus;
 use jack::{Client, Control};
 use midir::{MidiInput, MidiInputConnection};
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -31,16 +31,52 @@ use symphonia::core::probe::Hint;
 /// stops as the backlog is processed.  Nothing gets dropped.
 const NUM_RECEIVERS: usize = 300;
 
+use serde::de::{self, Visitor};
+use std::fmt;
+
+struct U8Visitor;
+
+impl<'de> Visitor<'de> for U8Visitor {
+    type Value = u8;
+
+    fn expecting(
+        &self,
+        f: &mut fmt::Formatter,
+    ) -> fmt::Result {
+        write!(
+            f,
+            "a u8 as a number or string (hex with optional '0x' prefix)"
+        )
+    }
+
+    fn visit_u64<E: de::Error>(
+        self,
+        v: u64,
+    ) -> Result<u8, E> {
+        v.try_into()
+            .map_err(|_| E::custom(format!("value {} too large for u8", v)))
+    }
+
+    fn visit_str<E: de::Error>(
+        self,
+        s: &str,
+    ) -> Result<u8, E> {
+        let s = s.trim(); // Handle whitespace
+        if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
+        {
+            u8::from_str_radix(hex, 16)
+        } else {
+            s.parse::<u8>()
+        }
+        .map_err(|e| E::custom(e.to_string()))
+    }
+}
+
 fn deserialize_u8<'de, D>(deserializer: D) -> Result<u8, D::Error>
 where
-    D: Deserializer<'de>,
+    D: de::Deserializer<'de>,
 {
-    let s: String = Deserialize::deserialize(deserializer)?;
-    if s.starts_with("0x") {
-        u8::from_str_radix(&s[2..], 16).map_err(serde::de::Error::custom)
-    } else {
-        s.parse::<u8>().map_err(serde::de::Error::custom)
-    }
+    deserializer.deserialize_any(U8Visitor)
 }
 /// Each sample is described by a path to an audio file and a MIDI
 /// note
