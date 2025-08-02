@@ -200,12 +200,12 @@ fn main() {
         // Extract the file name part of the sample to output some
         // stats.
         let disp_path = if let Some(idx) = path.rfind('/') {
-            path.get(idx..).unwrap()
+            path.get((idx + 1)..).unwrap()
         } else {
             path.as_str()
         };
         eprintln!(
-            "DBGT midi_sample: Sample file: {disp_path}  Size: {sample_count}"
+            "DBG midi_sample: Note -> Sample file: {note:X} -> {disp_path}  Size: {sample_count}"
         );
 
         // Store prepared sample
@@ -228,7 +228,7 @@ fn main() {
         jack::ClientOptions::NO_START_SERVER,
     ) {
         Ok(a) => a,
-        Err(err) => panic!("Err: {err}"),
+        Err(err) => panic!("Error midi_sample: {err}"),
     };
 
     if status != ClientStatus::empty() {
