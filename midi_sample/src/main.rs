@@ -6,7 +6,7 @@ use jack::contrib::ClosureProcessHandler;
 use jack::ClientStatus;
 use jack::{Client, Control};
 use midir::{MidiInput, MidiInputConnection};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -31,11 +31,23 @@ use symphonia::core::probe::Hint;
 /// stops as the backlog is processed.  Nothing gets dropped.
 const NUM_RECEIVERS: usize = 300;
 
+fn deserialize_u8<'de, D>(deserializer: D) -> Result<u8, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    if s.starts_with("0x") {
+        u8::from_str_radix(&s[2..], 16).map_err(serde::de::Error::custom)
+    } else {
+        s.parse::<u8>().map_err(serde::de::Error::custom)
+    }
+}
 /// Each sample is described by a path to an audio file and a MIDI
 /// note
 #[derive(Debug, Deserialize)]
 struct SampleDescr {
     path: String,
+    #[serde(deserialize_with = "deserialize_u8")]
     note: u8,
 }
 
