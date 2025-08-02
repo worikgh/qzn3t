@@ -6,8 +6,10 @@ use jack::contrib::ClosureProcessHandler;
 use jack::ClientStatus;
 use jack::{Client, Control};
 use midir::{MidiInput, MidiInputConnection};
+use serde::de::{self, Visitor};
 use serde::Deserialize;
 use std::env;
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -31,11 +33,8 @@ use symphonia::core::probe::Hint;
 /// stops as the backlog is processed.  Nothing gets dropped.
 const NUM_RECEIVERS: usize = 300;
 
-use serde::de::{self, Visitor};
-use std::fmt;
-
+/// The `Visitor` pattern was given by the DeepSeek AI
 struct U8Visitor;
-
 impl<'de> Visitor<'de> for U8Visitor {
     type Value = u8;
 
@@ -61,7 +60,7 @@ impl<'de> Visitor<'de> for U8Visitor {
         self,
         s: &str,
     ) -> Result<u8, E> {
-        let s = s.trim(); // Handle whitespace
+        let s = s.trim();
         if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
         {
             u8::from_str_radix(hex, 16)
