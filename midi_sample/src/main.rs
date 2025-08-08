@@ -204,7 +204,7 @@ fn main() {
     for SampleDescr { path, note } in samples_descr {
         // Create a media source. Note that the MediaSource trait is
         // automatically implemented for File, among other types.
-        let file = Box::new(match File::open(Path::new(path.as_str())) {
+        let file = Box::new(match File::open(path.as_str()) {
             Ok(f) => f,
             Err(err) => {
                 panic!("Error midi_sample: Failed to open {path}: {err}")
@@ -235,10 +235,10 @@ fn main() {
         };
 
         // Get the format reader yielded by the probe operation.
-        let mut format = probed.format;
+        let mut format_reader = probed.format;
 
         // Get the default track.
-        let track: &Track = format.default_track().unwrap();
+        let track: &Track = format_reader.default_track().unwrap();
 
         // Create a decoder for the track.
         let mut decoder = symphonia::default::get_codecs()
@@ -254,7 +254,7 @@ fn main() {
 
         loop {
             // Get the next packet from the format reader.
-            if let Ok(packet) = format.next_packet() {
+            if let Ok(packet) = format_reader.next_packet() {
                 // If the packet does not belong to the selected track, skip it.
                 if packet.track_id() != track_id {
                     continue;
