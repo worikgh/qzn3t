@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::io::{self};
+use std::path::Path;
 fn main() {
     let mut args = env::args();
 
@@ -65,13 +66,19 @@ fn main() {
     // that is being monitored
     let mut clients = vec![];
     for name in ports.iter() {
+        let name = name.replace('/', "_");
         let (client, _status) =
             jack::Client::new("qzt", jack::ClientOptions::NO_START_SERVER).expect("Client qzt");
         let spec = jack::AudioIn;
-        let inport = client.register_port(name, spec).unwrap();
+        let inport = client.register_port(&name, spec).unwrap();
         let to_port = inport.name().as_ref().unwrap().to_string();
         let fname = format!("{prefix}_{name}.raw");
-        let file = File::create(fname.as_str()).expect("Opening file {name}");
+        eprintln!("DBG jack_re: Create file '{fname}' from port: '{name}'");
+        let fpath = Path::new(&fname);
+        let file = match File::create(fpath) {
+            Ok(f) => f,
+            Err(e) => panic!("Error jack_rec: Cannot create: {fname}  Err: {e}"),
+        };
         description.output_files.push(fname);
 
         // This writer gets moved into the closure
@@ -101,7 +108,7 @@ fn main() {
         match client.connect_ports_by_name(from_port.as_str(), to_port.as_str()) {
             Ok(()) => (),
             Err(err) => {
-                eprintln!("Failed  {name} -> {} '{err}'", to_port);
+                eprintln!("Failed  {from_port} -> {} '{err}'", to_port);
             }
         };
         clients.push(active_client);
