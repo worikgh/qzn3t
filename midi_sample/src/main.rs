@@ -33,8 +33,8 @@ use symphonia::core::probe::Hint;
 /// stops as the backlog is processed.  Nothing gets dropped.
 const NUM_RECEIVERS: usize = 300;
 
-/// The `Visitor` pattern was given by the DeepSeek AI
 struct U8Visitor;
+
 impl<'de> Visitor<'de> for U8Visitor {
     type Value = u8;
 
@@ -53,14 +53,14 @@ impl<'de> Visitor<'de> for U8Visitor {
         v: u64,
     ) -> Result<u8, E> {
         v.try_into()
-            .map_err(|_| E::custom(format!("value {} too large for u8", v)))
+            .map_err(|_| E::custom(format!("Error midi_sample: Failure processing configuration: value {v} too large for u8",)))
     }
 
     fn visit_str<E: de::Error>(
         self,
         s: &str,
     ) -> Result<u8, E> {
-        let s = s.trim();
+        let s = s.trim(); // Handle whitespace
         if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X"))
         {
             u8::from_str_radix(hex, 16)
@@ -108,12 +108,14 @@ fn process_samples_json(
     let mut contents = String::new();
     let mut file = File::open(file_path)?;
     file.read_to_string(&mut contents)
-        .expect("Failed to read file");
+        .expect("Error midi_sample: Failed to read configuration file");
 
     // Convert JSON
     let mut config: Config = match serde_json::from_str(&contents) {
         Ok(s) => s,
-        Err(err) => panic!("{err}: Processing JSON"),
+        Err(err) => {
+            panic!("Error midi_sample: Processing {file_path} JSON: {err}")
+        },
     };
     for p in config.samples_descr.iter_mut() {
         let sample_path: &Path = Path::new(&p.path);
@@ -133,7 +135,9 @@ fn main() {
     let samples_descr: Vec<SampleDescr> =
         match process_samples_json(args[1].as_str()) {
             Ok(sd) => sd,
-            Err(err) => panic!("{}: Failed to process input", err),
+            Err(err) => {
+                panic!("Error midi_sample: Failed to process input: {err}")
+            },
         };
 
     // Prepare the sample buffers.  This code is from the Symphonia
@@ -144,7 +148,9 @@ fn main() {
         // automatically implemented for File, among other types.
         let file = Box::new(match File::open(Path::new(path.as_str())) {
             Ok(f) => f,
-            Err(err) => panic!("{err}: Failed to open {path}"),
+            Err(err) => {
+                panic!("Error midi_sample: Failed to open {path}: {err}")
+            },
         });
 
         // Create the media source stream using the boxed media source from above.
@@ -160,9 +166,15 @@ fn main() {
         let decoder_opts: DecoderOptions = Default::default();
 
         // Probe the media source stream for a format.
-        let probed = symphonia::default::get_probe()
-            .format(&hint, mss, &format_opts, &metadata_opts)
-            .unwrap();
+        let probed = match symphonia::default::get_probe().format(
+            &hint,
+            mss,
+            &format_opts,
+            &metadata_opts,
+        ) {
+            Ok(p) => p,
+            Err(e) => panic!("Error midi_sample: Failed probe {path}: {e}"),
+        };
 
         // Get the format reader yielded by the probe operation.
         let mut format = probed.format;
@@ -213,7 +225,10 @@ fn main() {
                         if sample_buf.is_none() {
                             // Get the audio buffer specification.
                             let spec: SignalSpec = *audio_buf.spec();
-
+                            eprintln!(
+                                "DBG midi_sample: Path: {path} Sample rate: {}",
+                                spec.rate
+                            );
                             // Get the capacity of the decoded
                             // buffer. Note: This is capacity, not
                             // length!
@@ -275,11 +290,13 @@ fn main() {
         jack::ClientOptions::NO_START_SERVER,
     ) {
         Ok(a) => a,
-        Err(err) => panic!("Error midi_sample: {err}"),
+        Err(err) => {
+            panic!("Error midi_sample: Failed to create Jack client: {err}")
+        },
     };
 
     if status != ClientStatus::empty() {
-        panic!("Failed");
+        panic!("Error midi_sample: Failed to create Jack client.  Invalid status: {status:?}");
     }
     let mut port = client.register_port("output", jack::AudioOut::default());
 
