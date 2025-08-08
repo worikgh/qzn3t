@@ -6,6 +6,9 @@ use jack::contrib::ClosureProcessHandler;
 use jack::ClientStatus;
 use jack::{Client, Control};
 use midir::{MidiInput, MidiInputConnection};
+use rubato::{
+    Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType,
+};
 use serde::de::{self, Visitor};
 use serde::Deserialize;
 use std::env;
@@ -127,6 +130,61 @@ fn process_samples_json(
     }
 
     Ok(config.samples_descr)
+}
+
+/// Resample the samples from disc.  This is done during
+/// initialisation
+fn resample(
+    data: &[f32],
+    input_rate: usize,
+    output_rate: usize,
+) -> Vec<f32> {
+    let channels = 1;
+    let chunk_size = 1024;
+    let ratio = output_rate as f64 / input_rate as f64;
+
+    let sinc_params = SincInterpolationParameters {
+        sinc_len: 256, // Length of the sinc kernel (higher = better quality, slower)
+        f_cutoff: 0.95, // Cutoff frequency (0.0 to 1.0, typically 0.95 for anti-aliasing)
+        oversampling_factor: 256, // Oversampling for better interpolation
+        window: rubato::WindowFunction::BlackmanHarris2, // Window function for smoothing
+        interpolation: SincInterpolationType::Linear,    // Interpolation method
+    };
+
+    let mut resampler = SincFixedIn::new(
+        ratio,
+        2.0, // quality
+        sinc_params,
+        chunk_size,
+        channels,
+    )
+    .unwrap();
+
+    let mut output = Vec::new();
+    let mut remaining_samples = data;
+
+    // Process complete chunks
+    while remaining_samples.len() >= chunk_size {
+        let (chunk, rest) = remaining_samples.split_at(chunk_size);
+        let out_chunk = resampler
+            .process(&[chunk], None)
+            .unwrap_or_else(|e| panic!("Resampling failed: {}", e));
+        output.extend(&out_chunk[0]);
+        remaining_samples = rest;
+    }
+
+    // Process remaining partial chunk (if any)
+    if !remaining_samples.is_empty() {
+        // Pad with zeros to complete the chunk
+        let mut padded_chunk = remaining_samples.to_vec();
+        padded_chunk.resize(chunk_size, 0.0);
+        let out_chunk = resampler
+            .process(&[&padded_chunk], None)
+            .unwrap_or_else(|e| panic!("Resampling failed: {}", e));
+        output.extend(&out_chunk[0]);
+    }
+
+    output
 }
 
 fn main() {
