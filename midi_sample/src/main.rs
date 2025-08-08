@@ -36,9 +36,9 @@ use symphonia::core::probe::Hint;
 /// stops as the backlog is processed.  Nothing gets dropped.
 const NUM_RECEIVERS: usize = 300;
 
-struct U8Visitor;
+struct HexOrDecimalU8Visitor;
 
-impl<'de> Visitor<'de> for U8Visitor {
+impl<'de> Visitor<'de> for HexOrDecimalU8Visitor {
     type Value = u8;
 
     fn expecting(
@@ -78,7 +78,7 @@ fn deserialize_u8<'de, D>(deserializer: D) -> Result<u8, D::Error>
 where
     D: de::Deserializer<'de>,
 {
-    deserializer.deserialize_any(U8Visitor)
+    deserializer.deserialize_any(HexOrDecimalU8Visitor)
 }
 /// Each sample is described by a path to an audio file and a MIDI
 /// note
@@ -89,7 +89,7 @@ struct SampleDescr {
     note: u8,
 }
 
-/// The programme is initialised with a JSON representation of this
+// The programme is initialised with a JSON representation of this
 #[derive(Debug, Deserialize)]
 struct Config {
     samples_descr: Vec<SampleDescr>,
