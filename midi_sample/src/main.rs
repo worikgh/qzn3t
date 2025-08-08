@@ -198,6 +198,25 @@ fn main() {
             },
         };
 
+    // Create the Jack client.  Create quite early to get the sample rate
+    let (client, status) = match Client::new(
+        "MidiSampleQzn3t",
+        jack::ClientOptions::NO_START_SERVER,
+    ) {
+        Ok(a) => a,
+        Err(err) => {
+            panic!("Error midi_sample: Failed to create Jack client: {err}")
+        },
+    };
+
+    if status != ClientStatus::empty() {
+        panic!("Error midi_sample: Failed to create Jack client.  Invalid status: {status:?}");
+    }
+    let sample_rate = client.sample_rate();
+    eprintln!(
+        "DBG midi_sample: Connected to Jackd  Sample rate: {sample_rate}",
+    );
+
     // Prepare the sample buffers.  This code is from the Symphonia
     // example
     let mut sample_data: Vec<SampleData> = vec![];
@@ -252,6 +271,7 @@ fn main() {
         let mut sample_buf: Option<SampleBuffer<f32>> = None;
         let mut data: Vec<f32> = vec![];
 
+        let mut this_sample_rate: Option<usize> = None;
         loop {
             // Get the next packet from the format reader.
             if let Ok(packet) = format_reader.next_packet() {
@@ -283,6 +303,9 @@ fn main() {
                         if sample_buf.is_none() {
                             // Get the audio buffer specification.
                             let spec: SignalSpec = *audio_buf.spec();
+                            if this_sample_rate.is_none() {
+                                this_sample_rate = Some(spec.rate as usize);
+                            }
                             eprintln!(
                                 "DBG midi_sample: Path: {path} Sample rate: {}",
                                 spec.rate
@@ -329,6 +352,11 @@ fn main() {
         );
 
         // Store prepared sample
+        let data = if &sample_rate != this_sample_rate.as_ref().unwrap() {
+            resample(&data, this_sample_rate.unwrap(), sample_rate)
+        } else {
+            data
+        };
         sample_data.push(SampleData { data, note });
     }
 
@@ -342,20 +370,6 @@ fn main() {
         receivers.push(rx);
     }
 
-    // Create the Jack client
-    let (client, status) = match Client::new(
-        "MidiSampleQzn3t",
-        jack::ClientOptions::NO_START_SERVER,
-    ) {
-        Ok(a) => a,
-        Err(err) => {
-            panic!("Error midi_sample: Failed to create Jack client: {err}")
-        },
-    };
-
-    if status != ClientStatus::empty() {
-        panic!("Error midi_sample: Failed to create Jack client.  Invalid status: {status:?}");
-    }
     let mut port = client.register_port("output", jack::AudioOut::default());
 
     // Activate the Jack client and start the audio processing thread
