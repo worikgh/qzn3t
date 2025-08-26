@@ -1,0 +1,56 @@
+## Copyright (c) 2025 Worik Turei Stanton
+## License: GPL-3.0
+
+[package]
+name = "manip_midi"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+## Read a MIDI device and output the triples
+name = "read_midi_device"
+path = "src/read_midi_device.rs"
+
+[[bin]]
+## Read a MIDI file and output the triples using the timestamp data in
+## file
+name = "read_midi_file"
+path = "src/read_midi_file.rs"
+
+[[bin]]
+## Write MIDI to a device
+name = "write_midi_device"
+path = "src/write_midi_device.rs"
+
+[[bin]]
+## Write MIDI to a file
+name = "write_midi_file"
+path = "src/write_midi_file.rs"
+
+[[bin]]
+## Read the tripples and translate them
+name = "translate_midi"
+path = "src/translate_midi.rs"
+
+[[bin]]
+## Run programmes in response to MIDI signals on stdin
+name = "command_midi"
+path="src/command_midi.rs"
+
+[[bin]]
+## Edit Jackd pipes in response to MIDI signals on stdin
+name = "jack_midi"
+path="src/jack_midi.rs"
+
+[[bin]]
+## Dump midi as text
+name = "dump_midi"
+path="src/dump_midi.rs"
+
+[dependencies]
+clap = "4.5.35"
+jack = "0.11.4"
+midir = "0.9.1"
+
+[dev-dependencies]
+tempfile = "3.3"
