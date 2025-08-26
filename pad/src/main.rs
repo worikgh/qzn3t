@@ -58,7 +58,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
 		let records: Vec<String> = l.split(',').map(|s| s.trim().to_string()).collect();
 		// Error checking
 		if records.len() != 4 {
-		    panic!("Error qzn3t_pad: Invalid line in configuration record.  Wrong number of fields: {}  Line: {l}", records.len());
+		    panic!("Error pad: Invalid line in configuration record.  Wrong number of fields: {}  Line: {l}", records.len());
 		}
 		let pads = records[0].split_whitespace().map(|s| {
 		    let valid_pad = |p:u8| -> bool {
@@ -69,12 +69,12 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
 		    if let Ok(s) = s.parse::<u8>() && valid_pad(s){
 			s
 		    }else{
-			panic!("Error qzn3t_pad: Invalid line {l}. Pad is invalid: {s}")
+			panic!("Error pad: Invalid line {l}. Pad is invalid: {s}")
 		    }
 		}).collect();
 		let make_colour = |colour_str:&str, name:&str| -> [u8;3] {
 		    if colour_str.len() != 7 {
-			panic!("Error qzn3t_pad: Invalid line. Colour: {name} is invalid: {}", colour_str);
+			panic!("Error pad: Invalid line. Colour: {name} is invalid: {}", colour_str);
 		    }
 		    let hex_colour = &colour_str[1..];
 
@@ -85,7 +85,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
 
 		    match rgb {
 			Ok(values) if values.len() == 3 => [values[0], values[1], values[2]],
-			_ => panic!("Error qzn3t_pad: Invalid line. Colour: {name} is invalid: {}", colour_str),
+			_ => panic!("Error pad: Invalid line. Colour: {name} is invalid: {}", colour_str),
 		    }
 		};
 		let main_colour: [u8; 3] = make_colour(&records[1], "main_colour");
@@ -93,7 +93,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
 		let midi_note  =  &records[3];
 		let midi_note:u8 = match midi_note.parse::<u8>() {
 		    Ok(u) => u,
-		    Err(e) => panic!("Error qzn3t_pad: Invalid line. Midid note: {midi_note} is invalid: {e}",),
+		    Err(e) => panic!("Error pad: Invalid line. Midid note: {midi_note} is invalid: {e}",),
 		};
 
 		Section::new(pads, main_colour, active_colour, midi_note)
@@ -103,7 +103,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
     // If there is a default section with no pads put all un-included pads in it
     if sections.iter().filter(|s| s.pads.is_empty()).count() > 1 {
         panic!(
-            "Error qzn3t_pad: Invalid sections in {filename}.  There must be at most one default section"
+            "Error pad: Invalid sections in {filename}.  There must be at most one default section"
         );
     }
 
@@ -113,7 +113,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
         for i in mc.iter() {
             if *i > 127 {
                 panic!(
-                    "Error qzn3t_pad: Invalid main_colour: {mc:?}.  Each component must be in 0..127  Component: {i}"
+                    "Error pad: Invalid main_colour: {mc:?}.  Each component must be in 0..127  Component: {i}"
                 );
             }
         }
@@ -121,7 +121,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
         for i in ac.iter() {
             if *i > 127 {
                 panic!(
-                    "Error qzn3t_pad: Invalid active_colour: {ac:?}.  Each component must be in 0..127  Component: {i}"
+                    "Error pad: Invalid active_colour: {ac:?}.  Each component must be in 0..127  Component: {i}"
                 );
             }
         }
@@ -132,7 +132,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
     for s in sections.iter() {
         for p in s.pads.iter() {
             if pad_check.contains(p) {
-                panic!["Error qzn3t_pad: Invalid sections in {filename}. Repeated pad: {p}"];
+                panic!["Error pad: Invalid sections in {filename}. Repeated pad: {p}"];
             }
             pad_check.insert(*p);
         }
@@ -165,11 +165,11 @@ fn get_midi_port<T: midir::MidiIO>(midi_io: &T, keyword: &str) -> Option<T::Port
             Ok(name) => name,
             Err(_) => continue,
         };
-        // eprintln!("DBG qzn3t_pad: get_midi_port(midi_io, {keyword}) name: {name}");
+        // eprintln!("DBG pad: get_midi_port(midi_io, {keyword}) name: {name}");
 
         if name.contains(keyword) {
             eprintln!(
-                "DBG qzn3t_pad: get_midi_port(midi_io, {keyword}) from keyword: {keyword} name: {name}"
+                "DBG pad: get_midi_port(midi_io, {keyword}) from keyword: {keyword} name: {name}"
             );
             return Some(port);
         }
@@ -229,7 +229,7 @@ fn get_all_midi_output_ports() -> Result<Vec<String>, Box<dyn Error>> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let matches = Command::new("qzn3t_pad")
+    let matches = Command::new("pad")
         .arg(
             Arg::new("list")
                 .short('l')
@@ -264,12 +264,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         .get_matches();
 
     if *matches.get_one::<bool>("list").unwrap() {
-        eprintln!("DBG qzn3t_pad: Input ports:");
+        eprintln!("DBG pad: Input ports:");
         let ports = get_all_midi_input_ports()?;
         for port_name in ports {
             eprintln!("\t{port_name}");
         }
-        eprintln!("DBG qzn3t_pad: Output ports:");
+        eprintln!("DBG pad: Output ports:");
         let ports = get_all_midi_output_ports()?;
         for port_name in ports {
             eprintln!("\t{port_name}");
@@ -280,8 +280,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let midi_input = matches.get_one::<String>("pad_midi_in").unwrap();
     let midi_output = matches.get_one::<String>("pad_midi_out").unwrap();
 
-    eprintln!("DBG qzn3t_pad: MIDI  input: {}", midi_input);
-    eprintln!("DBG qzn3t_pad: MIDI output: {}", midi_output);
+    eprintln!("DBG pad: MIDI  input: {}", midi_input);
+    eprintln!("DBG pad: MIDI output: {}", midi_output);
 
     // Initialise the collection of `Section` from the file. (See `section.rs`)
     let sections: Vec<Section> = if let Some(cfg_file_name) = matches.get_one::<String>("config") {
@@ -314,7 +314,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let msg: [u8; 9] = [240, 0, 32, 41, 2, 12, 0, 127, 247];
     match colour_port.send(&msg) {
         Ok(()) => (),
-        Err(err) => eprintln!("Error qzn3t_pad: {err}: Failed to send msg to pad device: {msg:?}"),
+        Err(err) => eprintln!("Error pad: {err}: Failed to send msg to pad device: {msg:?}"),
     };
 
     let make_colour = |section: &Section, colour: [u8; 3]| -> Vec<u8> {
@@ -341,7 +341,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         eprintln!("DBG qzn3t: Send colour: {colour:?}");
         match colour_port.send(&colour) {
             Ok(()) => (),
-            Err(err) => eprintln!("Error qzn3t_pad: {err}: Cannot send colour: {colour:?}"),
+            Err(err) => eprintln!("Error pad: {err}: Cannot send colour: {colour:?}"),
         };
     }
 
@@ -357,8 +357,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let midi_out: MidiOutput = MidiOutput::new("PadCtlCtl")?;
     let port_name = "port";
     let mut midi_ctl_out_port: MidiOutputConnection = midi_out.create_virtual(port_name)?;
-    eprintln!("DBG qzn3t_pad: Virtual MIDI Output port 'PadCtlNote:{port_name}' is open");
-    eprintln!("DBG qzn3t_pad: Virtual MIDI Output port 'PadCtlCtl:{port_name}' is open");
+    eprintln!("DBG pad: Virtual MIDI Output port 'PadCtlNote:{port_name}' is open");
+    eprintln!("DBG pad: Virtual MIDI Output port 'PadCtlCtl:{port_name}' is open");
 
     // Main loop.
     loop {
@@ -379,7 +379,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 let velocity = message[2];
                 let message: [u8; 3] = [message[0], section.midi_note, velocity];
                 eprintln!(
-                    "DBG qzn3t_pad: SEND NoteOn: Type: {:2x} Note: {:2x} Velocity: {:2x}",
+                    "DBG pad: SEND NoteOn: Type: {:2x} Note: {:2x} Velocity: {:2x}",
                     message[0], message[1], message[2]
                 );
                 midi_note_out_port.send(&message)?;
@@ -400,7 +400,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else if message[0] == 176 {
             // A control signal
             eprintln!(
-                "DBG qzn3t_pad: SEND Ctl: {:2x} {:2x} {:2x}",
+                "DBG pad: SEND Ctl: {:2x} {:2x} {:2x}",
                 message[0], message[1], message[2]
             );
             midi_ctl_out_port.send(&message).unwrap();
