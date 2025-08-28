@@ -50,10 +50,11 @@ Example:
 
 This example has three sections: Two with 3-pads and one default
 ```plaintext
-11 12 13, #ff0000, #00ff00, 60
-21 22 23, #0000ff, #ffff00, 61
-, #ff00ff, #ffffff, 62
+11 12 13, #7f0000, #007f00, 60
+21 22 23, #00007f, #7f7f00, 61
+, #7f007f, #7f7f7f, 62
 ```
+* The pads use MIDI signals (0-127) for RGB values, so `0xE7` is maximum
 
 ---
 TODO: Rewrite this using [`manip_midi`](../manip_midi/README.md)
