@@ -1,26 +1,17 @@
-extern crate jack;
-extern crate midir;
-extern crate serde;
-extern crate symphonia;
-use jack::contrib::ClosureProcessHandler;
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use jack::ClientStatus;
+use jack::contrib::ClosureProcessHandler;
 use jack::{Client, Control};
 use midir::{MidiInput, MidiInputConnection};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType,
 };
-use serde::de::{self, Visitor};
 use serde::Deserialize;
-use std::env;
-use std::fmt;
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::thread;
-use std::time::Duration;
+use serde::de::{self, Visitor};
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::{env, fmt, fs::File, io::Read, path::Path, thread, time::Duration};
 use symphonia::core::audio::{SampleBuffer, SignalSpec};
 use symphonia::core::codecs::DecoderOptions;
 use symphonia::core::errors::Error;
@@ -56,7 +47,7 @@ impl<'de> Visitor<'de> for HexOrDecimalU8Visitor {
         v: u64,
     ) -> Result<u8, E> {
         v.try_into()
-            .map_err(|_| E::custom(format!("Error midi_sample: Failure processing configuration: value {v} too large for u8",)))
+	    .map_err(|_| E::custom(format!("Error midi_sample: Failure processing configuration: value {v} too large for u8",)))
     }
 
     fn visit_str<E: de::Error>(
@@ -210,7 +201,9 @@ fn main() {
     };
 
     if status != ClientStatus::empty() {
-        panic!("Error midi_sample: Failed to create Jack client.  Invalid status: {status:?}");
+        panic!(
+            "Error midi_sample: Failed to create Jack client.  Invalid status: {status:?}"
+        );
     }
     let sample_rate = client.sample_rate();
     eprintln!(
