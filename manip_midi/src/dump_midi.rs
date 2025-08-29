@@ -2,7 +2,8 @@
 // License: GPL-3.0
 
 //! Read MIDI on standin.
-//! Respond to ControlChange messages by running commands
+//! Write out the MIDI as HEX pairs
+//! Each ststus message starts a new line
 use std::error::Error;
 use std::io::Read;
 use std::io::{self, Write};
@@ -18,7 +19,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(0) =>
             // EOF
             {
-                break
+                break;
             }
             Err(e) => return Err(Box::new(e)),
             Ok(2..) => panic!("Cannot happen"),
