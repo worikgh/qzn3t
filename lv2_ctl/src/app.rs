@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 //! # Run the user interface
 //! Addapted from  Ratatui List example
 //!
@@ -145,7 +148,7 @@ fn restore_terminal() -> color_eyre::Result<()> {
 
 impl App<'_> {
    /// Initialise the App
-   pub fn new(mod_host_controller: &mut ModHostController) -> App {
+   pub fn new(mod_host_controller: &mut ModHostController) -> App<'_> {
       if let Err(err) = init_error_hooks() {
          eprintln!("1 INFO: {err}: Initialising error hooks");
       }
@@ -196,7 +199,7 @@ impl App<'_> {
       self.mod_host_controller.pump_mh_queue();
    }
 
-   /// Changes the status of the selected list item.  
+   /// Changes the status of the selected list item.
    fn change_status(&mut self) {
       if self.get_stateful_list().items.is_empty() {
          // Nothing to do
@@ -403,7 +406,7 @@ impl App<'_> {
 
    /// Handle a response from mod-host that starts with "resp ".  It
    /// is a response to a command, so what happens here is dependant
-   /// on that command    
+   /// on that command
    /// resp status [value]
    fn process_resp(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
@@ -432,11 +435,11 @@ impl App<'_> {
                panic!("Malformed command: '{last_mh_command}'")
             });
             let instance_number = last_mh_command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
-                    panic!(
-                        "No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
+		    panic!(
+			"No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
 			&last_mh_command[sp..]
-                    )
-                });
+		    )
+		});
 
             // Get a reference to the item the command is for.
             // Its state will be modified: to `loaded` if all is
@@ -540,11 +543,11 @@ impl App<'_> {
                panic!("Malformed command: '{last_mh_command}'")
             });
             let instance_number = last_mh_command[sp..].trim().parse::<usize>().unwrap_or_else(|_| {
-                    panic!(
-                        "No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
+		    panic!(
+			"No instance number at end of add command: '{last_mh_command}'  sp: {sp} => '{}'",
 			&last_mh_command[sp..]
-                    )
-                });
+		    )
+		});
 
             // Get response.  If 0, all is good.  Otherwise there
             // is an error.  Leave item pending
@@ -902,12 +905,12 @@ impl App<'_> {
                      F(2) => self.app_view_state = AppViewState::Command,
                      _ => {
                         eprintln!(
-                           "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
-                           key.code,
-                           key.modifiers,
-                           key.modifiers & crossterm::event::KeyModifiers::CONTROL
-                              == crossterm::event::KeyModifiers::CONTROL
-                        );
+			   "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
+			   key.code,
+			   key.modifiers,
+			   key.modifiers & crossterm::event::KeyModifiers::CONTROL
+			      == crossterm::event::KeyModifiers::CONTROL
+			);
                      }
                   }
                }
@@ -937,7 +940,7 @@ impl App<'_> {
    }
 
    fn draw(&mut self, terminal: &mut Terminal<impl Backend>) -> io::Result<()> {
-      terminal.draw(|f| f.render_widget(self, f.size()))?;
+      terminal.draw(|f| f.render_widget(self, f.area()))?;
       Ok(())
    }
 
@@ -1095,7 +1098,10 @@ impl App<'_> {
    }
 
    /// Make a ListItem for App::lv2_loaded_list
-   fn sim_to_static_list_item(sim: &Lv2Simulator, index: usize) -> ListItem {
+   fn sim_to_static_list_item(
+      sim: &Lv2Simulator,
+      index: usize,
+   ) -> ListItem<'_> {
       let bg_color = match index % 2 {
          0 => NORMAL_ROW_COLOR,
          _ => ALT_ROW_COLOR,
@@ -1109,7 +1115,7 @@ impl App<'_> {
    }
 
    /// Make a list item for App::lv2_stateful_list
-   fn sim_lv2_list_item(sim: &Lv2Simulator, index: usize) -> ListItem {
+   fn sim_lv2_list_item(sim: &Lv2Simulator, index: usize) -> ListItem<'_> {
       let bg_color = match index % 2 {
          0 => NORMAL_ROW_COLOR,
          _ => ALT_ROW_COLOR,

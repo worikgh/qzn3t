@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 //! Make a table widget of control Port information
 
 //use crate::lv2::ModHostController;
@@ -82,7 +85,7 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
          Constraint::Min(6),
       ],
    )
-   .highlight_style(selected_style)
+   .row_highlight_style(selected_style)
    .bg(buffer_bg)
    .highlight_spacing(HighlightSpacing::Always)
 }
