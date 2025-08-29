@@ -14,7 +14,7 @@ MIDI messages are composed of **status bytes** and **data bytes**:
 
 Here are some examples of MIDI messages and what they mean:
 
-#### 1. **Note On**
+#### 1. **Note On** `0x9N`
 - **Purpose**: Signals that a note has been pressed.
 - **Format**: `[Status Byte] [Note Number] [Velocity]`
 - **Example**: `0x90 0x3C 0x40`
@@ -24,7 +24,7 @@ Here are some examples of MIDI messages and what they mean:
   - `0x3C`: Note number (60 = Middle C).
   - `0x40`: Velocity (64 = medium intensity).
 
-#### 2. **Note Off**
+#### 2. **Note Off** `0x8N`
 - **Purpose**: Signals that a note has been released.
 - **Format**: `[Status Byte] [Note Number] [Velocity]`
 - **Example**: `0x80 0x3C 0x40`
@@ -34,7 +34,7 @@ Here are some examples of MIDI messages and what they mean:
   - `0x3C`: Note number (60 = Middle C).
   - `0x40`: Velocity (64 = release intensity, often ignored).
 
-#### 3. **Control Change (CC)**
+#### 3. **Control Change (CC)** `0xBN`
 - **Purpose**: Adjusts a parameter like volume, modulation, or pan.
 - **Format**: `[Status Byte] [Controller Number] [Value]`
 - **Example**: `0xB0 0x07 0x40`
@@ -44,7 +44,7 @@ Here are some examples of MIDI messages and what they mean:
   - `0x07`: Controller number (7 = Channel Volume).
   - `0x40`: Value (64 = halfway).
 
-#### 4. **Program Change**
+#### 4. **Program Change** `0xCN`
 - **Purpose**: Changes the instrument or patch on a MIDI device.
 - **Format**: `[Status Byte] [Program Number]`
 - **Example**: `0xC0 0x20`
@@ -53,7 +53,7 @@ Here are some examples of MIDI messages and what they mean:
     - `0` = Channel 1.
   - `0x20`: Program number (32 = specific patch/instrument).
 
-#### 5. **Pitch Bend**
+#### 5. **Pitch Bend** `0xEN`
 - **Purpose**: Adjusts the pitch of a note up or down for expressive playing.
 - **Format**: `[Status Byte] [LSB] [MSB]`
 - **Example**: `0xE0 0x00 0x40`
@@ -64,7 +64,7 @@ Here are some examples of MIDI messages and what they mean:
   - `0x40`: Most Significant Byte (MSB) of the bend value.
   - Combined, this represents a pitch bend value of `8192` (center/no bend).
 
-#### 6. **Aftertouch (Channel Pressure)**
+#### 6. **Aftertouch (Channel Pressure)** `0xDN`
 - **Purpose**: Sends pressure information after a note is pressed.
 - **Format**: `[Status Byte] [Pressure Value]`
 - **Example**: `0xD0 0x40`

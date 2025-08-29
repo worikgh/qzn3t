@@ -1,13 +1,12 @@
-// Copyright (c) 2025 Worik Turei Stanton
-// License: GPL-3.0
-
 # Manipulate MIDI 
 
 Process MIDI using three types of object
 
-1. Producers.  Here `read_midi`
-2. Translators. Here `translate_midi`
-3. Consumers. Here `command_midi`
+1. Producers.  `read_midi_device`, `read_midi_file`, `read_midi_virtual`
+2. Translator. `translate_midi`
+3. Consumers. `command_midi`, `jack_midi`, `write_midi_file`, `write_midi_device`
+
+Note: `read_midi_device` does not output the timestamp.  The data is pushed out as it is read, and for the early use cases this was fine.  But `virtual_midi_port`
 
 ## Producer: Read MIDI
 

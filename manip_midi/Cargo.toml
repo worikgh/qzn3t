@@ -12,6 +12,12 @@ name = "read_midi_device"
 path = "src/read_midi_device.rs"
 
 [[bin]]
+## Set up a virtual port for MIDI devices to connect to.  Differs from
+## `read_midi` that connects to an existing device
+name = "read_midi_virtual"
+path = "src/read_midi_virtual.rs"
+
+[[bin]]
 ## Read a MIDI file and output the triples using the timestamp data in
 ## file
 name = "read_midi_file"
@@ -48,9 +54,11 @@ name = "dump_midi"
 path="src/dump_midi.rs"
 
 [dependencies]
+chrono = "0.4.41"
 clap = "4.5.35"
 jack = "0.11.4"
 midir = "0.9.1"
 
 [dev-dependencies]
 tempfile = "3.3"
+mockall = "0.11"
