@@ -179,7 +179,7 @@ fn get_midi_port<T: midir::MidiIO>(midi_io: &T, keyword: &str) -> Option<T::Port
 }
 
 /// Create an output MIDI port to the pad device.
-/// It uses the passed parameter `name` to create a port: PadCtl:<name>
+/// It uses the passed parameter `name` to create a port: `PadCtl:<name>`
 fn get_midi_out(name: &str, p_name: &str) -> Result<MidiOutputConnection, Box<dyn Error>> {
     let midi_output = MidiOutput::new("PadCtl")?;
     let port = get_midi_port(&midi_output, p_name)

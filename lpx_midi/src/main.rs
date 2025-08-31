@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 //! Send arbitrary MIDI to a Novation LPX Pad
 //! ["Programmer's Manual" ](https://fael-downloads-prod.focusrite.com/customer/prod/s3fs-public/downloads/Launchpad%20X%20-%20Programmers%20Reference%20Manual.pdf)
 extern crate midir;
@@ -28,7 +31,7 @@ fn get_midi_port<T: midir::MidiIO>(
 }
 
 /// Create an output MIDI port to the LPX.
-/// It uses the passed parameter `name` to create a prort: LpxCtl:<name>
+/// It uses the passed parameter `name` to create a port: `LpxCtl:<name>`
 fn get_midi_out(name: &str) -> Result<MidiOutputConnection, Box<dyn Error>> {
     let midi_output = MidiOutput::new("LpxCtl")?;
     let port = get_midi_port(&midi_output, "Launchpad X LPX MIDI In").unwrap(); //.ok_or(Err("Failed guess port".into())?);

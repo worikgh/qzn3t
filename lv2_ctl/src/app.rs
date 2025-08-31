@@ -406,8 +406,7 @@ impl App<'_> {
 
    /// Handle a response from mod-host that starts with "resp ".  It
    /// is a response to a command, so what happens here is dependant
-   /// on that command
-   /// resp status [value]
+   /// on that command `resp status [value]`
    fn process_resp(&mut self, response: &str) {
       // Can only get a "resp " from mod-host after a command has been sent
       let last_mh_command = match self.mod_host_controller.get_last_mh_command()
