@@ -4,11 +4,13 @@ A very simple programme that finds all Jackd ports sending data to the output (d
 
 ## Argumnts
 
-The one argument is a prefix to use when output files.  If a prefix is used twice, the second run could easilly overwrite data from the first run.
+The one argument is a prefix to use creating output files.
+
+Using the same prefix will overwrite data.
 
 If no argument passed a timestamp (to the second) is used as a prefix
 
-## Outputs 
+## Outputs
 
 Each channel being monitored is output to a file named with the `prefix` (above) and the name of the port.
 
