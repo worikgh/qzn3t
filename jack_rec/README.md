@@ -4,11 +4,26 @@ A very simple programme that finds all Jackd ports sending data to the output (d
 
 ## Argumnts
 
-The one argument is a prefix to use creating output files.
 
-Using the same prefix will overwrite data.
+```
+  -p, --prefix <PREFIX>         The output file prefix. Specified at most once.
+  -i, --jackd-pipe <PIPE_NAME>  Name of Jackd pipes to monitor. Can occur zero, one or many times.
+  -h, --help                    Print help
+```
 
-If no argument passed a timestamp (to the second) is used as a prefix
+
+Output File Prefix
+---
+
+A prefix to use creating output files.  Can be specified at most once.  If not specified will default to YYYMMDD_hhmmss
+
+Reusing the same prefix will overwrite data.
+
+Jackd Pipes
+---
+
+The names of the jack pipes to record.  If not supplied it records all pipes that are sending audio to a `system:playback_N` pipe.
+
 
 ## Outputs
 
@@ -21,3 +36,5 @@ When `jack_rec` finishes it prints a JSON object containing the sample rate and 
 ## Control
 
 The programme runs all recordings in threads, a thread (via `jack::AsyncClient` and `jack::ProcessHandler`).  The main thread blocks on stdin, effectively waiting for a key press.
+
+So any key stope recording
