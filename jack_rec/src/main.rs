@@ -45,6 +45,7 @@ where
                 .num_args(1), // This specifies that each occurrence takes one value
         )
         .get_matches_from(args);
+    eprintln!("DBG jack_rec matches: {matches:?}");
 
     // Get the prefix value (uses default if not provided)
     let prefix = match matches.get_one::<String>("prefix") {
