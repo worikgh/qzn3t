@@ -2,7 +2,7 @@
 use strict;
 
 
-## Find all subdirectories with a Cargo.toml, those need to be built
+## Find all subdirectories with a Cargo.toml, those need to be cleaned
 my ($dir) = $0 =~ /^(.+)\/[^\/]+/;
 my @dirs = map{s/\/[^\/]+$//; $_} `find $dir  -maxdepth 2 -name "Cargo.toml"`;
 my $cwd = `pwd`;
