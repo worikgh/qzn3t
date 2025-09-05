@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use std::error::Error;
 use std::fmt;
 /// The errors that can be generated in LpxCtl

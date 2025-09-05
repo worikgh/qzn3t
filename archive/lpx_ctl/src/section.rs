@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use std::collections::HashSet;
 // use crate::lpx_ctl_error::LpxCtlError;
 use serde::{Deserialize, Serialize};
