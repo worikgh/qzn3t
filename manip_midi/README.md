@@ -10,26 +10,31 @@ Note: `read_midi_device` does not output the timestamp.  The data is pushed out 
 
 ## Producer: Read MIDI
 
-src: `src/read.rs`
-bin: `read_midi`
 
-Producers open a MIDI device and write MIDI to `stdout`
+Producers fetch MIDI messages, either from a MIDI device or from a file, and write MIDI to `stdout`
 
+There are two implemented:
+
+1. `read_midi_device`.   Get MIDI from a hardware device.  Outputs the MIDI messages onto the standard output in real-time
 Arguments:
 	* `--list` List the MIDI ports that can be connected to then exit
 	* The name of the MIDI input port.  This does not have to be the full name.  The first port where the passed name is a part of the port's name will be used.
 
-## Translator: Translate MIDI
-src: `src/translate.rs`
-bin: `translate_midi`
+2. `read_midi_virtual`.  Opens a MIDI (virtual) port named `read_midi_virtual_port` (TODO: Make the port name an argument) and reads data from that port and sends it to the standard out.  It is implemented to provide a way to feed MIDI recorded with `arecordmidi` using `aplaymidi`.
 
-Translators read MIDI on `stdin` and write MIDI on `stdout`.
+
+## Translator: Translate MIDI
+
+A translator reads MIDI on `stdin` and writes MIDI on `stdout`.
 
 Messages are translated using a set of rules described in the configuration file.
 
-Any message that is not affected by a rule is passed through uncchanges
+Any message that is not affected by a rule is passed through unchanged
 
-`translate_midi` takes one argument: The name of the configuration file.
+There is one implemented.  It is probably all that will ever be needed.
+
+
+`translate_midi`.  Takes one argument: The name of the configuration file.
 
 The translation process does not effect System Exclusive (SysEx) messages
 
@@ -48,8 +53,7 @@ There are two types of rule:
 * `[+-]` Either character '+', '-' or nothing
 * `N` A number in [0,16]
   * If there is a '+' or '-' `N` is a delta and is added (or subtracted) from the channel.  If the channel goes below 1 or greater than 16 there is an error.
-  * If there is no '+' or '-' then `N` must be in  [1, 16] and is the channel to set on utput
-
+  * If there is no '+' or '-' then `N` must be in  [1, 16] and is the channel to set on output
 
 All other lines are ignored
 
