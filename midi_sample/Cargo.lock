@@ -219,7 +219,6 @@ dependencies = [
  "midir",
  "rubato",
  "serde",
- "serde_derive",
  "serde_json",
  "symphonia",
 ]
