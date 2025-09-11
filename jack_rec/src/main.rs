@@ -59,6 +59,10 @@ where
         .get_many::<String>("jackd_pipe")
         .map(|values| values.cloned().collect())
         .unwrap_or_else(|| vec![]); // Default if no values provided
+    if !pipes.is_empty() {
+        let dbg_str = pipes.iter().fold("".to_string(), |a, b| format!("{a} {b}"));
+        eprintln!("DBG jack_rec: pipes: {dbg_str}",);
+    }
     MyArgs {
         pipes,
         prefix: prefix.to_string(),
@@ -124,7 +128,7 @@ fn main() {
         let inport = client.register_port(&name, spec).unwrap();
         let to_port = inport.name().as_ref().unwrap().to_string();
         let fname = format!("{prefix}_{name}.raw");
-        eprintln!("DBG jack_re: Create file '{fname}' from port: '{name}'");
+
         let fpath = Path::new(&fname);
         let file = match File::create(fpath) {
             Ok(f) => f,
