@@ -170,7 +170,6 @@ while(1){
     my $inp = <STDIN>;
     chomp $inp;
     $inp eq 'q' and last;
-    warn "DBG compose: State: $state\n";
 
     if($state eq $dubbing || $state eq $recording){
 	$fn_dir = "$audio_dir/$fn";
@@ -237,9 +236,7 @@ while(1){
 	push(@PIDS, $pid);
 
 	## This blocks and returns a JSON object
-	warn "Press <enter> to stop overdubbing\n";
 	my $cmd = "$JACKREC -p \"$fn_dub\"";
-	warn "DBG compose: \$cmd:$cmd\n";
 	my $result = `$cmd`;
 	`pkill -f $PLAY`;
 	warn "Processing\nResult: $result\n";
