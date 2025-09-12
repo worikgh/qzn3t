@@ -121,9 +121,10 @@ my $state  = defined $backing_track  ? $dubbing : $recording;
 
 ## Mesages to display to the user for each state
 my %state_msg = (
-    $recording => 'Press <enter> to start recording',
-    $dubbing => 'Press <enter> to start overdubbing',
-    $rec_review => 'Press <enter> to review recording r <enter> to record again d <enter> to overdub',
+    $recording => "Press \n<enter> to start recording",
+    $dubbing => "Press \n<enter> to start overdubbing",
+    $rec_review => "Press \n<enter> to review recording \nr <enter> to record again \nd <enter> to overdub",
+    $dub_review => "Press \n<enter> to review dub \nd <enter> to dub again \nr <enter> to record again",
     );
 
 
