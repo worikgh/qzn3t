@@ -10,8 +10,8 @@ use serde::Serialize;
 use std::env;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::BufWriter;
 use std::io::prelude::*;
+use std::io::BufWriter;
 use std::io::{self};
 use std::path::Path;
 struct MyArgs {
@@ -45,7 +45,6 @@ where
                 .num_args(1), // This specifies that each occurrence takes one value
         )
         .get_matches_from(args);
-    eprintln!("DBG jack_rec matches: {matches:?}");
 
     // Get the prefix value (uses default if not provided)
     let prefix = match matches.get_one::<String>("prefix") {

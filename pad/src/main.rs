@@ -14,8 +14,8 @@ extern crate midir;
 mod section;
 
 use crate::midir::os::unix::VirtualOutput;
-use crate::section::Section;
 use crate::section::default_sections;
+use crate::section::Section;
 use clap::{Arg, Command};
 use midir::MidiInputPort;
 use midir::MidiOutputPort;
@@ -338,7 +338,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Initialise the colours
     for section in sections.iter() {
         let colour = make_colour(section, section.main_colour);
-        eprintln!("DBG qzn3t: Send colour: {colour:?}");
         match colour_port.send(&colour) {
             Ok(()) => (),
             Err(err) => eprintln!("Error pad: {err}: Cannot send colour: {colour:?}"),
@@ -378,10 +377,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 // Send out the note
                 let velocity = message[2];
                 let message: [u8; 3] = [message[0], section.midi_note, velocity];
-                eprintln!(
-                    "DBG pad: SEND NoteOn: Type: {:2x} Note: {:2x} Velocity: {:2x}",
-                    message[0], message[1], message[2]
-                );
                 midi_note_out_port.send(&message)?;
 
                 if velocity > 0 {
