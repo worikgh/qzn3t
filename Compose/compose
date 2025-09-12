@@ -128,6 +128,7 @@ my %state_msg = (
     $dubbing => "Press \n<enter> to start overdubbing",
     $rec_review => "Press \n<enter> to review recording \nr <enter> to record again \nd <enter> to overdub",
     $dub_review => "Press \n<enter> to review dub \nd <enter> to dub again \nr <enter> to record again",
+    $dub_accept => "Press \nd <enter> to dub again \nr <enter> to record again\ng <enter> Review again",
     );
 
 
@@ -245,10 +246,23 @@ while(1){
 	    $state = $recording;
 	}else{
 	    ## TODO  Where is backing track set?
-
-	    `$PLAY -ao jack "$dub_track"`;
+	    warn "Reviewing Dub: \$backing_track: $backing_track ";
+	    warn "Reviewing Dub: \$dub_track: $dub_track ";
+	    my $p1 = run_daemon("$PLAY -ao jack $backing_track") or die;
+	    my $p2 = run_daemon("$PLAY -ao jack $dub_track") or die;
+	    push(@PIDS, ($p1, $p2));
+	    $state = $dub_accept;
 	}
-
+    }elsif($state eq $dub_accept){
+	`pkill -f $PLAY`;
+	@PIDS = ();
+	if($inp eq 'r'){
+	    $state = $recording;
+	}elsif($inp eq 'd'){
+	    $state = $dubbing;
+	}elsif($inp eq 'g'){
+	    $state = $dub_review;
+	}
     }
 }
 
