@@ -56,6 +56,9 @@ my $directory = &std_dir();
 # When overdubbing this is the track played
 my $backing_track = undef;
 
+# When overdubbing this is the recorded track
+my $dub_track = undef;
+
 ## Process command line
 my $ARGC = @ARGV;
 for(my $i = 0; $i < ($ARGC - 1); $i+=2){
@@ -191,20 +194,9 @@ while(1){
 	my $result = `$JACKREC -p "$fn_rec"`;
 
 	print "Processing...\n";
-	my %out_file_stats = &process_jackrec($result);
-
-	my @possible_backing =  keys %out_file_stats;
-	my $avg = -9999999;
-	foreach my $p (@possible_backing){
-	    my $_a = $out_file_stats{$p};
-	    if($_a != 0 and $_a > $avg){
-		$avg = $_a;
-		$backing_track = $p;
-
-		# Use the first
-		last;
-	    }
-	}
+	my @out_file_stats = &process_jackrec($result);
+	@out_file_stats or die "Error compose: No file data returned after processing recording";
+	$backing_track = &get_peakiest_file(@out_file_stats);
 
 	if(!defined($backing_track)){
 	    print "No matching file has audio in it. ".
@@ -241,14 +233,28 @@ while(1){
 	my $result = `$cmd`;
 	`pkill -f $PLAY`;
 	warn "Processing\nResult: $result\n";
-	process_jackrec($result);
+	my @out_file_stats = &process_jackrec($result);
+	@out_file_stats or die "Error compose: No file data returned after processing recording";
+	$dub_track = &get_peakiest_file(@out_file_stats);
+
+	$state = $dub_review;
+    }elsif ($state eq $dub_review){
+	if(lc($inp) eq 'd'){
+	    $state = $dubbing;
+	}elsif(lc($inp) eq 'r'){
+	    $state = $recording;
+	}else{
+	    ## TODO  Where is backing track set?
+
+	    `$PLAY -ao jack "$dub_track"`;
+	}
 
     }
 }
 
 sub process_jackrec {
 
-    ## Process the raw audio
+    ## Process the raw audio from a recording.
     ## Return a hash of the wav files generated and their stats
     my $start  = time();
     my %result = ();
@@ -272,8 +278,9 @@ sub process_jackrec {
 	    `$sox_cmd `;
 	    my $peaks = peaks($fn2);
 	    $result{$fn2} = $peaks;
+	    warn "DBG compose: fn2: $fn2\n";
 	    $fn2 =~ s/.*\/?([^\/]+).*$/$1/;
-	    print sprintf("Peaks %0.4f Output $fn2\n", $peaks);
+	    warn sprintf("Peaks %0.4f Output $fn2\n", $peaks);
 	}
     }
 
@@ -281,10 +288,36 @@ sub process_jackrec {
 	unlink $fn or die "$!: unlink $fn";
     }
     print("Processing files took: ".(time() - $start)." seconds\n");
-    return %result;
+
+    # Return the files
+    my @ret = ();
+    my @possible_backing =  keys %result;
+    my $avg = -9999999;
+    foreach my $p (@possible_backing){
+	my $_a = $result{$p};
+	if($_a != 0 and $_a > $avg){
+	    $avg = $_a;
+	    push(@ret, [$_a, $p]);
+
+	}
+    }
+    return @ret;
 
 }
 # ffmpeg -i fooooo.wav -af astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=log.txt -f null -
+
+sub get_peakiest_file {
+    my @out_file_stats = @_;
+	my $p_fn = $out_file_stats[0];
+	my $p = $p_fn->[0];
+	my $fn = $p_fn->[1];
+	foreach $p_fn (@out_file_stats){
+	    if($p_fn->[0] > $p){
+		$fn = $p_fn->[1];
+	    }
+	}
+    return $fn;
+}
 
 sub std_pfx {
     return "Compose";
