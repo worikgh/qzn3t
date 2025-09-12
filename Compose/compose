@@ -6,7 +6,7 @@ use strict;
 (my $DIR = $0) =~ s/[^\/]+$//;
 $DIR =~ s/\/$//; # Get rid of trailing slash
 $DIR = '.' if !length($DIR);
-warn "\$DIR: $DIR\n";
+warn "DBG compose: \$DIR: $DIR\n";
 
 ## Directory to write all files to
 my $DATADIR = "$DIR/compositions";
@@ -158,31 +158,32 @@ my $audio_dir = "$DATADIR/audio/$directory";
 `mkdir -p $audio_dir`;
 -d $audio_dir or die "$!: Audio directory: $audio_dir does not exist";
 
-## The input from the user.  It always ends with a new line
-my $inp = "\n";
-
 ## For all states append this message to the display
 
 ## Recorded files go in a directory named `$fn`
 my $fn = 1;
 
+warn "DBG compose: fn_rec: $fn_rec\n";
 while(1){
 
     print "$state_msg{$state}\n";
-    $inp = <STDIN>;
+    my $inp = <STDIN>;
     chomp $inp;
     $inp eq 'q' and last;
+    warn "DBG compose: State: $state\n";
 
-    if($state eq $recording){
-
-	$backing_track = undef;
-
+    if($state eq $dubbing || $state eq $recording){
 	$fn_dir = "$audio_dir/$fn";
 	-d $fn_dir or mkdir($fn_dir) or die "$!: mkdir $fn_dir";
 
 	# `$fn_rec` is the stem of the file name.  The name assigned
 	# by jack_rec will be appended to it
 	$fn_rec = "$fn_dir/$file_pfx";
+    }
+
+    if($state eq $recording){
+
+	$backing_track = undef;
 
 	print "Press <enter> to stop recording\n";
 	## This blocks untill a line is entered from keyboard (enter
@@ -229,21 +230,19 @@ while(1){
 	    `$PLAY -ao jack "$backing_track"`;
 	}
     }elsif($state eq $dubbing){
-	warn "DBG compose: State: $state ";
 	$fn_dub = $fn_rec."-$dub";
 	$dub++; # Finished with this for now, get ready for next dub
 	print "Press <enter> to stop overdubbing\n";
 	my $pid = run_daemon("$PLAY -ao jack $backing_track") or die;
 	push(@PIDS, $pid);
-	warn "DBG compose: Play with PID: $pid\n";
 
 	## This blocks and returns a JSON object
 	warn "Press <enter> to stop overdubbing\n";
 	my $cmd = "$JACKREC -p \"$fn_dub\"";
 	warn "DBG compose: \$cmd:$cmd\n";
 	my $result = `$cmd`;
-	print `killall mplayer`;
-	print "Processing\n";
+	`pkill -f $PLAY`;
+	warn "Processing\nResult: $result\n";
 	process_jackrec($result);
 
     }
