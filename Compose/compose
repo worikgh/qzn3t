@@ -21,7 +21,7 @@ $SIG{INT} = sub {
     exit;
 };
 ## Locate Qzn3t root
-my $QZN3T = "$DIR/../qzn3t";
+my $QZN3T = "$DIR/..";
 -d $QZN3T or die "$!: $QZN3T is not a directory";
 
 ## `$JACKREC`  is a programme that reords all Jackd outputs as raw audio
@@ -229,11 +229,13 @@ while(1){
 	    `$PLAY -ao jack "$backing_track"`;
 	}
     }elsif($state eq $dubbing){
+	warn "DBG compose: State: $state ";
 	$fn_dub = $fn_rec."-$dub";
 	$dub++; # Finished with this for now, get ready for next dub
 	print "Press <enter> to stop overdubbing\n";
 	my $pid = run_daemon("$PLAY -ao jack $backing_track") or die;
 	push(@PIDS, $pid);
+	warn "DBG compose: Play with PID: $pid\n";
 
 	## This blocks and returns a JSON object
 	warn "Press <enter> to stop overdubbing\n";
