@@ -171,8 +171,12 @@ fn main() {
 	let note = note_result.note_name;
 	let octave = note_result.octave;
 	let cents = note_result.cents_offset;
+
 	let report = format!(
-	    "\rtuner: {note}/{octave} {cents:>9.6}  max: {max:>9.6} min: {min:>9.6} mean: {mean:>9.6}",
+	    "tuner: {:>3}/{octave} {:>6.6}  max: {max:>6.6} min: {min:>6.6} mean: {mean:>6.6} {:>6.6}\n",
+	    note.to_string(),
+	    cents.to_string(),
+	    -(max / min)
 	); //
 	if let Err(err) = io::stdout().lock().write_all(report.as_bytes()) {
 	    eprintln!("Error tuner: IO error on write_all: {err}");
