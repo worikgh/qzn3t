@@ -30,15 +30,15 @@ struct TunerProcessHandler {
 
 impl ProcessHandler for TunerProcessHandler {
     fn process(&mut self, _: &Client, ps: &ProcessScope) -> jack::Control {
-	let buffer = self.capture_port.as_slice(ps);
 	let current_time = Instant::now();
 
 	// Check if it's time to start a new sample
 	if current_time.duration_since(self.last_sample_time) >= self.sample_interval {
 	    self.last_sample_time = current_time;
+	    let buffer = self.capture_port.as_slice(ps);
+	    let mut buf_guard = self.sample_buffer.lock().unwrap();
 	    let num_samples_needed =
 		(self.sample_rate as f32 * self.sample_duration.as_secs_f32()) as usize;
-	    let mut buf_guard = self.sample_buffer.lock().unwrap();
 	    buf_guard.clear();
 	    buf_guard.extend_from_slice(&buffer[..num_samples_needed.min(buffer.len())]);
 	}
