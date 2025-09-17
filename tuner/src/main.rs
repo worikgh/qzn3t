@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
+use clap::Parser;
 use jack::{AudioIn, Client, Port, ProcessHandler, ProcessScope};
 #[allow(unused_imports)]
 use pitch_detector::{
@@ -62,11 +63,26 @@ struct Notifications;
 
 impl jack::NotificationHandler for Notifications {}
 
-fn start_jack_thread() -> (mpsc::Receiver<Vec<f32>>, usize) {
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct TunerArgs {
+    #[arg(short, long, default_value_t = 200)]
+    interval: u64, // MS between sample times
+    #[arg(short, long, default_value_t = 2_048_000)]
+    count: u64, // The number of samples in a tone to check
+    #[arg(short, long, default_value_t = 0.0)]
+    max_vol_min: f64, // The maximum volume must be bigger than this
+    #[arg(short, long, default_value_t = 0.0)]
+    mean_min: f64, // The absolute mean volume must be bigger than this
+}
+fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize) {
     let (sender, receiver) = mpsc::channel();
     let (client, _status) =
 	jack::Client::new("qzn3t_tuner", jack::ClientOptions::NO_START_SERVER).unwrap();
     let sample_rate = client.sample_rate();
+
+    let interval_ms = args.interval;
+    let count = args.count;
     thread::spawn(move || {
 	// Register capture port
 	let capture_port = client
@@ -78,8 +94,9 @@ fn start_jack_thread() -> (mpsc::Receiver<Vec<f32>>, usize) {
 	let sample_buffer_clone = Arc::clone(&sample_buffer);
 
 	// Sampling parameters
-	let sample_interval = Duration::from_millis(400);
-	let sample_duration = Duration::from_millis(2_048_000 / (sample_rate as u64));
+	let sample_interval = Duration::from_millis(interval_ms);
+	let sample_duration = Duration::from_millis(count / (sample_rate as u64));
+	assert!(sample_duration < sample_interval);
 	// let sample_duration = Duration::from_millis(300);
 	eprintln!(
 	    "DBG tuner: sample_rate: {sample_rate} interval: {sample_interval:?} duration: {sample_duration:?}"
@@ -113,7 +130,8 @@ fn start_jack_thread() -> (mpsc::Receiver<Vec<f32>>, usize) {
 }
 
 fn main() {
-    let (receiver, sample_rate) = start_jack_thread();
+    let args = TunerArgs::parse();
+    let (receiver, sample_rate) = start_jack_thread(&args);
     loop {
 	let v = match receiver.recv() {
 	    Ok(v) => v,
@@ -125,10 +143,13 @@ fn main() {
 	let max = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 	let min = v.iter().copied().fold(f32::INFINITY, f32::min);
 	let mean = v.iter().sum::<f32>() / v.len() as f32;
-	if max < 0.1 {
-	    // Skip quiet parts...
+	if (max as f64) < args.max_vol_min {
 	    continue;
 	}
+	if mean.abs() as f64 > args.mean_min {
+	    continue;
+	}
+
 	let v: Vec<f64> = v.iter().map(|&x| x as f64).collect();
 	if v.is_empty() {
 	    // eprintln!("DBG tuner: Read nothing from thread");
