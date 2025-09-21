@@ -54,7 +54,7 @@ fn load_sections(filename: &str) -> Option<Vec<Section>> {
     let mut sections: Vec<Section> = lines
 	.iter()
 	.filter(|&l| !l.trim().starts_with('#')) // Filter out comment lines
-	.filter(|&l| l.trim().len() == 0) // Filter out blank lines
+	.filter(|&l| l.trim().len() != 0) // Filter out blank lines
 	.map(|l| {
 		let records: Vec<String> = l.split(',').map(|s| s.trim().to_string()).collect();
 		// Error checking
