@@ -1,0 +1,421 @@
+# Testing Tuner Parameters
+# MIDI Note: 36, Note Name: C, Octave: 3
+# MIDI Note: 37, Note Name: C#, Octave: 3
+# MIDI Note: 38, Note Name: D, Octave: 3
+# MIDI Note: 39, Note Name: D#, Octave: 3
+# MIDI Note: 40, Note Name: E, Octave: 3
+# MIDI Note: 41, Note Name: F, Octave: 3
+# MIDI Note: 42, Note Name: F#, Octave: 3
+# MIDI Note: 43, Note Name: G, Octave: 3
+# MIDI Note: 44, Note Name: G#, Octave: 3
+# MIDI Note: 45, Note Name: A, Octave: 3
+# MIDI Note: 46, Note Name: A#, Octave: 3
+# MIDI Note: 47, Note Name: B, Octave: 3
+# MIDI Note: 48, Note Name: C, Octave: 4
+# MIDI Note: 49, Note Name: C#, Octave: 4
+# MIDI Note: 50, Note Name: D, Octave: 4
+# MIDI Note: 51, Note Name: D#, Octave: 4
+# MIDI Note: 52, Note Name: E, Octave: 4
+# MIDI Note: 53, Note Name: F, Octave: 4
+# MIDI Note: 54, Note Name: F#, Octave: 4
+# MIDI Note: 55, Note Name: G, Octave: 4
+# MIDI Note: 56, Note Name: G#, Octave: 4
+# MIDI Note: 57, Note Name: A, Octave: 4
+# MIDI Note: 58, Note Name: A#, Octave: 4
+# MIDI Note: 59, Note Name: B, Octave: 4
+# MIDI Note: 60, Note Name: C, Octave: 5
+# MIDI Note: 61, Note Name: C#, Octave: 5
+# MIDI Note: 62, Note Name: D, Octave: 5
+# MIDI Note: 63, Note Name: D#, Octave: 5
+# MIDI Note: 64, Note Name: E, Octave: 5
+# MIDI Note: 65, Note Name: F, Octave: 5
+# MIDI Note: 66, Note Name: F#, Octave: 5
+# MIDI Note: 67, Note Name: G, Octave: 5
+# MIDI Note: 68, Note Name: G#, Octave: 5
+# MIDI Note: 69, Note Name: A, Octave: 5
+# MIDI Note: 70, Note Name: A#, Octave: 5
+# MIDI Note: 71, Note Name: B, Octave: 5
+# MIDI Note: 72, Note Name: C, Octave: 6
+# MIDI Note: 73, Note Name: C#, Octave: 6
+# MIDI Note: 74, Note Name: D, Octave: 6
+# MIDI Note: 75, Note Name: D#, Octave: 6
+# MIDI Note: 76, Note Name: E, Octave: 6
+# MIDI Note: 77, Note Name: F, Octave: 6
+# MIDI Note: 78, Note Name: F#, Octave: 6
+# MIDI Note: 79, Note Name: G, Octave: 6
+# MIDI Note: 80, Note Name: G#, Octave: 6
+# MIDI Note: 81, Note Name: A, Octave: 6
+# MIDI Note: 82, Note Name: A#, Octave: 6
+# MIDI Note: 83, Note Name: B, Octave: 6
+# MIDI Note: 84, Note Name: C, Octave: 7
+# MIDI Note: 85, Note Name: C#, Octave: 7
+# MIDI Note: 86, Note Name: D, Octave: 7
+# MIDI Note: 87, Note Name: D#, Octave: 7
+# MIDI Note: 88, Note Name: E, Octave: 7
+# MIDI Note: 89, Note Name: F, Octave: 7
+# MIDI Note: 90, Note Name: F#, Octave: 7
+# MIDI Note: 91, Note Name: G, Octave: 7
+# MIDI Note: 92, Note Name: G#, Octave: 7
+# MIDI Note: 93, Note Name: A, Octave: 7
+# MIDI Note: 94, Note Name: A#, Octave: 7
+# MIDI Note: 95, Note Name: B, Octave: 7
+# Test Case: 100 16
+# Test Case: 100 32
+# Test Case: 100 64
+# Test Case: 100 128
+# Test Case: 100 256
+# Test Case: 100 512
+# Test Case: 100 1024
+# Test Case: 100 2048
+# Test Case: 100 4096
+# Test Case: 100 8192
+# Test Case: 100 16384
+# Test Case: 100 32768
+# Test Case: 100 65536
+# Test Case: 100 131072
+# Test Case: 100 262144
+# Test Case: 100 524288
+# Test Case: 100 1048576
+# Test Case: 100 2097152
+# Test Case: 125 16
+# Test Case: 125 32
+# Test Case: 125 64
+# Test Case: 125 128
+# Test Case: 125 256
+# Test Case: 125 512
+# Test Case: 125 1024
+# Test Case: 125 2048
+# Test Case: 125 4096
+# Test Case: 125 8192
+# Test Case: 125 16384
+# Test Case: 125 32768
+# Test Case: 125 65536
+# Test Case: 125 131072
+# Test Case: 125 262144
+# Test Case: 125 524288
+# Test Case: 125 1048576
+# Test Case: 125 2097152
+# Test Case: 150 16
+# Test Case: 150 32
+# Test Case: 150 64
+# Test Case: 150 128
+# Test Case: 150 256
+# Test Case: 150 512
+# Test Case: 150 1024
+# Test Case: 150 2048
+# Test Case: 150 4096
+# Test Case: 150 8192
+# Test Case: 150 16384
+# Test Case: 150 32768
+# Test Case: 150 65536
+# Test Case: 150 131072
+# Test Case: 150 262144
+# Test Case: 150 524288
+# Test Case: 150 1048576
+# Test Case: 150 2097152
+# Test Case: 175 16
+# Test Case: 175 32
+# Test Case: 175 64
+# Test Case: 175 128
+# Test Case: 175 256
+# Test Case: 175 512
+# Test Case: 175 1024
+# Test Case: 175 2048
+# Test Case: 175 4096
+# Test Case: 175 8192
+# Test Case: 175 16384
+# Test Case: 175 32768
+# Test Case: 175 65536
+# Test Case: 175 131072
+# Test Case: 175 262144
+# Test Case: 175 524288
+# Test Case: 175 1048576
+# Test Case: 175 2097152
+# Test Case: 200 16
+# Test Case: 200 32
+# Test Case: 200 64
+# Test Case: 200 128
+# Test Case: 200 256
+# Test Case: 200 512
+# Test Case: 200 1024
+# Test Case: 200 2048
+# Test Case: 200 4096
+# Test Case: 200 8192
+# Test Case: 200 16384
+# Test Case: 200 32768
+# Test Case: 200 65536
+# Test Case: 200 131072
+# Test Case: 200 262144
+# Test Case: 200 524288
+# Test Case: 200 1048576
+# Test Case: 200 2097152
+# Test Case: 225 16
+# Test Case: 225 32
+# Test Case: 225 64
+# Test Case: 225 128
+# Test Case: 225 256
+# Test Case: 225 512
+# Test Case: 225 1024
+# Test Case: 225 2048
+# Test Case: 225 4096
+# Test Case: 225 8192
+# Test Case: 225 16384
+# Test Case: 225 32768
+# Test Case: 225 65536
+# Test Case: 225 131072
+# Test Case: 225 262144
+# Test Case: 225 524288
+# Test Case: 225 1048576
+# Test Case: 225 2097152
+# Test Case: 250 16
+# Test Case: 250 32
+# Test Case: 250 64
+# Test Case: 250 128
+# Test Case: 250 256
+# Test Case: 250 512
+# Test Case: 250 1024
+# Test Case: 250 2048
+# Test Case: 250 4096
+# Test Case: 250 8192
+# Test Case: 250 16384
+# Test Case: 250 32768
+# Test Case: 250 65536
+# Test Case: 250 131072
+# Test Case: 250 262144
+# Test Case: 250 524288
+# Test Case: 250 1048576
+# Test Case: 250 2097152
+# Test Case: 275 16
+# Test Case: 275 32
+# Test Case: 275 64
+# Test Case: 275 128
+# Test Case: 275 256
+# Test Case: 275 512
+# Test Case: 275 1024
+# Test Case: 275 2048
+# Test Case: 275 4096
+# Test Case: 275 8192
+# Test Case: 275 16384
+# Test Case: 275 32768
+# Test Case: 275 65536
+# Test Case: 275 131072
+# Test Case: 275 262144
+# Test Case: 275 524288
+# Test Case: 275 1048576
+# Test Case: 275 2097152
+# Test Case: 300 16
+# Test Case: 300 32
+# Test Case: 300 64
+# Test Case: 300 128
+# Test Case: 300 256
+# Test Case: 300 512
+# Test Case: 300 1024
+# Test Case: 300 2048
+# Test Case: 300 4096
+# Test Case: 300 8192
+# Test Case: 300 16384
+# Test Case: 300 32768
+# Test Case: 300 65536
+# Test Case: 300 131072
+# Test Case: 300 262144
+# Test Case: 300 524288
+# Test Case: 300 1048576
+# Test Case: 300 2097152
+# Test Case: 325 16
+# Test Case: 325 32
+# Test Case: 325 64
+# Test Case: 325 128
+# Test Case: 325 256
+# Test Case: 325 512
+# Test Case: 325 1024
+# Test Case: 325 2048
+# Test Case: 325 4096
+# Test Case: 325 8192
+# Test Case: 325 16384
+# Test Case: 325 32768
+# Test Case: 325 65536
+# Test Case: 325 131072
+# Test Case: 325 262144
+# Test Case: 325 524288
+# Test Case: 325 1048576
+# Test Case: 325 2097152
+# Test Case: 350 16
+# Test Case: 350 32
+# Test Case: 350 64
+# Test Case: 350 128
+# Test Case: 350 256
+# Test Case: 350 512
+# Test Case: 350 1024
+# Test Case: 350 2048
+# Test Case: 350 4096
+# Test Case: 350 8192
+# Test Case: 350 16384
+# Test Case: 350 32768
+# Test Case: 350 65536
+# Test Case: 350 131072
+# Test Case: 350 262144
+# Test Case: 350 524288
+# Test Case: 350 1048576
+# Test Case: 350 2097152
+# Test Case: 375 16
+# Test Case: 375 32
+# Test Case: 375 64
+# Test Case: 375 128
+# Test Case: 375 256
+# Test Case: 375 512
+# Test Case: 375 1024
+# Test Case: 375 2048
+# Test Case: 375 4096
+# Test Case: 375 8192
+# Test Case: 375 16384
+# Test Case: 375 32768
+# Test Case: 375 65536
+# Test Case: 375 131072
+# Test Case: 375 262144
+# Test Case: 375 524288
+# Test Case: 375 1048576
+# Test Case: 375 2097152
+# Test Case: 400 16
+# Test Case: 400 32
+# Test Case: 400 64
+# Test Case: 400 128
+# Test Case: 400 256
+# Test Case: 400 512
+# Test Case: 400 1024
+# Test Case: 400 2048
+# Test Case: 400 4096
+# Test Case: 400 8192
+# Test Case: 400 16384
+# Test Case: 400 32768
+# Test Case: 400 65536
+# Test Case: 400 131072
+# Test Case: 400 262144
+# Test Case: 400 524288
+# Test Case: 400 1048576
+# Test Case: 400 2097152
+# Test Case: 425 16
+# Test Case: 425 32
+# Test Case: 425 64
+# Test Case: 425 128
+# Test Case: 425 256
+# Test Case: 425 512
+# Test Case: 425 1024
+# Test Case: 425 2048
+# Test Case: 425 4096
+# Test Case: 425 8192
+# Test Case: 425 16384
+# Test Case: 425 32768
+# Test Case: 425 65536
+# Test Case: 425 131072
+# Test Case: 425 262144
+# Test Case: 425 524288
+# Test Case: 425 1048576
+# Test Case: 425 2097152
+# Test Case: 450 16
+# Test Case: 450 32
+# Test Case: 450 64
+# Test Case: 450 128
+# Test Case: 450 256
+# Test Case: 450 512
+# Test Case: 450 1024
+# Test Case: 450 2048
+# Test Case: 450 4096
+# Test Case: 450 8192
+# Test Case: 450 16384
+# Test Case: 450 32768
+# Test Case: 450 65536
+# Test Case: 450 131072
+# Test Case: 450 262144
+# Test Case: 450 524288
+# Test Case: 450 1048576
+# Test Case: 450 2097152
+# Test Case: 475 16
+# Test Case: 475 32
+# Test Case: 475 64
+# Test Case: 475 128
+# Test Case: 475 256
+# Test Case: 475 512
+# Test Case: 475 1024
+# Test Case: 475 2048
+# Test Case: 475 4096
+# Test Case: 475 8192
+# Test Case: 475 16384
+# Test Case: 475 32768
+# Test Case: 475 65536
+# Test Case: 475 131072
+# Test Case: 475 262144
+# Test Case: 475 524288
+# Test Case: 475 1048576
+# Test Case: 475 2097152
+# Test Case: 500 16
+# Test Case: 500 32
+# Test Case: 500 64
+# Test Case: 500 128
+# Test Case: 500 256
+# Test Case: 500 512
+# Test Case: 500 1024
+# Test Case: 500 2048
+# Test Case: 500 4096
+# Test Case: 500 8192
+# Test Case: 500 16384
+# Test Case: 500 32768
+# Test Case: 500 65536
+# Test Case: 500 131072
+# Test Case: 500 262144
+# Test Case: 500 524288
+# Test Case: 500 1048576
+# Test Case: 500 2097152
+# Test Case: 525 16
+# Test Case: 525 32
+# Test Case: 525 64
+# Test Case: 525 128
+# Test Case: 525 256
+# Test Case: 525 512
+# Test Case: 525 1024
+# Test Case: 525 2048
+# Test Case: 525 4096
+# Test Case: 525 8192
+# Test Case: 525 16384
+# Test Case: 525 32768
+# Test Case: 525 65536
+# Test Case: 525 131072
+# Test Case: 525 262144
+# Test Case: 525 524288
+# Test Case: 525 1048576
+# Test Case: 525 2097152
+# Test Case: 550 16
+# Test Case: 550 32
+# Test Case: 550 64
+# Test Case: 550 128
+# Test Case: 550 256
+# Test Case: 550 512
+# Test Case: 550 1024
+# Test Case: 550 2048
+# Test Case: 550 4096
+# Test Case: 550 8192
+# Test Case: 550 16384
+# Test Case: 550 32768
+# Test Case: 550 65536
+# Test Case: 550 131072
+# Test Case: 550 262144
+# Test Case: 550 524288
+# Test Case: 550 1048576
+# Test Case: 550 2097152
+# Test Case: 575 16
+# Test Case: 575 32
+# Test Case: 575 64
+# Test Case: 575 128
+# Test Case: 575 256
+# Test Case: 575 512
+# Test Case: 575 1024
+# Test Case: 575 2048
+# Test Case: 575 4096
+# Test Case: 575 8192
+# Test Case: 575 16384
+# Test Case: 575 32768
+# Test Case: 575 65536
+# Test Case: 575 131072
+# Test Case: 575 262144
+# Test Case: 575 524288
+# Test Case: 575 1048576
+# Test Case: 575 2097152
