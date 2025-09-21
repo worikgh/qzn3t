@@ -5,7 +5,17 @@ edition = "2024"
 
 [dependencies]
 clap = {features = ["derive"], version = "4.5.47"}
+clap_builder = "4.5.47"
 jack = "0.13.3"
 pitch-detector = "0.3.1"
 rand = "0.9.2"
+ringbuf = "0.4.8"
 rtrb = "0.3.2"
+
+[lib]
+name = "tuner"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tuner"
+path = "src/main.rs"
