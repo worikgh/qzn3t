@@ -1,0 +1,8 @@
+[package]
+name = "analyze"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rodio = "0.21.1"
+symphonia = { version = "0.5", features = ["all-codecs"] }
