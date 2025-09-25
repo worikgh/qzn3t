@@ -10,7 +10,7 @@ Preconditions
 Usage
 ---
 
-`compose [-p <prefix>] [-b <backing track>] [-d <directory>]`
+`compose.pl [-p <prefix>] [-b <backing track>] [-d <directory>]`
 
 Control with the keyboard
 
