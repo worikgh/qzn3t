@@ -2,8 +2,8 @@
 // License: GPL-3.0
 
 use clap::Parser;
-use std::{path::PathBuf, sync::mpsc};
-
+use std::error::Error;
+use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 #[allow(dead_code)]
@@ -26,46 +26,37 @@ pub struct Args {
     pub directory: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-pub struct Config {
-    pub qzn3t_root: PathBuf,
-    pub data_dir: PathBuf,
-    pub audio_dir: PathBuf,
-    pub sox_path: PathBuf,
-    pub play_path: PathBuf,
-    pub amplitude_path: PathBuf,
-    pub jack_rec_path: PathBuf,
-    pub file_prefix: String,
-    pub directory: String,
-    pub backing_track: Option<PathBuf>,
-    pub input: String,
-    pub audio_out: mpsc::Sender<f32>,
-}
-
 #[derive(Debug, Clone, PartialEq)]
-pub enum State {
-    Recording,
+#[allow(dead_code)]
+pub enum Command {
+    Stop,
+    Record,
+    ReviewRecord,
     Dubing,
-    RecordingReview,
     DubReview,
     DubAccept,
+    Quit,
 }
 
-impl State {
-    pub fn message(&self) -> &'static str {
-        match self {
-            State::Recording => "Press \n<enter> to start recording",
-            State::Dubing => "Press \n<enter> to start overdubbing",
-            State::RecordingReview => {
-                "Press \n<enter> to review recording \nr <enter> to record again \nd <enter> to overdub"
-            }
-            State::DubReview => {
-                "Press \n<enter> to review dub \nd <enter> to dub again \nr <enter> to record again"
-            }
-            State::DubAccept => {
-                "Press \nd <enter> to dub again \nr <enter> to record again\ng <enter> Review again"
-            }
-        }
+impl Command {}
+
+#[derive(Debug)]
+pub struct ThisError;
+impl Error for ThisError {}
+use std::fmt;
+impl fmt::Display for ThisError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "This is a custom error")
+    }
+}
+impl From<anyhow::Error> for ThisError {
+    fn from(_: anyhow::Error) -> Self {
+        ThisError
+    }
+}
+impl From<Box<dyn Error>> for ThisError {
+    fn from(err: Box<dyn Error>) -> Self {
+        eprintln!("Error composer: `From<Box<dyn Error>> for ThisError` err: {err}");
+        ThisError
     }
 }
