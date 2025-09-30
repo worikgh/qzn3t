@@ -109,6 +109,7 @@ impl ConfigApp {
         }))
     }
     fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
+        self.recorded_audio.truncate(0);
         match self.get_audio_from_jack() {
             Ok(handle) => self.record_handle = Some(handle),
             Err(err) => {
