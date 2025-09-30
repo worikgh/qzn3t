@@ -6,14 +6,18 @@
 
 use chrono::Utc;
 use clap::{Arg, ArgAction, Command};
-use serde::Serialize;
+use jack_rec::Description;
+use std::collections::HashMap;
 use std::env;
+use std::error::Error;
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::prelude::*;
 use std::io::BufWriter;
+use std::io::prelude::*;
 use std::io::{self};
 use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
 struct MyArgs {
     pipes: Vec<String>,
     prefix: String,
@@ -57,7 +61,7 @@ where
     let pipes: Vec<String> = matches
         .get_many::<String>("jackd_pipe")
         .map(|values| values.cloned().collect())
-        .unwrap_or_else(|| vec![]); // Default if no values provided
+        .unwrap_or_default();
     if !pipes.is_empty() {
         let dbg_str = pipes.iter().fold("".to_string(), |a, b| format!("{a} {b}"));
         eprintln!("DBG jack_rec: pipes: {dbg_str}",);
@@ -68,31 +72,18 @@ where
     }
 }
 
-fn main() {
-    #[derive(Serialize)]
-    struct Description {
-        sample_rate: usize,
-        output_files: Vec<String>,
-    }
-
+use mio::{Events, Interest, Poll, Token};
+use std::os::unix::io::AsRawFd;
+const STDIN_TOKEN: Token = Token(0);
+fn main() -> Result<(), Box<dyn Error>> {
     let args = process_args();
     let prefix = args.prefix;
+
     // Create client
     let (client, _status) =
         jack::Client::new("qzn3t_jack_rec", jack::ClientOptions::NO_START_SERVER).unwrap();
-    // The `in_ports` that match "system:playback" are the audio output
-
-    // `description` contains the paths to the generated files and the
-    // sample rate.  It is converted to JSON and output on the stdout
-    // when the recording is finished.  It is all that is needed to
-    // convert the files from raw audio to a more usable format.
-    let mut description = Description {
-        sample_rate: client.sample_rate(),
-        output_files: vec![],
-    };
 
     // Get all ports to collect data from matching "system:playback"
-
     let ports = if args.pipes.is_empty() {
         let system_playback =
             client.ports(Some("system:playback"), None, jack::PortFlags::IS_INPUT);
@@ -116,76 +107,114 @@ fn main() {
         args.pipes
     };
 
+    // `description` contains the paths to the generated files and the
+    // sample rate.  It is converted to JSON and output on the stdout
+    // when the recording is finished.  It is all that is needed to
+    // convert the files from raw audio to a more usable format.
+    let mut description = Description {
+        sample_rate: client.sample_rate(),
+        output_files: vec![],
+    };
+
     // Create a client that writes all data to a file, for each port
     // that is being monitored
     let mut clients = vec![];
-    for name in ports.iter() {
-        let name = name.replace('/', "_");
-        let (client, _status) =
-            jack::Client::new("qzt", jack::ClientOptions::NO_START_SERVER).expect("Client qzt");
-        let spec = jack::AudioIn;
-        let inport = client.register_port(&name, spec).unwrap();
-        let to_port = inport.name().as_ref().unwrap().to_string();
-        let fname = format!("{prefix}_{name}.raw");
 
+    // The mape the name of the stream to the channel receiving audio
+    let mut channels: HashMap<String, mpsc::Receiver<f32>> = HashMap::new();
+    for name in ports.iter() {
+        let name = name.replace('/', "_").to_string();
+
+        let (sender, receiver) = mpsc::channel::<f32>();
+        let async_client = jack_rec::run_port(name.clone(), sender)?;
+        channels.insert(name.clone(), receiver);
+        clients.push(async_client);
+
+        // let process_callback =
+        //     move |_jc: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+        //         // Called every time there is data available
+        //         let in_a_p: &[f32] = inport.as_slice(ps);
+        //         for v in in_a_p {
+        //             let bytes = v.to_ne_bytes();
+        //             writer.write_all(&bytes).unwrap();
+        //         }
+
+        //         // Is this needed?  No.  `writer` goes out ouf scope
+        //         // when the Jack client is shut down with `deactivate`
+        //         //writer.flush().unwrap();
+        //         jack::Control::Continue
+        //     };
+
+        // let process = jack::ClosureProcessHandler::new(process_callback);
+        // // Activate the client, which starts the processing.
+        // let active_client = client.activate_async(Notifications, process).unwrap();
+        // let from_port = name;
+
+        // let (client, _status) =
+        //     jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
+        // match client.connect_ports_by_name(from_port.as_str(), to_port.as_str()) {
+        //     Ok(()) => (),
+        //     Err(err) => {
+        //         eprintln!("Failed  {from_port} -> {} '{err}'", to_port);
+        //     }
+        // };
+        // clients.push(active_client);
+    }
+
+    // Make the BufWriters to write the audio data to files
+    let mut writers: HashMap<String, BufWriter<File>> = HashMap::new();
+    for (name, _) in channels.iter() {
+        // The path for the audio data to be written to
+        let fname = format!("{prefix}_{name}.raw");
         let fpath = Path::new(&fname);
         let file = match File::create(fpath) {
             Ok(f) => f,
             Err(e) => panic!("Error jack_rec: Cannot create: {fname}  Err: {e}"),
         };
-        description.output_files.push(fname);
-
-        // This writer gets moved into the closure
-        let mut writer = BufWriter::new(file);
-        let process_callback =
-            move |_jc: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-                // Called every time there is data available
-                let in_a_p: &[f32] = inport.as_slice(ps);
-                for v in in_a_p {
-                    let bytes = v.to_ne_bytes();
-                    writer.write_all(&bytes).unwrap();
-                }
-
-                // Is this needed?  No.  `writer` goes out ouf scope
-                // when the Jack client is shut down with `deactivate`
-                //writer.flush().unwrap();
-                jack::Control::Continue
-            };
-
-        let process = jack::ClosureProcessHandler::new(process_callback);
-        // Activate the client, which starts the processing.
-        let active_client = client.activate_async(Notifications, process).unwrap();
-        let from_port = name;
-
-        let (client, _status) =
-            jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
-        match client.connect_ports_by_name(from_port.as_str(), to_port.as_str()) {
-            Ok(()) => (),
-            Err(err) => {
-                eprintln!("Failed  {from_port} -> {} '{err}'", to_port);
-            }
-        };
-        clients.push(active_client);
+        description.output_files.push(fname.clone());
+        // This writer writes the data from the port
+        let writer = BufWriter::new(file);
+        writers.insert(name.to_string(), writer);
     }
-    let mut input = String::new();
 
-    // Block on stdin, effectively a keypress
-    io::stdin().read_line(&mut input).unwrap();
+    let mut poll = Poll::new()?;
+    let stdin = io::stdin();
+    let stdin_fd = stdin.as_raw_fd();
+
+    // Register stdin for read events
+    poll.registry().register(
+        &mut mio::unix::SourceFd(&stdin_fd),
+        STDIN_TOKEN,
+        Interest::READABLE,
+    )?;
+
+    let mut events = Events::with_capacity(128);
+
+    loop {
+        // Write all the data from all the channels
+        for (name, channel) in channels.iter() {
+            let writer = writers.get_mut(name).unwrap();
+            while let Ok(b) = channel.try_recv() {
+                writer.write_all(&b.to_ne_bytes())?;
+            }
+            writer.flush()?;
+        }
+
+        // Check if a key pressed
+        poll.poll(&mut events, Some(Duration::from_millis(0)))?;
+        if !events.is_empty() {
+            break;
+        }
+    }
+
     for client in clients {
         client.deactivate().unwrap();
     }
     let json_str = serde_json::to_string_pretty(&description).unwrap();
     print!("{json_str}");
+    Ok(())
 }
 
-struct Notifications;
-
-impl jack::NotificationHandler for Notifications {
-    fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        println!("JACK: sample rate changed to {srate}");
-        jack::Control::Continue
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;

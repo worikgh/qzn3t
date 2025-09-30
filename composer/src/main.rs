@@ -1,24 +1,29 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::prelude::*;
 use clap::Parser;
+use compose::get_audio_from_jack;
 use nix::sys::signal::Signal;
 use nix::sys::signal::{self};
 use nix::unistd::Pid;
 use serde_json::Value;
+use std::error::Error;
 use std::fs::{self, create_dir_all};
 use std::io::{self};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
+mod send_audio_to_jack;
 mod structs;
 
 use structs::Args;
 use structs::Config;
 use structs::State;
+
+use crate::send_audio_to_jack::create_out_port;
 
 static RUNNING: AtomicBool = AtomicBool::new(true);
 
@@ -35,6 +40,7 @@ struct CompositionApp {
     backing_track: Option<PathBuf>,
     dub_track: Option<PathBuf>,
     pfx: String,
+    recorded_audio: Vec<f32>,
 }
 
 impl CompositionApp {
@@ -80,18 +86,19 @@ impl CompositionApp {
             backing_track: None,
             dub_track: None,
             pfx,
+            recorded_audio: Vec::new(),
         })
     }
 
-    fn run(&mut self) -> Result<()> {
+    fn run(&mut self) -> Result<(), Box<dyn Error>> {
         let running = Arc::new(AtomicBool::new(true));
-        let r = running.clone();
+        let _r = running.clone();
         eprintln!("DBG compose: CompositionApp::run");
 
         if let Some(ref backing_track) = self.config.backing_track {
             eprintln!("DBG compose: CompositionApp::run  Have backing track: {backing_track:?}");
             if !backing_track.exists() {
-                return Err(anyhow!("Unreadable backing track: {:?}", backing_track));
+                return Err(anyhow!("Unreadable backing track: {:?}", backing_track).into());
             }
             self.backing_track = Some(backing_track.clone());
 
@@ -130,12 +137,14 @@ impl CompositionApp {
         Ok(())
     }
 
-    fn handle_recording(&mut self) -> Result<()> {
+    fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.backing_track = None;
+
+        // Directory to put recordings in
         self.fn_dir = Some(self.config.audio_dir.join(self.fn_counter.to_string()));
         create_dir_all(self.fn_dir.as_ref().unwrap())?;
 
-        // File name to record to
+        // Path of file to record to
         self.fn_rec = Some(
             self.fn_dir
                 .as_ref()
@@ -146,27 +155,7 @@ impl CompositionApp {
         );
 
         println!("Press <enter> to stop recording");
-
-        eprintln!("DBG compose: CompositionApp::handle_recording 1 {cmd}");
-        let result = self.jack_rec_cmd(self.fn_rec.as_ref().unwrap())?;
-        eprintln!("DBG compose: CompositionApp::handle_recording 2 {result}");
-
-        println!("Processing...");
-        let out_file_stats = self.process_jackrec(&result)?;
-
-        if out_file_stats.is_empty() {
-            println!("No matching file has audio in it. Cannot make a backing track for dubbing");
-            self.state = State::Recording;
-        } else {
-            self.backing_track = Some(self.get_peakiest_file(&out_file_stats)?);
-            self.state = State::RecordingReview;
-
-            if let Some(ref bt) = self.backing_track
-                && let Ok(relative_path) = bt.strip_prefix(self.config.data_dir.join("audio"))
-            {
-                println!("{}", relative_path.display());
-            }
-        }
+        self.recorded_audio = get_audio_from_jack(self.config.input.as_str())?;
 
         Ok(())
     }
@@ -188,6 +177,7 @@ impl CompositionApp {
         self.fn_dir = Some(self.config.audio_dir.join(self.fn_counter.to_string()));
         create_dir_all(self.fn_dir.as_ref().unwrap())?;
 
+        // Output file for dubbed audio
         self.fn_dub = Some(format!(
             "{}-{}",
             self.fn_rec.as_ref().unwrap(),
@@ -268,18 +258,13 @@ impl CompositionApp {
     }
 
     fn jack_rec_cmd(&self, prefix: &str) -> Result<String> {
-        let inputs: Vec<String> = self
-            .config
-            .inputs
-            .iter()
-            .map(|input| format!("-i \"{}\"", input))
-            .collect();
+        let input: String = format!(" -i {}", self.config.input,);
 
         let cmd = format!(
             "{} -p \"{}\" {}",
             self.config.jack_rec_path.display(),
             prefix,
-            inputs.join(" ")
+            input
         );
         Ok(cmd)
     }
@@ -344,9 +329,9 @@ impl CompositionApp {
 
     fn peaks(&self, filename: &Path) -> Result<f64> {
         let cmd = format!(
-	    "ffmpeg -loglevel quiet -i {:?} -af astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=- -f null -",
-	    filename
-	);
+            "ffmpeg -loglevel quiet -i {:?} -af astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.RMS_level:file=- -f null -",
+            filename
+        );
 
         let output = Self::run_command(&cmd)?;
         let lines: Vec<&str> = output.lines().collect();
@@ -513,15 +498,14 @@ fn find_executable(name: &str) -> Result<PathBuf> {
     }
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     setup_signal_handler()?;
-
+    let (audio_out_send, audio_out_receive) = mpsc::channel::<f32>();
+    let out_port = create_out_port("output", audio_out_receive)?;
     let args = Args::parse();
 
-    // Validate Jack pipes
-    for pipe in &args.inputs {
-        validate_jack_pipe(pipe)?;
-    }
+    // Validate Jack pipe input
+    validate_jack_pipe(&args.input)?;
 
     // Get current executable directory
     let exe_path = std::env::current_exe()?;
@@ -550,12 +534,12 @@ fn main() -> Result<()> {
     // Find required executables
     let amplitude_path = qzn3t_root.join("peak_volume/target/release/peak_volume");
     if !amplitude_path.exists() {
-        return Err(anyhow!("Amplitude tool not found: {:?}", amplitude_path));
+        return Err(anyhow!("Amplitude tool not found: {:?}", amplitude_path).into());
     }
 
     let jack_rec_path = qzn3t_root.join("jack_rec/target/release/jack_rec");
     if !jack_rec_path.exists() {
-        return Err(anyhow!("jack_rec not found: {:?}", jack_rec_path));
+        return Err(anyhow!("jack_rec not found: {:?}", jack_rec_path).into());
     }
 
     let sox_path = find_executable("sox")?;
@@ -574,7 +558,8 @@ fn main() -> Result<()> {
         file_prefix: args.prefix.unwrap_or_else(std_prefix),
         directory: args.directory.unwrap_or_else(std_directory),
         backing_track: args.backing_track,
-        inputs: args.inputs,
+        input: args.input,
+        audio_out: audio_out_send,
     };
 
     create_dir_all(&config.audio_dir)?;
