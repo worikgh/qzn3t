@@ -8,11 +8,15 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
-// Define a custom process handler
+
 pub struct AudioSenderState {
-    // out_port: jack::Port<AudioOut>,
-    data_channel: mpsc::Receiver<f32>,
-    // audio_buffer: Vec<f32>,
+    audio_rx: mpsc::Receiver<f32>,
+}
+
+impl AudioSenderState {
+    pub fn empty_rx(&mut self) {
+        while self.audio_rx.try_recv().is_ok() {}
+    }
 }
 
 /// Create the audio output port that monitors a channel `data_channel` that the main
@@ -24,13 +28,15 @@ pub fn create_out_port(
 ) -> Result<impl std::any::Any, jack::Error> {
     let (client, _status) = Client::new("qzn3t", ClientOptions::NO_START_SERVER)?;
     let mut out_port = client.register_port(port_name, AudioOut::default())?;
-    let state = AudioSenderState { data_channel };
+    let mut state = AudioSenderState {
+        audio_rx: data_channel,
+    };
     let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let out = out_port.as_mut_slice(ps);
         let run_flag = ok_to_run.load(Ordering::Relaxed);
         if run_flag {
             for sample in out.iter_mut() {
-                match state.data_channel.try_recv() {
+                match state.audio_rx.try_recv() {
                     Ok(s) => *sample = s,
                     Err(TryRecvError::Empty) => *sample = 0.0,
                     Err(TryRecvError::Disconnected) => {
@@ -43,6 +49,7 @@ pub fn create_out_port(
                 }
             }
         } else {
+            state.empty_rx();
             for sample in out.iter_mut() {
                 *sample = 0.0;
             }
