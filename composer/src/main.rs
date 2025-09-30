@@ -33,7 +33,7 @@ struct ConfigApp {
     recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
     record_handle: Option<JoinHandle<Vec<f32>>>,
-    audio_out: mpsc::Sender<f32>,
+    audio_tx: mpsc::Sender<f32>,
     cmd_rx: mpsc::Receiver<Command>,
     ok_to_run: Arc<AtomicBool>,
     port_name: String,
@@ -158,7 +158,7 @@ impl ConfigApp {
         let mut k = 0;
         for i in data.iter() {
             k += 1;
-            if let Err(e) = self.audio_out.send(*i) {
+            if let Err(e) = self.audio_tx.send(*i) {
                 eprintln!("Error composer: Playing audio: {e}");
             }
         }
@@ -175,7 +175,7 @@ impl CompositionApp {
     /// Set up the environment to run in
     fn initialise(
         &mut self,
-        sender: mpsc::Sender<f32>,
+        audio_tx: mpsc::Sender<f32>,
         commands: mpsc::Receiver<Command>,
         port: String,
     ) -> Result<ConfigApp, Box<dyn Error>> {
@@ -183,7 +183,7 @@ impl CompositionApp {
             recorded_audio: Vec::new(),
             record_handle: None,
             recorded_dub: Vec::new(),
-            audio_out: sender,
+            audio_tx,
             cmd_rx: commands,
             ok_to_run: Arc::new(AtomicBool::new(true)),
             port_name: port,
@@ -196,7 +196,7 @@ impl CompositionApp {
     ) -> Result<JoinHandle<Result<(), ThisError>>, Box<dyn Error>> {
         // The version of `self` used inside the loop
 
-        let t = spawn(move || -> Result<(), ThisError> {
+        let app_handle = spawn(move || -> Result<(), ThisError> {
             loop {
                 let command = match config_app.cmd_rx.recv() {
                     Ok(s) => s,
@@ -222,7 +222,7 @@ impl CompositionApp {
             eprintln!("DBG composer: Broken from main loop");
             Ok(())
         }); // Closure
-        Ok(t)
+        Ok(app_handle)
     }
 }
 
@@ -256,24 +256,30 @@ fn validate_jack_pipe(pipe: &str) -> Result<()> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let (audio_out_send, audio_out_receive) = mpsc::channel::<f32>();
     let args = Args::parse();
-
     // Validate Jack pipe input
     validate_jack_pipe(&args.input)?;
 
-    // The app is controlled through a channel with the front end UI
-    let (app_send, app_rec) = mpsc::channel::<Command>();
+    // Channel to send audio data to Jackd
+    let (audio_tx, audio_rx) = mpsc::channel::<f32>();
 
+    // The app is controlled through a channel with the front end UI
+    let (command_tx, command_rx) = mpsc::channel::<Command>();
+
+    // The main programme runs in `CompositionApp`
     let mut app = CompositionApp::new()?;
-    let config: ConfigApp = app.initialise(audio_out_send, app_rec, args.input)?;
-    let _out_port = create_out_port("output", audio_out_receive, config.ok_to_run.clone())?;
+    let config: ConfigApp = app.initialise(audio_tx, command_rx, args.input)?;
+
+    // The audio output.  Stays valid so long as `_out_port` exists.
+    let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
+
+    // Start the application.  Runs in its own thread, the handle is in `app_handle`
     let t = app.run(config)?;
-    let mut t = Some(t);
+    let mut app_handle = Some(t);
 
     loop {
-        if t.as_ref().unwrap().is_finished()
-            && let Some(t) = t.take()
+        if app_handle.as_ref().unwrap().is_finished()
+            && let Some(t) = app_handle.take()
         {
             match t.join() {
                 Ok(result) => match result {
@@ -293,7 +299,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             };
         }
 
-        println!(" Qzn3t Composer\n");
+        // Simple UI
+        println!("Qzn3t Composer\n");
         io::stdout().lock().write_all("input > ".as_bytes())?;
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
@@ -320,7 +327,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 io::stdout().lock().write_all(msg.as_bytes()).unwrap();
             }
         };
-        app_send.send(command.clone())?;
+        command_tx.send(command.clone())?;
         if command == Command::Quit {
             break;
         }
