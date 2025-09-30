@@ -124,15 +124,6 @@ impl ConfigApp {
         if let Some(handle) = self.record_handle.take() {
             self.ok_to_run.store(false, Ordering::Relaxed);
             if let Ok(audio_data) = handle.join() {
-                eprintln!(
-                    "DBG composer: Stop recording  Got {} bytes, {} non-zero",
-                    audio_data.len(),
-                    audio_data
-                        .iter()
-                        .filter(|a| a.abs() > 0.0001)
-                        .collect::<Vec<_>>()
-                        .len(),
-                );
                 self.recorded_audio.extend(audio_data.iter());
             }
         }
@@ -164,17 +155,8 @@ impl ConfigApp {
 
     /// Send `recorded_audio` to the backend to play.
     fn play_audio(&self, data: &[f32]) -> Result<(), Box<dyn Error>> {
-        eprintln!(
-            "DBG composer: play_audio  Got {} bytes, {} non-zero",
-            data.len(),
-            data.iter()
-                .filter(|a| a.abs() > 0.0001)
-                .collect::<Vec<_>>()
-                .len(),
-        );
         let mut k = 0;
         for i in data.iter() {
-            // let _ = data.iter().map(|&b| {
             k += 1;
             if let Err(e) = self.audio_out.send(*i) {
                 eprintln!("Error composer: Playing audio: {e}");
