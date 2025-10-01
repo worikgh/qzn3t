@@ -8,7 +8,7 @@ use std::sync::mpsc;
 pub struct Notifications;
 impl jack::NotificationHandler for Notifications {
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        println!("DBG jack_rec: sample rate changed to {srate}");
+        eprintln!("DBG jack_rec: sample rate changed to {srate}");
         jack::Control::Continue
     }
 }
