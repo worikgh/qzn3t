@@ -3,6 +3,7 @@
 
 use clap::Parser;
 use std::error::Error;
+use std::fmt;
 use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -26,7 +27,7 @@ pub struct Args {
     pub directory: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Hash, Eq)]
 #[allow(dead_code)]
 pub enum Command {
     Stop,
@@ -35,15 +36,33 @@ pub enum Command {
     Dubing,
     DubReview,
     DubAccept,
+    Save(String),
+    Continue, // Used if no menu item selected
     Quit,
 }
 
 impl Command {}
+impl fmt::Display for Command {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Command::Record => "Record",
+                Command::Stop => "Stop",
+                Command::ReviewRecord => "Review recording",
+                Command::Dubing => "Dub",
+                Command::Save(_) => "Save",
+                Command::Quit => "Quit",
+                _ => "Unknown command {self:?}",
+            }
+        )
+    }
+}
 
 #[derive(Debug)]
 pub struct ThisError;
 impl Error for ThisError {}
-use std::fmt;
 impl fmt::Display for ThisError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "This is a custom error")

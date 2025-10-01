@@ -14,6 +14,7 @@ which = "4.4"
 regex = "1.0"
 jack_rec = {path = "../jack_rec/"}
 jack = "0.13.3"
+crossterm = "0.29.0"
 [lib]
 name = "compose"
 path = "src/lib.rs"

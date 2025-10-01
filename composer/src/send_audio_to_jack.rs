@@ -64,6 +64,5 @@ pub fn create_out_port(
     active_client
         .as_client()
         .connect_ports_by_name("qzn3t:output", "system:playback_2")?;
-    eprintln!("DBG composer: create_out_port returns: active_client: {active_client:?}");
     Ok(active_client)
 }

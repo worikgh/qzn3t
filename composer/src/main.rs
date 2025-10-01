@@ -1,13 +1,12 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use crate::send_audio_to_jack::create_out_port;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use jack_rec::run_port;
 use mixer::AudioMixer;
+use send_audio_to_jack::create_out_port;
 use std::error::Error;
-use std::io::{self, Write};
 use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -21,14 +20,18 @@ use std::time::Duration;
 use structs::Args;
 use structs::Command;
 use structs::ThisError;
+use ui::{UI, UIError};
 mod mixer;
 mod send_audio_to_jack;
 mod structs;
+mod ui;
 
 #[allow(dead_code)]
 #[derive(Clone)]
-struct CompositionApp {}
-
+struct ComopositionApp {
+    selected: Option<usize>,
+}
+impl ComopositionApp {}
 struct ConfigApp {
     recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
@@ -47,7 +50,6 @@ impl ConfigApp {
         let port = self.port_name.clone();
         let run_flag = self.ok_to_run.clone();
         Ok(thread::spawn(move || -> Vec<f32> {
-            eprintln!("DBG composer: get_audio_from_jack 1");
             // Buffer and channel to get data on
             let mut audio_data: Vec<f32> = Vec::new();
             let (sender, receiver) = mpsc::channel::<f32>();
@@ -59,18 +61,9 @@ impl ConfigApp {
                     return vec![];
                 }
             };
-            eprintln!("DBG composer: get_audio_from_jack 1.5");
-            let mut k = 0;
             loop {
                 if !run_flag.load(Ordering::Relaxed) {
                     break;
-                }
-                k += 1;
-                if k % 10 == 0 {
-                    eprintln!(
-                        "DBG composer: Record {k} Audio data: {} bytes",
-                        audio_data.len()
-                    );
                 }
                 loop {
                     match receiver.try_recv() {
@@ -94,7 +87,6 @@ impl ConfigApp {
                 }
                 thread::sleep(Duration::from_millis(100));
             }
-            eprintln!("DBG composer: get_audio_from_jack 1.9");
             async_jack_client.deactivate().unwrap();
             eprintln!(
                 "DBG composer: get_audio_from_jack 2  Got {} bytes, {} non-zero",
@@ -105,6 +97,7 @@ impl ConfigApp {
                     .collect::<Vec<_>>()
                     .len(),
             );
+            eprintln!("DBG composer: Got {} bytes of audio data", audio_data.len());
             audio_data
         }))
     }
@@ -152,6 +145,9 @@ impl ConfigApp {
     fn handle_dub_accept(&mut self) -> Result<()> {
         Ok(())
     }
+    fn handle_save(&mut self, _file_name: &str) -> Result<()> {
+        Ok(())
+    }
 
     /// Send `recorded_audio` to the backend to play.
     fn play_audio(&self, data: &[f32]) -> Result<(), Box<dyn Error>> {
@@ -167,9 +163,9 @@ impl ConfigApp {
     }
 }
 
-impl CompositionApp {
+impl ComopositionApp {
     fn new() -> Result<Self> {
-        Ok(Self {})
+        Ok(Self { selected: None })
     }
 
     /// Set up the environment to run in
@@ -213,6 +209,8 @@ impl CompositionApp {
                     Command::Dubing => config_app.handle_dubing()?,
                     Command::DubReview => config_app.handle_dub_review()?,
                     Command::DubAccept => config_app.handle_dub_accept()?,
+                    Command::Save(file_name) => config_app.handle_save(file_name.as_str())?,
+                    Command::Continue => (),
                     Command::Quit => {
                         config_app.quit();
                         break;
@@ -267,7 +265,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (command_tx, command_rx) = mpsc::channel::<Command>();
 
     // The main programme runs in `CompositionApp`
-    let mut app = CompositionApp::new()?;
+    let mut app = ComopositionApp::new()?;
     let config: ConfigApp = app.initialise(audio_tx, command_rx, args.input)?;
 
     // The audio output.  Stays valid so long as `_out_port` exists.
@@ -277,6 +275,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let t = app.run(config)?;
     let mut app_handle = Some(t);
 
+    // The user interface...
+    let mut ui = UI::new();
+    let _ = UI::set_up_screen();
+    ui.display(None);
     loop {
         if app_handle.as_ref().unwrap().is_finished()
             && let Some(t) = app_handle.take()
@@ -300,32 +302,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         // Simple UI
-        println!("Qzn3t Composer\n");
-        io::stdout().lock().write_all("input > ".as_bytes())?;
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let input = input.trim();
-
-        let command: Command = match input {
-            "r" => Command::Record,
-            "s" => Command::Stop,
-            "q" => Command::Quit,
-            "v" => Command::ReviewRecord,
-            _ => continue,
-        };
-        match command {
-            Command::Record =>
-            // Recording audio
-            {
-                io::stdout()
-                    .lock()
-                    .write_all("Press s <ENTER> to stop".as_bytes())
-                    .unwrap();
-            }
-            _ => {
-                let msg = format!("No prompt for {command:?}");
-                io::stdout().lock().write_all(msg.as_bytes()).unwrap();
-            }
+        let command = match ui.get_command() {
+            Ok(c) => c,
+            Err(uierr) => match uierr {
+                UIError::BadChoice(_) => {
+                    eprintln!("{uierr}");
+                    continue;
+                }
+                UIError::Fatal(err) => return Err(err.into()),
+            },
         };
         command_tx.send(command.clone())?;
         if command == Command::Quit {
@@ -333,6 +318,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         eprintln!("DBG compose: After send command: {command:?}");
     }
+    let _ = UI::cleanup_screen();
     eprintln!("DBG composer: Leaving main");
     Ok(())
 }
