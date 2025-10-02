@@ -37,7 +37,7 @@ struct ConfigApp {
     recorded_dub: Vec<f32>,
     record_handle: Option<JoinHandle<Vec<f32>>>,
     audio_tx: mpsc::Sender<f32>,
-    cmd_rx: mpsc::Receiver<Command>,
+    command_rx: mpsc::Receiver<Command>,
     ok_to_run: Arc<AtomicBool>,
     port_name: String,
 }
@@ -172,7 +172,7 @@ impl ComopositionApp {
     fn initialise(
         &mut self,
         audio_tx: mpsc::Sender<f32>,
-        commands: mpsc::Receiver<Command>,
+        command_rx: mpsc::Receiver<Command>,
         port: String,
     ) -> Result<ConfigApp, Box<dyn Error>> {
         Ok(ConfigApp {
@@ -180,7 +180,7 @@ impl ComopositionApp {
             record_handle: None,
             recorded_dub: Vec::new(),
             audio_tx,
-            cmd_rx: commands,
+            command_rx,
             ok_to_run: Arc::new(AtomicBool::new(true)),
             port_name: port,
         })
@@ -194,7 +194,7 @@ impl ComopositionApp {
 
         let app_handle = spawn(move || -> Result<(), ThisError> {
             loop {
-                let command = match config_app.cmd_rx.recv() {
+                let command = match config_app.command_rx.recv() {
                     Ok(s) => s,
                     Err(err) => {
                         eprintln!("Error composer: Getting state: {err}");
