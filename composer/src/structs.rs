@@ -65,11 +65,12 @@ pub struct ThisError;
 impl Error for ThisError {}
 impl fmt::Display for ThisError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "This is a custom error")
+        write!(f, "ThisError")
     }
 }
 impl From<anyhow::Error> for ThisError {
-    fn from(_: anyhow::Error) -> Self {
+    fn from(err: anyhow::Error) -> Self {
+        eprintln!("Error composer: `From<anyhow::Error> for ThisError` err: {err}");
         ThisError
     }
 }

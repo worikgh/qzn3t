@@ -15,7 +15,6 @@ mod structs;
 pub fn get_audio_from_jack(port: &str) -> Result<thread::JoinHandle<Vec<f32>>, ThisError> {
     let port = port.to_string();
     Ok(thread::spawn(move || -> Vec<f32> {
-        eprintln!("DBG composer: get_audio_from_jack 1");
         // Buffer and channel to get data on
         let mut audio_data: Vec<f32> = Vec::new();
         let (sender, receiver) = mpsc::channel::<f32>();
@@ -27,7 +26,6 @@ pub fn get_audio_from_jack(port: &str) -> Result<thread::JoinHandle<Vec<f32>>, T
                 return vec![];
             }
         };
-        eprintln!("DBG composer: get_audio_from_jack 1.5");
         let mut k = 0;
         loop {
             k += 1;
