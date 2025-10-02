@@ -145,7 +145,12 @@ impl ConfigApp {
     fn handle_dub_accept(&mut self) -> Result<()> {
         Ok(())
     }
-    fn handle_save(&mut self, _file_name: &str) -> Result<()> {
+    fn handle_save(&mut self) -> Result<()> {
+        let file_name: String = "".to_lowercase();
+        eprintln!(
+            "DBG composer: Save to file name {file_name}: {} bytes",
+            self.recorded_audio.len()
+        );
         Ok(())
     }
 
@@ -209,7 +214,7 @@ impl ComopositionApp {
                     Command::Dubing => config_app.handle_dubing()?,
                     Command::DubReview => config_app.handle_dub_review()?,
                     Command::DubAccept => config_app.handle_dub_accept()?,
-                    Command::Save(file_name) => config_app.handle_save(file_name.as_str())?,
+                    Command::Save => config_app.handle_save()?,
                     Command::Continue => (),
                     Command::Quit => {
                         config_app.quit();

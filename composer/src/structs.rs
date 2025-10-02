@@ -36,7 +36,7 @@ pub enum Command {
     Dubing,
     DubReview,
     DubAccept,
-    Save(String),
+    Save,
     Continue, // Used if no menu item selected
     Quit,
 }
@@ -52,7 +52,7 @@ impl fmt::Display for Command {
                 Command::Stop => "Stop",
                 Command::ReviewRecord => "Review recording",
                 Command::Dubing => "Dub",
-                Command::Save(_) => "Save",
+                Command::Save => "Save",
                 Command::Quit => "Quit",
                 _ => "Unknown command {self:?}",
             }
