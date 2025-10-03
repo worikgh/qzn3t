@@ -44,7 +44,7 @@ struct ConfigApp {
 
 impl ConfigApp {
     fn quit(&mut self) {
-        self.stop_recording().unwrap();
+        self.handle_stop().unwrap();
     }
     fn get_audio_from_jack(&mut self) -> Result<thread::JoinHandle<Vec<f32>>, ThisError> {
         let port = self.port_name.clone();
@@ -113,7 +113,8 @@ impl ConfigApp {
         Ok(())
     }
 
-    fn stop_recording(&mut self) -> Result<(), Box<dyn Error>> {
+    fn handle_stop(&mut self) -> Result<(), Box<dyn Error>> {
+
         if let Some(handle) = self.record_handle.take() {
             self.ok_to_run.store(false, Ordering::Relaxed);
             if let Ok(audio_data) = handle.join() {
@@ -209,7 +210,7 @@ impl ComopositionApp {
                 eprintln!("DBG compose: App::run command: {command:?}");
                 match command {
                     Command::Record => config_app.handle_recording()?,
-                    Command::Stop => config_app.stop_recording()?,
+                    Command::Stop => config_app.handle_stop()?,
                     Command::ReviewRecord => config_app.handle_review_record()?,
                     Command::Dubing => config_app.handle_dubing()?,
                     Command::DubReview => config_app.handle_dub_review()?,
