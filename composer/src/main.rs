@@ -147,7 +147,7 @@ impl ConfigApp {
         Ok(())
     }
     fn handle_save(&mut self) -> Result<()> {
-        let file_name: String = "".to_lowercase();
+        let file_name: String = "test.flac".to_lowercase();
         eprintln!(
             "DBG composer: Save to file name {file_name}: {} bytes",
             self.recorded_audio.len()
