@@ -42,6 +42,7 @@ struct ConfigApp {
     command_rx: mpsc::Receiver<Command>,
     ok_to_run: Arc<AtomicBool>,
     port_name: String,
+    file_name: String,
 }
 
 impl ConfigApp {
@@ -155,13 +156,13 @@ impl ConfigApp {
 
     /// Save the audio from the `recorded_audio` to a FLAC file
     fn handle_save(&mut self) -> Result<()> {
-        let file_name: String = "test.flac".to_lowercase();
         eprintln!(
-            "DBG composer: Save to file name {file_name}: {} samples",
+            "DBG composer: Save to file name {}: {} samples",
+            self.file_name,
             self.recorded_audio.len()
         );
         let flac_data = audio_to_flac(&self.recorded_audio)?;
-        fs::write(file_name.as_str(), &flac_data)?;
+        fs::write(self.file_name.as_str(), &flac_data)?;
         Ok(())
     }
 
@@ -217,6 +218,7 @@ impl ComopositionApp {
         audio_tx: mpsc::Sender<f32>,
         command_rx: mpsc::Receiver<Command>,
         port: String,
+        file_name: String,
     ) -> Result<ConfigApp, Box<dyn Error>> {
         Ok(ConfigApp {
             recorded_audio: Vec::new(),
@@ -226,6 +228,7 @@ impl ComopositionApp {
             command_rx,
             ok_to_run: Arc::new(AtomicBool::new(true)),
             port_name: port,
+            file_name,
         })
     }
 
@@ -298,6 +301,7 @@ fn validate_jack_pipe(pipe: &str) -> Result<()> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
+
     // Validate Jack pipe input
     validate_jack_pipe(&args.input)?;
 
@@ -309,7 +313,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // The main programme runs in `CompositionApp`
     let mut app = ComopositionApp::new()?;
-    let config: ConfigApp = app.initialise(audio_tx, command_rx, args.input)?;
+    let file_name = format!("{}/{}", args.directory, args.file_name);
+    let config: ConfigApp = app.initialise(audio_tx, command_rx, args.input, file_name)?;
 
     // The audio output.  Stays valid so long as `_out_port` exists.
     let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;

@@ -22,9 +22,13 @@ pub struct Args {
     #[arg(short = 'b', long)]
     pub backing_track: Option<PathBuf>,
 
-    /// Directory to write files to (used in audio/)
-    #[arg(short = 'd', long)]
-    pub directory: Option<String>,
+    /// Directory to write files to
+    #[arg(short = 'd', long, default_value = ".")]
+    pub directory: String,
+
+    /// Output file name
+    #[arg(short = 'f', long, default_value = "test.flac")]
+    pub file_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
