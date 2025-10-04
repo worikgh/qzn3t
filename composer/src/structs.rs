@@ -14,10 +14,6 @@ pub struct Args {
     #[arg(short = 'i', long)]
     pub input: String,
 
-    /// Prefix for track file names (defaults to YYYYMMDDhhmmss)
-    #[arg(short = 'p', long)]
-    pub prefix: Option<String>,
-
     /// Backing track for immediate overdubbing
     #[arg(short = 'b', long)]
     pub backing_track: Option<PathBuf>,

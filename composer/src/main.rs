@@ -30,9 +30,7 @@ mod ui;
 
 #[allow(dead_code)]
 #[derive(Clone)]
-struct ComopositionApp {
-    selected: Option<usize>,
-}
+struct ComopositionApp;
 impl ComopositionApp {}
 struct ConfigApp {
     recorded_audio: Vec<f32>,
@@ -209,7 +207,7 @@ impl ConfigApp {
 }
 impl ComopositionApp {
     fn new() -> Result<Self> {
-        Ok(Self { selected: None })
+        Ok(Self)
     }
 
     /// Set up the environment to run in
