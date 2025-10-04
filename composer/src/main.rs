@@ -316,8 +316,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The user interface...
     let mut ui = UI::new();
     let _ = UI::set_up_screen();
-    ui.display(None);
     loop {
+        ui.display(None);
         if app_handle.as_ref().unwrap().is_finished()
             && let Some(t) = app_handle.take()
         {

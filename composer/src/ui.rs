@@ -2,7 +2,7 @@
 // License: GPL-3.0
 
 //! The user interface for Qzn3t Composer
-use crate::structs::Command;
+use crate::structs::{Command, ThisError};
 #[allow(dead_code, unused_imports)]
 use crossterm::{
     ExecutableCommand, cursor,
@@ -14,6 +14,13 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::io::{self, Write};
+
+#[derive(Debug)]
+enum State {
+    Recording,
+    Reviewing,
+    AtRest,
+}
 /// Match commands to text do display
 pub struct UI {
     // Match numbers to commands.  This is created by the `display` method and read by....
@@ -22,6 +29,8 @@ pub struct UI {
     status: Option<String>,
     // The last command returned by user interaction
     last_command: Option<Command>,
+
+    state: State,
 }
 impl UI {
     pub fn new() -> Self {
@@ -29,6 +38,7 @@ impl UI {
             index: HashMap::new(),
             status: None,
             last_command: None,
+            state: State::AtRest,
         }
     }
     /// Display the menu.  Depends on the crate `crossterm`
@@ -68,6 +78,14 @@ impl UI {
                 println!("\r  {i} {}", item);
             }
         }
+
+        println!(
+            "\n\r{}",
+            style::Print(format!("{:?}", self.state))
+                .0
+                .clone()
+                .with(Color::Red)
+        );
         if self.status.is_some() {
             println!(
                 "\n{}",
@@ -82,6 +100,31 @@ impl UI {
         io::stdout().flush().unwrap();
     }
 
+    /// Maintain the UI's state.  This assumes that all commands sent
+    /// to the backend succeed.
+    fn state_transition(cmd: &Command, state: &State) -> Result<State, ThisError> {
+        // Quit is always a valid command
+        if cmd == &Command::Quit {
+            return Ok(State::AtRest);
+        }
+
+        match state {
+            State::Recording | State::Reviewing => {
+                if *cmd == Command::Stop {
+                    Ok(State::AtRest)
+                } else {
+                    Err(ThisError::BadCommand(cmd.clone()))
+                }
+            }
+            State::AtRest => match cmd {
+                Command::Record => Ok(State::Recording),
+                Command::ReviewRecord => Ok(State::Reviewing),
+                _ => Ok(State::AtRest),
+            },
+        }
+    }
+
+    /// Get a command from the UI.  Blocks until the user makes an action.
     pub fn get_command(&mut self) -> Result<Command, UIError> {
         let e = event::read().map_err(|err| UIError::Fatal(format!("{err}")))?;
         if let Event::Key(event) = e {
@@ -95,8 +138,21 @@ impl UI {
             if let Some(i) = c.to_digit(10) {
                 let i = i as usize;
                 if let Some(command) = self.index.get(&i) {
-                    self.last_command = Some(command.clone());
-                    Ok(command.clone())
+                    match Self::state_transition(command, &self.state) {
+                        Ok(state) => {
+                            eprintln!("DBG composer: State change {:?} -> {:?}", self.state, state);
+                            self.state = state;
+                            self.last_command = Some(command.clone());
+                            Ok(command.clone())
+                        }
+                        Err(err) => {
+                            if err == ThisError::BadCommand(command.clone()) {
+                                Err(UIError::BadChoice(c))
+                            } else {
+                                panic!("Impossible error {err:?}")
+                            }
+                        }
+                    }
                 } else {
                     Err(UIError::BadChoice(c))
                 }

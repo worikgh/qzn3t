@@ -60,23 +60,26 @@ impl fmt::Display for Command {
     }
 }
 
-#[derive(Debug)]
-pub struct ThisError;
+#[derive(Debug, PartialEq, Eq)]
+pub enum ThisError {
+    BadCommand(Command),
+    Generic,
+}
 impl Error for ThisError {}
 impl fmt::Display for ThisError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ThisError")
+        write!(f, "{self:?}")
     }
 }
 impl From<anyhow::Error> for ThisError {
     fn from(err: anyhow::Error) -> Self {
         eprintln!("Error composer: `From<anyhow::Error> for ThisError` err: {err}");
-        ThisError
+        ThisError::Generic
     }
 }
 impl From<Box<dyn Error>> for ThisError {
     fn from(err: Box<dyn Error>) -> Self {
         eprintln!("Error composer: `From<Box<dyn Error>> for ThisError` err: {err}");
-        ThisError
+        ThisError::Generic
     }
 }
