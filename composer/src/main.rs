@@ -89,7 +89,7 @@ impl ConfigApp {
             }
             async_jack_client.deactivate().unwrap();
             eprintln!(
-                "DBG composer: get_audio_from_jack 2  Got {} bytes, {} non-zero",
+                "DBG composer: get_audio_from_jack 2  Got {} samples, {} non-zero",
                 audio_data.len(),
                 audio_data
                     .iter()
@@ -97,7 +97,10 @@ impl ConfigApp {
                     .collect::<Vec<_>>()
                     .len(),
             );
-            eprintln!("DBG composer: Got {} bytes of audio data", audio_data.len());
+            eprintln!(
+                "DBG composer: Got {} samples of audio data",
+                audio_data.len()
+            );
             audio_data
         }))
     }
@@ -150,7 +153,7 @@ impl ConfigApp {
     fn handle_save(&mut self) -> Result<()> {
         let file_name: String = "test.flac".to_lowercase();
         eprintln!(
-            "DBG composer: Save to file name {file_name}: {} bytes",
+            "DBG composer: Save to file name {file_name}: {} samples",
             self.recorded_audio.len()
         );
 
