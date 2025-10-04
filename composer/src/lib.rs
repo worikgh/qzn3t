@@ -54,3 +54,9 @@ pub fn get_sample_rate() -> usize {
     // Get the sample rate from the client
     client.sample_rate()
 }
+
+pub fn audio_to_flac(input: &[f32]) -> Result<Vec<u8>, ThisError> {
+    flac_encoder::FlacBuilder::from_planar(&[input.to_vec()], get_sample_rate() as u32)
+        .build()
+        .map_err(|_| ThisError::Generic)
+}

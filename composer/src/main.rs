@@ -3,11 +3,13 @@
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
+use compose::audio_to_flac;
 use compose::get_sample_rate;
 use jack_rec::run_port;
 use mixer::AudioMixer;
 use send_audio_to_jack::create_out_port;
 use std::error::Error;
+use std::fs;
 use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -150,13 +152,16 @@ impl ConfigApp {
     fn handle_dub_accept(&mut self) -> Result<()> {
         Ok(())
     }
+
+    /// Save the audio from the `recorded_audio` to a FLAC file
     fn handle_save(&mut self) -> Result<()> {
         let file_name: String = "test.flac".to_lowercase();
         eprintln!(
             "DBG composer: Save to file name {file_name}: {} samples",
             self.recorded_audio.len()
         );
-
+        let flac_data = audio_to_flac(&self.recorded_audio)?;
+        fs::write(file_name.as_str(), &flac_data)?;
         Ok(())
     }
 
