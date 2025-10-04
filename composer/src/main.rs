@@ -3,6 +3,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
+use compose::get_sample_rate;
 use jack_rec::run_port;
 use mixer::AudioMixer;
 use send_audio_to_jack::create_out_port;
@@ -16,7 +17,6 @@ use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::thread::JoinHandle;
 use std::thread::spawn;
-use std::time::Duration;
 use structs::Args;
 use structs::Command;
 use structs::ThisError;
@@ -85,7 +85,7 @@ impl ConfigApp {
                         },
                     };
                 }
-                thread::sleep(Duration::from_millis(100));
+                thread::sleep(std::time::Duration::from_millis(100));
             }
             async_jack_client.deactivate().unwrap();
             eprintln!(
@@ -114,7 +114,7 @@ impl ConfigApp {
     }
 
     fn handle_stop(&mut self) -> Result<(), Box<dyn Error>> {
-
+        self.ok_to_run.store(false, Ordering::Relaxed);
         if let Some(handle) = self.record_handle.take() {
             self.ok_to_run.store(false, Ordering::Relaxed);
             if let Ok(audio_data) = handle.join() {
@@ -123,6 +123,7 @@ impl ConfigApp {
         }
         Ok(())
     }
+
     /// Play back the audio data
     fn handle_review_record(&mut self) -> Result<(), Box<dyn Error>> {
         self.ok_to_run.store(true, Ordering::Relaxed);
@@ -152,23 +153,51 @@ impl ConfigApp {
             "DBG composer: Save to file name {file_name}: {} bytes",
             self.recorded_audio.len()
         );
+
         Ok(())
     }
 
     /// Send `recorded_audio` to the backend to play.
     fn play_audio(&self, data: &[f32]) -> Result<(), Box<dyn Error>> {
-        let mut k = 0;
-        for i in data.iter() {
-            k += 1;
-            if let Err(e) = self.audio_tx.send(*i) {
-                eprintln!("Error composer: Playing audio: {e}");
+        let tx = self.audio_tx.clone();
+
+        // Flag to shut down playback from the UI
+        let ok_to_run = self.ok_to_run.clone();
+
+        // Must copy the data so the playback is independant of the
+        // original buffer remaining
+        let data = data.to_vec();
+        thread::spawn(move || {
+            let sample_rate = get_sample_rate();
+
+            // Send a block of data every 100ms
+            let blk_sz = sample_rate / 10;
+            let mut k = 0;
+
+            // Record how much data sent
+            let mut sent = 0_usize;
+            for i in data.iter() {
+                if !ok_to_run.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                k += 1;
+                if k == blk_sz {
+                    thread::sleep(std::time::Duration::from_millis(100));
+                    k = 0;
+                }
+
+                if let Err(e) = tx.send(*i) {
+                    eprintln!("Error composer: Playing audio: {e}");
+                    break;
+                }
+                sent += 1;
             }
-        }
-        eprintln!("DBG composer: Sent {k} bytes");
+            eprintln!("DBG composer: Sent {sent}/{} samples", data.len());
+        });
         Ok(())
     }
 }
-
 impl ComopositionApp {
     fn new() -> Result<Self> {
         Ok(Self { selected: None })
