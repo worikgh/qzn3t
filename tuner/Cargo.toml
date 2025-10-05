@@ -1,7 +1,11 @@
 [package]
 name = "qzn3t_tuner"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
+description = "A tuner for musical instruments"
+license =   "GPL-3.0"
+keywords = ["music", "tuner", "qzn3t"]
+repository = "https://github.com/worikgh/qzn3t/tree/mistress/tuner"
 
 [dependencies]
 clap = {features = ["derive"], version = "4.5.47"}
