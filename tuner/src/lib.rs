@@ -31,15 +31,15 @@ struct TunerProcessHandler {
 
 impl ProcessHandler for TunerProcessHandler {
     fn process(&mut self, _: &Client, ps: &ProcessScope) -> jack::Control {
-	let buffer = self.capture_port.as_slice(ps);
+        let buffer = self.capture_port.as_slice(ps);
 
-	// Push all available samples to the ring buffer
-	let mut rb_guard = self.ring_buffer.lock().unwrap();
-	for &sample in buffer {
-	    rb_guard.try_push(sample).unwrap();
-	}
+        // Push all available samples to the ring buffer
+        let mut rb_guard = self.ring_buffer.lock().unwrap();
+        for &sample in buffer {
+            rb_guard.try_push(sample).unwrap();
+        }
 
-	jack::Control::Continue
+        jack::Control::Continue
     }
 }
 
@@ -48,9 +48,9 @@ fn detect_note(signal: &[f64], sample_rate: usize) -> Result<NoteDetectionResult
     let mut detector = HannedFftDetector::default();
     let note = abc_detect_note(signal, &mut detector, sample_rate);
     if let Some(note) = note {
-	Ok(note)
+        Ok(note)
     } else {
-	Err("Failed".into())
+        Err("Failed".into())
     }
 }
 
@@ -74,69 +74,69 @@ pub struct TunerArgs {
 pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, JoinHandle<()>) {
     let (sender, receiver) = mpsc::channel();
     let (client, _status) =
-	jack::Client::new("qzn3t_tuner", jack::ClientOptions::NO_START_SERVER).unwrap();
+        jack::Client::new("qzn3t_tuner", jack::ClientOptions::NO_START_SERVER).unwrap();
     let sample_rate = client.sample_rate();
 
     let interval_ms = args.interval;
     let buffer_size = args.count as usize;
 
     let jh = thread::spawn(move || {
-	// Create ring buffer with specified capacity
-	let ring_buffer = Arc::new(Mutex::new(HeapRb::<f32>::new(buffer_size)));
-	let ring_buffer_clone = Arc::clone(&ring_buffer);
+        // Create ring buffer with specified capacity
+        let ring_buffer = Arc::new(Mutex::new(HeapRb::<f32>::new(buffer_size)));
+        let ring_buffer_clone = Arc::clone(&ring_buffer);
 
-	// Register capture port
-	let capture_port = client.register_port("input", AudioIn::default()).unwrap();
+        // Register capture port
+        let capture_port = client.register_port("input", AudioIn::default()).unwrap();
 
-	// Activate the client with our custom handler
-	let handler = TunerProcessHandler {
-	    capture_port,
-	    ring_buffer: ring_buffer_clone,
-	};
+        // Activate the client with our custom handler
+        let handler = TunerProcessHandler {
+            capture_port,
+            ring_buffer: ring_buffer_clone,
+        };
 
-	let _active_client = client.activate_async(Notifications, handler).unwrap();
+        let _active_client = client.activate_async(Notifications, handler).unwrap();
 
-	let mut sleep_ms = interval_ms;
-	loop {
-	    let sample_interval = Duration::from_millis(sleep_ms);
-	    thread::sleep(sample_interval);
-	    let now = Instant::now();
+        let mut sleep_ms = interval_ms;
+        loop {
+            let sample_interval = Duration::from_millis(sleep_ms);
+            thread::sleep(sample_interval);
+            let now = Instant::now();
 
-	    // Get available samples from the ring buffer
-	    let mut rb_guard = ring_buffer.lock().unwrap();
-	    let available = (*rb_guard).occupied_len();
-	    // if buffer_size != available {
-	    //	eprintln!(
-	    //	    "DBG tuner: Available: {available} != buffer_size: {buffer_size}.  Vacant length: {}",
-	    //	    (*rb_guard).vacant_len()
-	    //	);
-	    // }
+            // Get available samples from the ring buffer
+            let mut rb_guard = ring_buffer.lock().unwrap();
+            let available = (*rb_guard).occupied_len();
+            // if buffer_size != available {
+            //	eprintln!(
+            //	    "DBG tuner: Available: {available} != buffer_size: {buffer_size}.  Vacant length: {}",
+            //	    (*rb_guard).vacant_len()
+            //	);
+            // }
 
-	    let mut samples = Vec::with_capacity(available);
-	    while let Some(sample) = (*rb_guard).try_pop() {
-		samples.push(sample);
-	    }
+            let mut samples = Vec::with_capacity(available);
+            while let Some(sample) = (*rb_guard).try_pop() {
+                samples.push(sample);
+            }
 
-	    drop(rb_guard);
+            drop(rb_guard);
 
-	    if !samples.is_empty() {
-		match sender.send(samples) {
-		    Ok(()) => (),
-		    Err(err) => {
-			eprintln!("Error tuner: Send error in jack thread: {err}");
-			break;
-		    }
-		};
-	    }
-	    let elapsed_ms = now.elapsed().as_millis();
-	    sleep_ms = if elapsed_ms > interval_ms.into() {
-		eprintln!("Error tuner: xrun {} ms", elapsed_ms - interval_ms as u128);
-		0
-	    } else {
-		(interval_ms as u128 - elapsed_ms) as u64
-	    };
-	}
-	eprintln!("DBG tuner: Loop in Jack thread ended");
+            if !samples.is_empty() {
+                match sender.send(samples) {
+                    Ok(()) => (),
+                    Err(err) => {
+                        eprintln!("Error tuner: Send error in jack thread: {err}");
+                        break;
+                    }
+                };
+            }
+            let elapsed_ms = now.elapsed().as_millis();
+            sleep_ms = if elapsed_ms > interval_ms.into() {
+                eprintln!("Error tuner: xrun {} ms", elapsed_ms - interval_ms as u128);
+                0
+            } else {
+                (interval_ms as u128 - elapsed_ms) as u64
+            };
+        }
+        eprintln!("DBG tuner: Loop in Jack thread ended");
     });
 
     (receiver, sample_rate, jh)
@@ -147,54 +147,58 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<String>) -> JoinHandle
     let max_vol_min = args.max_vol_min;
     let mean_min = args.mean_min;
     thread::spawn(move || {
-	loop {
-	    let v = match receiver.recv() {
-		Ok(v) => v,
-		Err(err) => {
-		    eprintln!("Error tuner: Receive error in main thread: {err}");
-		    break;
-		}
-	    };
+        loop {
+            let v = match receiver.recv() {
+                Ok(v) => v,
+                Err(err) => {
+                    eprintln!("Error tuner: Receive error in main thread: {err}");
+                    break;
+                }
+            };
 
-	    // Skip processing if we don't have enough samples
-	    if v.len() < 1024 {
-		// Minimum reasonable sample size for pitch detection
-		continue;
-	    }
-	    let max = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-	    let min = v.iter().copied().fold(f32::INFINITY, f32::min);
-	    let mean = v.iter().sum::<f32>() / v.len() as f32;
+            // Skip processing if we don't have enough samples
+            if v.len() < 1024 {
+                // Minimum reasonable sample size for pitch detection
+                continue;
+            }
+            let max = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+            let _min = v.iter().copied().fold(f32::INFINITY, f32::min);
+            let mean = v.iter().sum::<f32>() / v.len() as f32;
 
-	    if (max as f64) < max_vol_min {
-		continue;
-	    }
+            if (max as f64) < max_vol_min {
+                continue;
+            }
 
-	    // This is odd.  Seems to be necessary
-	    if (mean.abs() as f64) > mean_min {
-		continue;
-	    }
+            // This is odd.  Seems to be necessary
+            if (mean.abs() as f64) > mean_min {
+                continue;
+            }
 
-	    let v: Vec<f64> = v.iter().map(|&x| x as f64).collect();
+            let v: Vec<f64> = v.iter().map(|&x| x as f64).collect();
 
-	    let note_result = match detect_note(&v, sample_rate) {
-		Ok(r) => r,
-		Err(_err) => {
-		    continue;
-		}
-	    };
+            let note_result = match detect_note(&v, sample_rate) {
+                Ok(r) => r,
+                Err(_err) => {
+                    continue;
+                }
+            };
 
-	    let note = note_result.note_name;
-	    let octave = note_result.octave;
-	    let cents = note_result.cents_offset;
+            let note = note_result.note_name;
+            let octave = note_result.octave;
+            let cents = note_result.cents_offset;
 
-	    let report = format!(
-		"tuner: {:>3}/{octave} {:>6.6}  max: {max:>6.6} min: {min:>6.6} mean: {mean:>6.6} {:>6.6}\n",
-		note.to_string(),
-		cents.to_string(),
-		-(max / min)
-	    );
-	    sender.send(report).unwrap();
-	}
+            let tuner_data = TunerData {
+                octave,
+                cents_offset: cents,
+                note,
+            }; // = format!(
+            //     "tuner: {:>3}/{octave} {:>6.6}  max: {max:>6.6} min: {min:>6.6} mean: {mean:>6.6} {:>6.6}\n",
+            //     note.to_string(),
+            //     cents.to_string(),
+            //     -(max / min)
+            // );
+            sender.send(tuner_data).unwrap();
+        }
     });
     jh
 }
