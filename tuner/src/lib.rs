@@ -23,6 +23,14 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io::Write};
 
+/// Data to return from tuner::get_results
+#[derive(Debug)]
+pub struct TunerData {
+    pub note: NoteName,
+    pub octave: i32,
+    pub cents_offset: f64,
+}
+
 // Custom ProcessHandler for capturing audio using ringbuf
 struct TunerProcessHandler {
     capture_port: Port<AudioIn>,
@@ -142,7 +150,7 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
     (receiver, sample_rate, jh)
 }
 
-pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<String>) -> JoinHandle<()> {
+pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHandle<()> {
     let (receiver, sample_rate, jh) = start_jack_thread(args);
     let max_vol_min = args.max_vol_min;
     let mean_min = args.mean_min;
@@ -204,23 +212,27 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<String>) -> JoinHandle
 }
 
 pub fn inner_main(args: &TunerArgs) {
-    let (sender, receiver) = mpsc::channel::<String>();
+    let (sender, receiver) = mpsc::channel::<TunerData>();
     _ = get_results(args, sender);
     loop {
-	let report = match receiver.recv() {
-	    Ok(r) => r,
-	    Err(err) => {
-		eprintln!("DBG tuner: get_results send error: {err}");
-		break;
-	    }
-	};
-	if let Err(err) = io::stdout().lock().write_all(report.as_bytes()) {
-	    eprintln!("Error tuner: IO error on write_all: {err}");
-	    break;
-	}
-	if let Err(err) = io::stdout().lock().flush() {
-	    eprintln!("Error tuner: IO error on flush: {err}");
-	    break;
-	}
+        let tuner_data = match receiver.recv() {
+            Ok(r) => r,
+            Err(err) => {
+                eprintln!("DBG tuner: get_results send error: {err}");
+                break;
+            }
+        };
+        let report = format!(
+            "Tuner> {:?}/{} {:0.2}\n",
+            tuner_data.note, tuner_data.octave, tuner_data.cents_offset
+        );
+        if let Err(err) = io::stdout().lock().write_all(report.as_bytes()) {
+            eprintln!("Error tuner: IO error on write_all: {err}");
+            break;
+        }
+        if let Err(err) = io::stdout().lock().flush() {
+            eprintln!("Error tuner: IO error on flush: {err}");
+            break;
+        }
     }
 }
