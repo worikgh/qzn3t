@@ -151,12 +151,6 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
             // Get available samples from the ring buffer
             let mut rb_guard = ring_buffer.lock().unwrap();
             let available = (*rb_guard).occupied_len();
-            // if buffer_size != available {
-            //	eprintln!(
-            //	    "DBG tuner: Available: {available} != buffer_size: {buffer_size}.  Vacant length: {}",
-            //	    (*rb_guard).vacant_len()
-            //	);
-            // }
 
             let mut samples = Vec::with_capacity(available);
             while let Some(sample) = (*rb_guard).try_pop() {
@@ -217,7 +211,6 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             if (max as f64) < max_vol_min {
                 continue;
             }
-
             // This is odd.  Seems to be necessary
             if (mean.abs() as f64) > mean_min {
                 continue;
