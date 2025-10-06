@@ -78,7 +78,11 @@ impl ProcessHandler for TunerProcessHandler {
         // Push all available samples to the ring buffer
         let mut rb_guard = self.ring_buffer.lock().unwrap();
         for &sample in buffer {
-            rb_guard.try_push(sample).unwrap();
+            if let Err(err) = rb_guard.try_push(sample) {
+                eprintln!(
+                    "Error tuner: TunerProcessHandler.process failed to push sample {sample} onto ring buffer: {err}"
+                );
+            }
         }
 
         jack::Control::Continue
@@ -161,18 +165,21 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
 
             drop(rb_guard);
 
-            if !samples.is_empty() {
-                match sender.send(samples) {
-                    Ok(()) => (),
-                    Err(err) => {
-                        eprintln!("Error tuner: Send error in jack thread: {err}");
-                        break;
-                    }
-                };
+            if !samples.is_empty()
+                && let Err(err) = sender.send(samples)
+            {
+                eprintln!(
+                    "Error tuner: start_jack_thread main loop.  Send error in jack thread: {err}"
+                );
+                break;
             }
+
             let elapsed_ms = now.elapsed().as_millis();
             sleep_ms = if elapsed_ms > interval_ms.into() {
-                eprintln!("Error tuner: xrun {} ms", elapsed_ms - interval_ms as u128);
+                eprintln!(
+                    "Error tuner: start_jack_thread loop is behind {} ms",
+                    elapsed_ms - interval_ms as u128
+                );
                 0
             } else {
                 (interval_ms as u128 - elapsed_ms) as u64
@@ -220,7 +227,8 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
 
             let note_result = match detect_note(&v, sample_rate) {
                 Ok(r) => r,
-                Err(_err) => {
+                Err(err) => {
+                    eprintln!("Error tuner: get_results detect note  Error {err} ");
                     continue;
                 }
             };
@@ -255,13 +263,15 @@ pub fn inner_main(args: &TunerArgs) {
             "Tuner> {:?}/{} {:0.2}\n",
             tuner_data.note, tuner_data.octave, tuner_data.cents_offset
         );
-        if let Err(err) = io::stdout().lock().write_all(report.as_bytes()) {
-            eprintln!("Error tuner: IO error on write_all: {err}");
-            break;
-        }
-        if let Err(err) = io::stdout().lock().flush() {
-            eprintln!("Error tuner: IO error on flush: {err}");
-            break;
+        if let Err(err) = my_write(report) {
+            eprintln!("Error tuner: inner main. {err}");
         }
     }
+}
+
+fn my_write(report: String) -> io::Result<()> {
+    let mut v = io::stdout().lock();
+    v.write_all(report.as_bytes())?;
+    v.flush()?;
+    Ok(())
 }
