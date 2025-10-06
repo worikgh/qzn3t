@@ -23,10 +23,44 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{error::Error, io::Write};
 
+#[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub enum TunerNote {
+    A,
+    ASharp,
+    B,
+    C,
+    CSharp,
+    D,
+    DSharp,
+    E,
+    F,
+    FSharp,
+    G,
+    GSharp,
+}
+
+impl From<NoteName> for TunerNote {
+    fn from(n: NoteName) -> Self {
+        match n {
+            NoteName::A => TunerNote::A,
+            NoteName::ASharp => TunerNote::ASharp,
+            NoteName::B => TunerNote::B,
+            NoteName::C => TunerNote::C,
+            NoteName::CSharp => TunerNote::CSharp,
+            NoteName::D => TunerNote::D,
+            NoteName::DSharp => TunerNote::DSharp,
+            NoteName::E => TunerNote::E,
+            NoteName::F => TunerNote::F,
+            NoteName::FSharp => TunerNote::FSharp,
+            NoteName::G => TunerNote::G,
+            NoteName::GSharp => TunerNote::GSharp,
+        }
+    }
+}
 /// Data to return from tuner::get_results
 #[derive(Debug)]
 pub struct TunerData {
-    pub note: NoteName,
+    pub note: TunerNote,
     pub octave: i32,
     pub cents_offset: f64,
 }
@@ -198,13 +232,8 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             let tuner_data = TunerData {
                 octave,
                 cents_offset: cents,
-                note,
-            }; // = format!(
-            //     "tuner: {:>3}/{octave} {:>6.6}  max: {max:>6.6} min: {min:>6.6} mean: {mean:>6.6} {:>6.6}\n",
-            //     note.to_string(),
-            //     cents.to_string(),
-            //     -(max / min)
-            // );
+                note: TunerNote::from(note),
+            };
             sender.send(tuner_data).unwrap();
         }
     });
