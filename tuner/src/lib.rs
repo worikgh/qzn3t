@@ -110,7 +110,7 @@ pub struct TunerArgs {
     #[arg(short, long, default_value_t = 200)]
     pub interval: u64, // MS between sample times
     #[arg(short, long, default_value_t = 2_048_000)]
-    pub count: u64, // The number of samples in a tone to check
+    pub buffer_size: u64, // The number of samples in a tone to check
     #[arg(short, long, default_value_t = 0.0)]
     pub max_vol_min: f64, // The maximum volume must be bigger than this
     #[arg(short = 'n', long, default_value_t = 1.0)]
@@ -124,7 +124,7 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
     let sample_rate = client.sample_rate();
 
     let interval_ms = args.interval;
-    let buffer_size = args.count as usize;
+    let buffer_size = args.buffer_size as usize;
 
     let jh = thread::spawn(move || {
         // Create ring buffer with specified capacity
