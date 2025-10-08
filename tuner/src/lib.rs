@@ -104,7 +104,7 @@ struct Notifications;
 
 impl jack::NotificationHandler for Notifications {}
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct TunerArgs {
     #[arg(short, long, default_value_t = 200)]
@@ -115,6 +115,8 @@ pub struct TunerArgs {
     pub max_vol_min: f64, // The maximum volume must be bigger than this
     #[arg(short = 'n', long, default_value_t = 1.0)]
     pub mean_min: f64, // The absolute mean volume must be smaller than this
+    #[arg(short = 'p', long)]
+    pub connect_port: Option<String>, // If specified connct this port to the tuner
 }
 
 pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, JoinHandle<()>) {
@@ -125,7 +127,7 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
 
     let interval_ms = args.interval;
     let buffer_size = args.buffer_size as usize;
-
+    let connect_port = args.connect_port.clone();
     let jh = thread::spawn(move || {
         // Create ring buffer with specified capacity
         let ring_buffer = Arc::new(Mutex::new(HeapRb::<f32>::new(buffer_size)));
@@ -133,7 +135,7 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
 
         // Register capture port
         let capture_port = client.register_port("input", AudioIn::default()).unwrap();
-
+        let capture_port_name = capture_port.name().unwrap();
         // Activate the client with our custom handler
         let handler = TunerProcessHandler {
             capture_port,
@@ -141,6 +143,24 @@ pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, 
         };
 
         let _active_client = client.activate_async(Notifications, handler).unwrap();
+
+        if let Some(connect_port) = connect_port.as_ref() {
+            // A port to connect to the tuner was specified so make the connection
+            let client = _active_client.as_client();
+            let capture_port = client.port_by_name(&capture_port_name).unwrap();
+            let c_port = match client.port_by_name(connect_port.as_str()) {
+                Some(p) => p,
+                None => panic!(
+                    "Error tuner: start_jack_thread: Conection port: {connect_port} is unavailable.  "
+                ),
+            };
+            if let Err(err) = client.connect_ports(&c_port, &capture_port) {
+                panic!(
+                    "Error tuner: Connecting {:?} -> {:?}  failed. {err}",
+                    c_port, capture_port,
+                );
+            }
+        }
 
         let mut sleep_ms = interval_ms;
         loop {
