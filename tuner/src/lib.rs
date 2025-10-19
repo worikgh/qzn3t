@@ -62,7 +62,7 @@ impl From<NoteName> for TunerNote {
 pub struct TunerData {
     pub note: TunerNote,
     pub octave: i32,
-    pub cents_offset: f64,
+    pub cents_offset: f32,
 }
 
 // Custom ProcessHandler for capturing audio using ringbuf
@@ -90,9 +90,9 @@ impl ProcessHandler for TunerProcessHandler {
 }
 
 fn detect_note(signal: &[f64], sample_rate: usize) -> Result<NoteDetectionResult, Box<dyn Error>> {
-    let sample_rate = sample_rate as f64;
+    let sample_rate = sample_rate as f32;
     let mut detector = HannedFftDetector::default();
-    let note = abc_detect_note(signal, &mut detector, sample_rate);
+    let note = abc_detect_note(signal, &mut detector, sample_rate as f64);
     if let Some(note) = note {
         Ok(note)
     } else {
@@ -112,9 +112,9 @@ pub struct TunerArgs {
     #[arg(short, long, default_value_t = 2_048_000)]
     pub buffer_size: u64, // The number of samples in a tone to check
     #[arg(short, long, default_value_t = 0.0)]
-    pub max_vol_min: f64, // The maximum volume must be bigger than this
+    pub max_vol_min: f32, // The maximum volume must be bigger than this
     #[arg(short = 'n', long, default_value_t = 1.0)]
-    pub mean_min: f64, // The absolute mean volume must be smaller than this
+    pub mean_min: f32, // The absolute mean volume must be smaller than this
     #[arg(short = 'p', long)]
     pub connect_port: Option<String>, // If specified connct this port to the tuner
 }
@@ -228,19 +228,21 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             let _min = v.iter().copied().fold(f32::INFINITY, f32::min);
             let mean = v.iter().sum::<f32>() / v.len() as f32;
 
-            if (max as f64) < max_vol_min {
+            if (max as f32) < max_vol_min {
                 continue;
             }
             // This is odd.  Seems to be necessary
-            if (mean.abs() as f64) > mean_min {
+            if (mean.abs() as f32) > mean_min {
                 continue;
             }
 
+            // Collect sample as `f64` as that is what
+            // `pitch_detector` expects
             let v: Vec<f64> = v.iter().map(|&x| x as f64).collect();
 
             let note_result = match detect_note(&v, sample_rate) {
                 Ok(r) => r,
-                Err(err) => {
+                Err(_err) => {
                     // If there is no input this periodically gets here
                     // eprintln!("Error tuner: get_results detect note  Error {err} ");
                     continue;
@@ -249,7 +251,7 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
 
             let note = note_result.note_name;
             let octave = note_result.octave;
-            let cents = note_result.cents_offset;
+            let cents = note_result.cents_offset as f32;
 
             let tuner_data = TunerData {
                 octave,
