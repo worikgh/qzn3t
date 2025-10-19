@@ -96,7 +96,7 @@ fn detect_note(signal: &[f64], sample_rate: usize) -> Result<NoteDetectionResult
     if let Some(note) = note {
         Ok(note)
     } else {
-        Err("Failed".into())
+        Err("abc_detect_note returned None".into())
     }
 }
 
@@ -241,7 +241,8 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             let note_result = match detect_note(&v, sample_rate) {
                 Ok(r) => r,
                 Err(err) => {
-                    eprintln!("Error tuner: get_results detect note  Error {err} ");
+                    // If there is no input this periodically gets here
+                    // eprintln!("Error tuner: get_results detect note  Error {err} ");
                     continue;
                 }
             };
