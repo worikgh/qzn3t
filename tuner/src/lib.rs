@@ -117,6 +117,13 @@ pub struct TunerArgs {
     pub mean_min: f32, // The absolute mean volume must be smaller than this
     #[arg(short = 'p', long)]
     pub connect_port: Option<String>, // If specified connct this port to the tuner
+    #[arg(
+        short = 'v',
+        long,
+        default_value_t = false,
+        help = "Emit debugging messages"
+    )]
+    pub verbose: bool,
 }
 
 pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, JoinHandle<()>) {
@@ -209,6 +216,7 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
     let (receiver, sample_rate, jh) = start_jack_thread(args);
     let max_vol_min = args.max_vol_min;
     let mean_min = args.mean_min;
+    let verbose = args.verbose;
     thread::spawn(move || {
         loop {
             let v = match receiver.recv() {
@@ -222,6 +230,9 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             // Skip processing if we don't have enough samples
             if v.len() < 1024 {
                 // Minimum reasonable sample size for pitch detection
+                if verbose {
+                    eprintln!("DBG qzn3t/tuner: v.len({}) < 1024", v.len());
+                }
                 continue;
             }
             let max = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
@@ -233,6 +244,12 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             }
             // This is odd.  Seems to be necessary
             if (mean.abs() as f32) > mean_min {
+                if verbose {
+                    eprintln!(
+                        "DBG qzn3t/tuner: mean.abs({}) > mean_min:{mean_min}",
+                        mean.abs()
+                    );
+                }
                 continue;
             }
 
@@ -242,9 +259,12 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
 
             let note_result = match detect_note(&v, sample_rate) {
                 Ok(r) => r,
-                Err(_err) => {
+                Err(err) => {
                     // If there is no input this periodically gets here
                     // eprintln!("Error tuner: get_results detect note  Error {err} ");
+                    if verbose {
+                        eprintln!("DBG qzn3t/tuner: No note result: {err}");
+                    }
                     continue;
                 }
             };
@@ -252,7 +272,9 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
             let note = note_result.note_name;
             let octave = note_result.octave;
             let cents = note_result.cents_offset as f32;
-
+            if verbose {
+                eprintln!("DBG qzn3t/tuner: octave:{octave} cents:{cents:0.3} note:{note}");
+            }
             let tuner_data = TunerData {
                 octave,
                 cents_offset: cents,
