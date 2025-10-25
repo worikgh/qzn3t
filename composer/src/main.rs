@@ -318,9 +318,36 @@ fn validate_jack_pipe(pipe: &str) -> Result<()> {
     }
 }
 
+/// Check if the main loop is over
+fn test_main_loop(app_handle: &mut Option<JoinHandle<Result<(), ThisError>>>) -> bool {
+    // Test `is_finished`.  Set --> main loop finished
+    if app_handle.as_ref().unwrap().is_finished()
+	// Get the handle of the thread
+	&& let Some(t) = app_handle.take()
+    {
+        match t.join() {
+            Ok(result) => match result {
+                Ok(()) => {
+                    eprintln!("Thread finished successfully");
+                    false
+                }
+                Err(err) => {
+                    eprintln!("Thread finished with error: {err}",);
+                    false
+                }
+            },
+            Err(_) => {
+                // Thread has finished before this call
+                unreachable!()
+            }
+        }
+    } else {
+        true
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-
     // Validate Jack pipe input
     validate_jack_pipe(&args.input)?;
 
@@ -347,28 +374,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _ = UI::set_up_screen();
     loop {
         ui.display(None);
-        if app_handle.as_ref().unwrap().is_finished()
-            && let Some(t) = app_handle.take()
-        {
-            match t.join() {
-                Ok(result) => match result {
-                    Ok(()) => {
-                        eprintln!("Thread finished successfully");
-                        break;
-                    }
-                    Err(err) => {
-                        eprintln!("Thread finished with error: {err}",);
-                        break;
-                    }
-                },
-                Err(_) => {
-                    // Thread has finished before this call
-                    unreachable!()
-                }
-            };
+        if !test_main_loop(&mut app_handle) {
+            break;
         }
 
-        // Simple UI
         let command = match ui.get_command() {
             Ok(c) => c,
             Err(uierr) => match uierr {
