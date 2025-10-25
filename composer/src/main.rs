@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc;
+use std::sync::mpsc::Sender;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
 use std::thread::JoinHandle;
@@ -318,6 +319,40 @@ fn validate_jack_pipe(pipe: &str) -> Result<()> {
     }
 }
 
+/// The UI loop
+fn ui_loop(
+    mut app_handle: Option<JoinHandle<Result<(), ThisError>>>,
+    command_tx: &Sender<Command>,
+) -> Result<(), Box<dyn Error>> {
+    // The user interface...
+    let mut ui = UI::new();
+    let _ = UI::set_up_screen();
+    loop {
+        ui.display(None);
+        if !test_main_loop(&mut app_handle) {
+            break;
+        }
+
+        let command = match ui.get_command() {
+            Ok(c) => c,
+            Err(uierr) => match uierr {
+                UIError::BadChoice(_) => {
+                    eprintln!("{uierr}");
+                    continue;
+                }
+                UIError::Fatal(err) => return Err(err.into()),
+            },
+        };
+        command_tx.send(command.clone())?;
+        if command == Command::Quit {
+            break;
+        }
+        eprintln!("DBG compose: After send command: {command:?}");
+    }
+    let _ = UI::cleanup_screen();
+    Ok(())
+}
+
 /// Check if the main loop is over
 fn test_main_loop(app_handle: &mut Option<JoinHandle<Result<(), ThisError>>>) -> bool {
     // Test `is_finished`.  Set --> main loop finished
@@ -367,34 +402,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     let t = app.run(config)?;
-    let mut app_handle = Some(t);
+    let app_handle = Some(t);
 
-    // The user interface...
-    let mut ui = UI::new();
-    let _ = UI::set_up_screen();
-    loop {
-        ui.display(None);
-        if !test_main_loop(&mut app_handle) {
-            break;
-        }
-
-        let command = match ui.get_command() {
-            Ok(c) => c,
-            Err(uierr) => match uierr {
-                UIError::BadChoice(_) => {
-                    eprintln!("{uierr}");
-                    continue;
-                }
-                UIError::Fatal(err) => return Err(err.into()),
-            },
-        };
-        command_tx.send(command.clone())?;
-        if command == Command::Quit {
-            break;
-        }
-        eprintln!("DBG compose: After send command: {command:?}");
-    }
-    let _ = UI::cleanup_screen();
-    eprintln!("DBG composer: Leaving main");
-    Ok(())
+    ui_loop(app_handle, &command_tx)
 }
