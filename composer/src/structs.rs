@@ -25,6 +25,10 @@ pub struct Args {
     /// Output file name
     #[arg(short = 'f', long, default_value = "test.flac")]
     pub file_name: String,
+
+    /// Write audio as raw.  Defaults to using FLAC
+    #[arg(short = 'r', long, default_value_t = false)]
+    pub raw: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -82,4 +86,11 @@ impl From<Box<dyn Error>> for ThisError {
         eprintln!("Error composer: `From<Box<dyn Error>> for ThisError` err: {err}");
         ThisError::Generic
     }
+}
+
+/// The audio format to use
+#[derive(Debug)]
+pub enum AudioFormat {
+    Flac,
+    Raw,
 }

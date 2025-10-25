@@ -20,6 +20,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::thread::spawn;
 use structs::Args;
+use structs::AudioFormat;
 use structs::Command;
 use structs::ThisError;
 use ui::{UI, UIError};
@@ -41,6 +42,7 @@ struct ConfigApp {
     ok_to_run: Arc<AtomicBool>,
     port_name: String,
     file_name: String,
+    format: AudioFormat,
 }
 
 impl ConfigApp {
@@ -155,12 +157,25 @@ impl ConfigApp {
     /// Save the audio from the `recorded_audio` to a FLAC file
     fn handle_save(&mut self) -> Result<()> {
         eprintln!(
-            "DBG composer: Save to file name {}: {} samples",
+            "DBG composer: Save to file name {}: {} samples.  AudioFormat: {:?}",
             self.file_name,
-            self.recorded_audio.len()
+            self.recorded_audio.len(),
+            self.format,
         );
-        let flac_data = audio_to_flac(&self.recorded_audio)?;
-        fs::write(self.file_name.as_str(), &flac_data)?;
+        let data = match self.format {
+            AudioFormat::Flac => audio_to_flac(&self.recorded_audio)?,
+            AudioFormat::Raw => {
+                // The data as received from Jack.
+                unsafe {
+                    std::slice::from_raw_parts(
+                        self.recorded_audio.as_ptr() as *const u8,
+                        self.recorded_audio.len() * std::mem::size_of::<f32>(),
+                    )
+                }
+                .to_vec()
+            }
+        };
+        fs::write(self.file_name.as_str(), &data)?;
         Ok(())
     }
 
@@ -217,6 +232,7 @@ impl ComopositionApp {
         command_rx: mpsc::Receiver<Command>,
         port: String,
         file_name: String,
+        use_raw: bool,
     ) -> Result<ConfigApp, Box<dyn Error>> {
         Ok(ConfigApp {
             recorded_audio: Vec::new(),
@@ -227,6 +243,11 @@ impl ComopositionApp {
             ok_to_run: Arc::new(AtomicBool::new(true)),
             port_name: port,
             file_name,
+            format: if use_raw {
+                AudioFormat::Raw
+            } else {
+                AudioFormat::Flac
+            },
         })
     }
 
@@ -312,8 +333,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The main programme runs in `CompositionApp`
     let mut app = ComopositionApp::new()?;
     let file_name = format!("{}/{}", args.directory, args.file_name);
-    let config: ConfigApp = app.initialise(audio_tx, command_rx, args.input, file_name)?;
-
+    let config: ConfigApp =
+        app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
     // The audio output.  Stays valid so long as `_out_port` exists.
     let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
 
