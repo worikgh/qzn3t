@@ -2,26 +2,17 @@
 // License: GPL-3.0
 
 use clap::Parser;
-use jack::{AudioIn, Client, Port, ProcessHandler, ProcessScope};
-#[allow(unused_imports)]
-use pitch_detector::{
-    core::NoteName,
-    note::{NoteDetectionResult, detect_note as abc_detect_note},
-    pitch::HannedFftDetector,
-    pitch::PowerCepstrum,
-};
-use ringbuf::HeapRb;
-use ringbuf::traits::{Observer, consumer::Consumer, producer::Producer};
+use pitch_detection::note_detection_result::NoteDetectionResult;
+use pitch_detection::note_detection_result::NoteName;
+use pitch_detection::runner::run;
 use std::sync::mpsc;
+use std::thread::spawn;
 use std::{
     io::{self},
     thread::JoinHandle,
 };
 
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
-use std::{error::Error, io::Write};
+use std::io::Write;
 
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub enum TunerNote {
@@ -66,44 +57,6 @@ pub struct TunerData {
 }
 
 // Custom ProcessHandler for capturing audio using ringbuf
-struct TunerProcessHandler {
-    capture_port: Port<AudioIn>,
-    ring_buffer: Arc<Mutex<HeapRb<f32>>>,
-}
-
-impl ProcessHandler for TunerProcessHandler {
-    fn process(&mut self, _: &Client, ps: &ProcessScope) -> jack::Control {
-        let buffer = self.capture_port.as_slice(ps);
-
-        // Push all available samples to the ring buffer
-        let mut rb_guard = self.ring_buffer.lock().unwrap();
-        for &sample in buffer {
-            if let Err(err) = rb_guard.try_push(sample) {
-                eprintln!(
-                    "Error tuner: TunerProcessHandler.process failed to push sample {sample} onto ring buffer: {err}"
-                );
-            }
-        }
-
-        jack::Control::Continue
-    }
-}
-
-fn detect_note(signal: &[f64], sample_rate: usize) -> Result<NoteDetectionResult, Box<dyn Error>> {
-    let sample_rate = sample_rate as f32;
-    let mut detector = HannedFftDetector::default();
-    let note = abc_detect_note(signal, &mut detector, sample_rate as f64);
-    if let Some(note) = note {
-        Ok(note)
-    } else {
-        Err("abc_detect_note returned None".into())
-    }
-}
-
-struct Notifications;
-
-impl jack::NotificationHandler for Notifications {}
-
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct TunerArgs {
@@ -126,171 +79,46 @@ pub struct TunerArgs {
     pub verbose: bool,
 }
 
-pub fn start_jack_thread(args: &TunerArgs) -> (mpsc::Receiver<Vec<f32>>, usize, JoinHandle<()>) {
-    let (sender, receiver) = mpsc::channel();
-    let (client, _status) =
-        jack::Client::new("qzn3t_tuner", jack::ClientOptions::NO_START_SERVER).unwrap();
-    let sample_rate = client.sample_rate();
-
-    let interval_ms = args.interval;
-    let buffer_size = args.buffer_size as usize;
-    let connect_port = args.connect_port.clone();
-    let jh = thread::spawn(move || {
-        // Create ring buffer with specified capacity
-        let ring_buffer = Arc::new(Mutex::new(HeapRb::<f32>::new(buffer_size)));
-        let ring_buffer_clone = Arc::clone(&ring_buffer);
-
-        // Register capture port
-        let capture_port = client.register_port("input", AudioIn::default()).unwrap();
-        let capture_port_name = capture_port.name().unwrap();
-        // Activate the client with our custom handler
-        let handler = TunerProcessHandler {
-            capture_port,
-            ring_buffer: ring_buffer_clone,
-        };
-
-        let _active_client = client.activate_async(Notifications, handler).unwrap();
-
-        if let Some(connect_port) = connect_port.as_ref() {
-            // A port to connect to the tuner was specified so make the connection
-            let client = _active_client.as_client();
-            let capture_port = client.port_by_name(&capture_port_name).unwrap();
-            let c_port = match client.port_by_name(connect_port.as_str()) {
-                Some(p) => p,
-                None => panic!(
-                    "Error tuner: start_jack_thread: Conection port: {connect_port} is unavailable.  "
-                ),
-            };
-            if let Err(err) = client.connect_ports(&c_port, &capture_port) {
-                panic!(
-                    "Error tuner: Connecting {:?} -> {:?}  failed. {err}",
-                    c_port, capture_port,
-                );
-            }
-        }
-
-        let mut sleep_ms = interval_ms;
-        loop {
-            let sample_interval = Duration::from_millis(sleep_ms);
-            thread::sleep(sample_interval);
-            let now = Instant::now();
-
-            // Get available samples from the ring buffer
-            let mut rb_guard = ring_buffer.lock().unwrap();
-            let available = (*rb_guard).occupied_len();
-
-            let mut samples = Vec::with_capacity(available);
-            while let Some(sample) = (*rb_guard).try_pop() {
-                samples.push(sample);
-            }
-
-            drop(rb_guard);
-
-            if !samples.is_empty()
-                && let Err(err) = sender.send(samples)
-            {
-                eprintln!(
-                    "Error tuner: start_jack_thread main loop.  Send error in jack thread: {err}"
-                );
-                break;
-            }
-
-            let elapsed_ms = now.elapsed().as_millis();
-            sleep_ms = if elapsed_ms > interval_ms.into() {
-                eprintln!(
-                    "Error tuner: start_jack_thread loop is behind {} ms",
-                    elapsed_ms - interval_ms as u128
-                );
-                0
-            } else {
-                (interval_ms as u128 - elapsed_ms) as u64
-            };
-        }
-        eprintln!("DBG tuner: Loop in Jack thread ended");
-    });
-
-    (receiver, sample_rate, jh)
-}
-
 pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHandle<()> {
-    let (receiver, sample_rate, jh) = start_jack_thread(args);
-    let max_vol_min = args.max_vol_min;
-    let mean_min = args.mean_min;
-    let verbose = args.verbose;
-    thread::spawn(move || {
+    let port = match &args.connect_port {
+        Some(p) => p.clone(),
+        None => "system:capture_1".to_string(),
+    };
+    let (tx, rx) = mpsc::channel::<NoteDetectionResult>();
+    let _ = run(tx, &port);
+    spawn(move || {
+        let sender = sender.clone();
         loop {
-            let v = match receiver.recv() {
-                Ok(v) => v,
+            match rx.recv() {
+                Ok(ndr) => {
+                    let td = TunerData {
+                        octave: ndr.octave,
+                        note: ndr.note_name.into(),
+                        cents_offset: ndr.cents,
+                    };
+                    if let Err(err) = sender.send(td) {
+                        eprintln!(
+                            "Error qzn3t/tuner: Note detection loop failed sending results: {err}"
+                        );
+                        break;
+                    }
+                }
                 Err(err) => {
-                    eprintln!("Error tuner: Receive error in main thread: {err}");
+                    eprintln!(
+                        "Error qzn3t/tuner: Note detection loop failed receiving results: {err}"
+                    );
                     break;
                 }
-            };
-
-            // Skip processing if we don't have enough samples
-            if v.len() < 1024 {
-                // Minimum reasonable sample size for pitch detection
-                if verbose {
-                    eprintln!("DBG qzn3t/tuner: v.len({}) < 1024", v.len());
-                }
-                continue;
             }
-            let max = v.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            let _min = v.iter().copied().fold(f32::INFINITY, f32::min);
-            let mean = v.iter().sum::<f32>() / v.len() as f32;
-
-            if (max as f32) < max_vol_min {
-                continue;
-            }
-            // This is odd.  Seems to be necessary
-            if (mean.abs() as f32) > mean_min {
-                if verbose {
-                    eprintln!(
-                        "DBG qzn3t/tuner: mean.abs({}) > mean_min:{mean_min}",
-                        mean.abs()
-                    );
-                }
-                continue;
-            }
-
-            // Collect sample as `f64` as that is what
-            // `pitch_detector` expects
-            let v: Vec<f64> = v.iter().map(|&x| x as f64).collect();
-
-            let note_result = match detect_note(&v, sample_rate) {
-                Ok(r) => r,
-                Err(err) => {
-                    // If there is no input this periodically gets here
-                    // eprintln!("Error tuner: get_results detect note  Error {err} ");
-                    if verbose {
-                        eprintln!("DBG qzn3t/tuner: No note result: {err}");
-                    }
-                    continue;
-                }
-            };
-
-            let note = note_result.note_name;
-            let octave = note_result.octave;
-            let cents = note_result.cents_offset as f32;
-            if verbose {
-                eprintln!("DBG qzn3t/tuner: octave:{octave} cents:{cents:0.3} note:{note}");
-            }
-            let tuner_data = TunerData {
-                octave,
-                cents_offset: cents,
-                note: TunerNote::from(note),
-            };
-            sender.send(tuner_data).unwrap();
         }
-    });
-    jh
+    })
 }
 
 pub fn inner_main(args: &TunerArgs) {
     let (sender, receiver) = mpsc::channel::<TunerData>();
     _ = get_results(args, sender);
     loop {
-        let tuner_data = match receiver.recv() {
+        let ndr = match receiver.recv() {
             Ok(r) => r,
             Err(err) => {
                 eprintln!("DBG tuner: get_results send error: {err}");
@@ -298,8 +126,8 @@ pub fn inner_main(args: &TunerArgs) {
             }
         };
         let report = format!(
-            "Tuner> {:?}/{} {:0.2}\n",
-            tuner_data.note, tuner_data.octave, tuner_data.cents_offset
+            "Tuner> {:?}/{} {: >-6.2}\n",
+            ndr.note, ndr.octave, ndr.cents_offset
         );
         if let Err(err) = my_write(report) {
             eprintln!("Error tuner: inner main. {err}");
