@@ -4,7 +4,7 @@
 use clap::Parser;
 use pitch_detection::note_detection_result::NoteDetectionResult;
 use pitch_detection::note_detection_result::NoteName;
-use pitch_detection::runner::run;
+use pitch_detection::runner::pitch_detection_run;
 use std::sync::mpsc;
 use std::thread::spawn;
 use std::{
@@ -85,7 +85,7 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
         None => "system:capture_1".to_string(),
     };
     let (tx, rx) = mpsc::channel::<NoteDetectionResult>();
-    let _ = run(tx, &port);
+    let _ = pitch_detection_run(tx, &port);
     spawn(move || {
         let sender = sender.clone();
         loop {
