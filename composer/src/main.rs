@@ -50,8 +50,10 @@ impl ConfigApp {
     fn quit(&mut self) {
         self.handle_stop().unwrap();
     }
-    fn get_audio_from_jack(&mut self) -> Result<thread::JoinHandle<Vec<f32>>, ThisError> {
-        let port = self.port_name.clone();
+    fn get_audio_from_jack(
+        &mut self,
+        port: String,
+    ) -> Result<thread::JoinHandle<Vec<f32>>, ThisError> {
         let run_flag = self.ok_to_run.clone();
         Ok(thread::spawn(move || -> Vec<f32> {
             // Buffer and channel to get data on
@@ -91,26 +93,15 @@ impl ConfigApp {
                 }
                 thread::sleep(std::time::Duration::from_millis(100));
             }
+
             async_jack_client.deactivate().unwrap();
-            eprintln!(
-                "DBG composer: get_audio_from_jack 2  Got {} samples, {} non-zero",
-                audio_data.len(),
-                audio_data
-                    .iter()
-                    .filter(|a| a.abs() > 0.0001)
-                    .collect::<Vec<_>>()
-                    .len(),
-            );
-            eprintln!(
-                "DBG composer: Got {} samples of audio data",
-                audio_data.len()
-            );
             audio_data
         }))
     }
     fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.truncate(0);
-        match self.get_audio_from_jack() {
+        let port = self.port_name.clone();
+        match self.get_audio_from_jack(port) {
             Ok(handle) => self.record_handle = Some(handle),
             Err(err) => {
                 eprintln!("Error composer: Error from get_audio_from_jack");
@@ -120,7 +111,9 @@ impl ConfigApp {
         Ok(())
     }
 
+    /// The command: stop
     fn handle_stop(&mut self) -> Result<(), Box<dyn Error>> {
+        // This ends the main loop
         self.ok_to_run.store(false, Ordering::Relaxed);
         if let Some(handle) = self.record_handle.take() {
             self.ok_to_run.store(false, Ordering::Relaxed);
@@ -180,6 +173,32 @@ impl ConfigApp {
         Ok(())
     }
 
+    /// When a command is passed into the programme by `-k`
+    fn handle_kommand(&mut self, k: Command) -> Result<(), Box<dyn Error>> {
+        match k {
+            Command::Record => {
+                println!("Recording.  C-c to stop");
+                self.handle_recording()?;
+                if let Some(h) = self.record_handle.take() {
+                    match h.join() {
+                        Ok(data) => {
+                            self.recorded_audio = data;
+                            self.handle_save()?;
+                            Ok(())
+                        }
+                        Err(err) => Err(format!(
+                            "Error qzn3t/composer: Failed getting data: {err:?}"
+                        )
+                        .into()),
+                    }
+                } else {
+                    Err("Error qzn3t/composer: Failed to take record_handle".into())
+                }
+            }
+            _ => panic!("Error composer: -k {k:?} is not handled"),
+        }
+    }
+
     /// Send `recorded_audio` to the backend to play.
     fn play_audio(&self, data: &[f32]) -> Result<(), Box<dyn Error>> {
         let tx = self.audio_tx.clone();
@@ -235,13 +254,20 @@ impl ComopositionApp {
         file_name: String,
         use_raw: bool,
     ) -> Result<ConfigApp, Box<dyn Error>> {
+        let ok_to_run = Arc::new(AtomicBool::new(true));
+        let r = ok_to_run.clone();
+        ctrlc::set_handler(move || {
+            eprintln!("DBG qzn3t/composer: Received Ctrl-C, shutting down gracefully...");
+            r.store(false, Ordering::Relaxed);
+        })
+        .expect("Error qzn3t/composer: setting Ctrl-C handler");
         Ok(ConfigApp {
             recorded_audio: Vec::new(),
             record_handle: None,
             recorded_dub: Vec::new(),
             audio_tx,
             command_rx,
-            ok_to_run: Arc::new(AtomicBool::new(true)),
+            ok_to_run,
             port_name: port,
             file_name,
             format: if use_raw {
@@ -267,7 +293,6 @@ impl ComopositionApp {
                         break;
                     }
                 };
-                eprintln!("DBG compose: App::run command: {command:?}");
                 match command {
                     Command::Record => config_app.handle_recording()?,
                     Command::Stop => config_app.handle_stop()?,
@@ -395,14 +420,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The main programme runs in `CompositionApp`
     let mut app = ComopositionApp::new()?;
     let file_name = format!("{}/{}", args.directory, args.file_name);
-    let config: ConfigApp =
-        app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
-    // The audio output.  Stays valid so long as `_out_port` exists.
-    let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
 
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
-    let t = app.run(config)?;
-    let app_handle = Some(t);
-
-    ui_loop(app_handle, &command_tx)
+    match args.kommand {
+        None => {
+            let config: ConfigApp =
+                app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
+            let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
+            let t = app.run(config)?;
+            let app_handle = Some(t);
+            // The audio output.  Stays valid so long as `_out_port` exists.
+            ui_loop(app_handle, &command_tx)
+        }
+        Some(k) => {
+            let mut cfg: ConfigApp =
+                app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
+            cfg.handle_kommand(k)?;
+            Ok(())
+        }
+    }
 }

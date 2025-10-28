@@ -2,6 +2,7 @@
 // License: GPL-3.0
 
 use clap::Parser;
+use clap::ValueEnum;
 use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
@@ -29,9 +30,14 @@ pub struct Args {
     /// Write audio as raw.  Defaults to using FLAC
     #[arg(short = 'r', long, default_value_t = false)]
     pub raw: bool,
+
+    /// If this is not None run a command directly.  Only some
+    /// commands make sense
+    #[arg(short = 'k', long)]
+    pub kommand: Option<Command>,
 }
 
-#[derive(Debug, Clone, PartialEq, Hash, Eq)]
+#[derive(Debug, Clone, ValueEnum, PartialEq, Hash, Eq)]
 #[allow(dead_code)]
 pub enum Command {
     Stop,
@@ -89,6 +95,7 @@ impl From<Box<dyn Error>> for ThisError {
 }
 
 /// The audio format to use
+#[allow(dead_code)] // Not dead code.  Bug in linter
 #[derive(Debug)]
 pub enum AudioFormat {
     Flac,
