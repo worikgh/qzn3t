@@ -1,8 +1,8 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use pitch_detection::note_detection_result::NoteDetectionResult;
-use pitch_detection::runner::{pitch_detection_run, start_jack, Detector, DetectorCfg};
+use qzn3t_pitch_detection::note_detection_result::NoteDetectionResult;
+use qzn3t_pitch_detection::runner::{pitch_detection_run, start_jack, Detector, DetectorCfg};
 use std::sync::{mpsc, Arc, Mutex};
 
 fn main() {

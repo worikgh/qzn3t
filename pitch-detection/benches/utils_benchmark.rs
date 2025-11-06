@@ -4,7 +4,7 @@
 use std::f64::consts::PI;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pitch_detection::{
+use qzn3t_pitch_detection::{
     detector::{
         autocorrelation::AutocorrelationDetector, mcleod::McLeodDetector, yin::YINDetector,
         PitchDetector,

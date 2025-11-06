@@ -21,11 +21,11 @@ use clap::Parser;
 use jack::{AudioOut, Port};
 #[allow(unused_imports)]
 use jack::{Client, ClientOptions, Control, ProcessHandler, ProcessScope};
-use pitch_detection::note_detection_result::{NoteDetectionResult, NoteName};
-use pitch_detection::runner;
+use qzn3t_pitch_detection::note_detection_result::{NoteDetectionResult, NoteName};
+use qzn3t_pitch_detection::runner;
 #[allow(unused_imports)]
-use pitch_detection::runner::{pitch_detection_run, Detector, DetectorCfg};
-use pitch_detection::rx_proxy::RxProxy;
+use qzn3t_pitch_detection::runner::{pitch_detection_run, Detector, DetectorCfg};
+use qzn3t_pitch_detection::rx_proxy::RxProxy;
 use std::fmt::Debug;
 use std::sync::mpsc::channel;
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
@@ -190,8 +190,8 @@ fn main() {
         let bytes = match fs::read(path) {
             Ok(b) => b,
             Err(err) => panic!(
-                "Error pitch_detection/tester: Failed to load samples. Path: {path}  Error: {err}"
-            ),
+		"Error qzn3t_pitch_detection/tester: Failed to load samples. Path: {path}  Error: {err}"
+	    ),
         };
         let these_samples: Vec<f32> = bytes
             .chunks_exact(4)
@@ -215,7 +215,7 @@ fn main() {
     // Output audio port
     let output = client
         .register_port("outout", AudioOut::default())
-        .expect("Error pitch_detection: Output port");
+        .expect("Error qzn3t_pitch_detection: Output port");
     let output_name = output.name().unwrap();
 
     let out_process = OutProcess {

@@ -3,11 +3,11 @@
 
 use std::path::PathBuf;
 
-use pitch_detection::detector::mcleod::McLeodDetector;
-use pitch_detection::detector::PitchDetector;
-use pitch_detection::detector::{autocorrelation::AutocorrelationDetector, yin::YINDetector};
-use pitch_detection::float::Float;
-use pitch_detection::utils::buffer::new_real_buffer;
+use qzn3t_pitch_detection::detector::mcleod::McLeodDetector;
+use qzn3t_pitch_detection::detector::PitchDetector;
+use qzn3t_pitch_detection::detector::{autocorrelation::AutocorrelationDetector, yin::YINDetector};
+use qzn3t_pitch_detection::float::Float;
+use qzn3t_pitch_detection::utils::buffer::new_real_buffer;
 
 #[derive(Debug)]
 struct Signal<T> {
