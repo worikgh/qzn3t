@@ -11,7 +11,7 @@ repository = "https://github.com/worikgh/qzn3t/tree/mistress/tuner"
 clap = {features = ["derive"], version = "4.5.47"}
 clap_builder = "4.5.47"
 jack = "0.13.3"
-pitch-detection = { git = "https://github.com/worikgh/pitch-detection.git", version = "0.4.0", branch = "jack" }
+qzn3t-pitch-detection = "0.4.0" }
 rand = "0.9.2"
 ringbuf = "0.4.8"
 rtrb = "0.3.2"
