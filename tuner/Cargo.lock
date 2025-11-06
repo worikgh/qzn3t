@@ -242,8 +242,8 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "pitch-detection"
-version = "0.3.0"
-source = "git+https://github.com/worikgh/pitch-detection.git?branch=jack#d0f14a0e8fabb9ed1d4fdefa2e81d6a5e86ab343"
+version = "0.4.0"
+source = "git+https://github.com/worikgh/pitch-detection.git?branch=jack#aab8772510f2d33058e5bb238a8def563d7fc422"
 dependencies = [
  "clap",
  "jack",
