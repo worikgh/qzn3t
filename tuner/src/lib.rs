@@ -4,7 +4,7 @@
 use clap::Parser;
 use pitch_detection::note_detection_result::NoteDetectionResult;
 use pitch_detection::note_detection_result::NoteName;
-use pitch_detection::runner::pitch_detection_run;
+use pitch_detection::runner::{Detector, DetectorCfg, pitch_detection_run};
 use std::sync::mpsc;
 use std::thread::spawn;
 use std::{
@@ -84,8 +84,28 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
         Some(p) => p.clone(),
         None => "system:capture_1".to_string(),
     };
+    // Channel for note data from pitech detector
     let (tx, rx) = mpsc::channel::<NoteDetectionResult>();
-    let _ = pitch_detection_run(tx, &port);
+    //  Channel for audio data from Jack to pitch detector
+    let (tx_f32, rx_f32) = mpsc::channel::<f32>();
+
+    // Set up the pitch detection Jack client
+    let audio_dst_client = match pitch_detection::runner::start_jack(tx_f32, &port) {
+        Ok(ac) => ac,
+        Err(err) => panic!(
+            "Error pitch_detectiopn tester: Cannot create Jack clent to receive audio: {err}"
+        ),
+    };
+    let detector_cfg = DetectorCfg {
+        sample_rate: audio_dst_client.as_client().sample_rate() as u32,
+        size: 4096,
+        padding: 512,
+        power_threshold: 10.0,
+        clarity_threshold: 0.5,
+        detector: Detector::McLeod,
+    };
+
+    let _ = pitch_detection_run(tx, rx_f32, &detector_cfg, None);
     spawn(move || {
         let sender = sender.clone();
         loop {
