@@ -1,6 +1,6 @@
-1,E,2,0.0,examples/data/clean_guitar/E2_0.raw
-2,A,2,0.0,examples/data/clean_guitar/A2_0.raw
-3,D,3,0.0,examples/data/clean_guitar/D3_0.raw
-4,G,3,0.0,examples/data/clean_guitar/G3_0.raw
-5,B,3,0.0,examples/data/clean_guitar/B3_0.raw
-6,E,4,0.0,examples/data/clean_guitar/E4_0.raw
+1,E,2,0.0,examples/data/clean_guitar/E2.raw
+2,A,2,0.0,examples/data/clean_guitar/A2.raw
+3,D,3,0.0,examples/data/clean_guitar/D3.raw
+4,G,3,0.0,examples/data/clean_guitar/G3.raw
+5,B,3,0.0,examples/data/clean_guitar/B3.raw
+6,E,4,0.0,examples/data/clean_guitar/E4.raw
