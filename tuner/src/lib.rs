@@ -2,9 +2,9 @@
 // License: GPL-3.0
 
 use clap::Parser;
-use pitch_detection::note_detection_result::NoteDetectionResult;
-use pitch_detection::note_detection_result::NoteName;
-use pitch_detection::runner::{Detector, DetectorCfg, pitch_detection_run};
+use qzn3t_pitch_detection::note_detection_result::NoteDetectionResult;
+use qzn3t_pitch_detection::note_detection_result::NoteName;
+use qzn3t_pitch_detection::runner::{Detector, DetectorCfg, pitch_detection_run};
 use std::sync::mpsc;
 use std::thread::spawn;
 use std::{
@@ -90,7 +90,7 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
     let (tx_f32, rx_f32) = mpsc::channel::<f32>();
 
     // Set up the pitch detection Jack client
-    let audio_dst_client = match pitch_detection::runner::start_jack(tx_f32, &port) {
+    let audio_dst_client = match qzn3t_pitch_detection::runner::start_jack(tx_f32, &port) {
         Ok(ac) => ac,
         Err(err) => panic!(
             "Error pitch_detectiopn tester: Cannot create Jack clent to receive audio: {err}"

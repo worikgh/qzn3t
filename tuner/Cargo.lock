@@ -241,17 +241,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "pitch-detection"
-version = "0.4.0"
-source = "git+https://github.com/worikgh/pitch-detection.git?branch=jack#aab8772510f2d33058e5bb238a8def563d7fc422"
-dependencies = [
- "clap",
- "jack",
- "ringbuf",
- "rustfft",
-]
-
-[[package]]
 name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -309,13 +298,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "qzn3t-pitch-detection"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a7a395b7f4a8571cee77a41f29e1384a6d30951bb3282e8c4811ce67a9b6a96"
+dependencies = [
+ "clap",
+ "jack",
+ "ringbuf",
+ "rustfft",
+]
+
+[[package]]
 name = "qzn3t_tuner"
 version = "0.2.2"
 dependencies = [
  "clap",
  "clap_builder",
  "jack",
- "pitch-detection",
+ "qzn3t-pitch-detection",
  "rand",
  "ringbuf",
  "rtrb",
