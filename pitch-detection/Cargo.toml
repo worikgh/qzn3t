@@ -8,7 +8,7 @@ keywords = ["pitch", "frequency", "detection", "sound", "jack"]
 license = "GPL-3.0-or-later"
 name = "qzn3t-pitch-detection"
 readme = "README.md"
-repository = "https://github.com:worikgh/qzn3t/pitch-detection"
+repository = "https://github.com/worikgh/qzn3t/tree/mistress/pitch-detection"
 version = "0.4.0"
 
 [dependencies]
