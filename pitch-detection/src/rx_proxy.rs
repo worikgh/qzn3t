@@ -8,19 +8,33 @@
 //! Any messages received on `rx_one` will be sent to `tx` ad can be
 //! received on the new `rx`.  `set_sender` can be called any number
 //! of times, and it overwrites the previous setting each time.
+use std::error::Error;
+use std::fmt::Formatter;
+use std::fmt::{self, Debug};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+#[derive(Debug)]
+pub enum RxProxyError {
+    SetTxOnRunning,
+}
+impl fmt::Display for RxProxyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            RxProxyError::SetTxOnRunning => write!(f, "{self:?}"),
+        }
+    }
+}
+impl Error for RxProxyError {}
 pub struct RxProxy<T>
 where
     T: Send + 'static,
 {
-    opt_tx: Arc<Mutex<Option<Sender<T>>>>,
+    rx: Arc<Mutex<Receiver<T>>>,
     running: Arc<AtomicBool>,
-    thread_handle: Option<JoinHandle<()>>,
 }
 
 impl<T> RxProxy<T>
@@ -29,12 +43,7 @@ where
 {
     /// Stop the proxy
     pub fn stop(&mut self) {
-        if self.running.swap(false, Ordering::SeqCst) {
-            // Wait for thread to finish
-            if let Some(h) = self.thread_handle.take() {
-                _ = h.join();
-            }
-        }
+        self.running.store(false, Ordering::SeqCst);
     }
 
     /// Check the proxy
@@ -44,49 +53,38 @@ where
 
     /// Start the proxy
     fn run(
-        rx: Receiver<T>,
-        opt_tx: Arc<Mutex<Option<Sender<T>>>>,
+        rx: Arc<Mutex<Receiver<T>>>,
+        tx: Sender<T>,
         running: Arc<AtomicBool>,
     ) -> Result<JoinHandle<()>, Box<dyn std::error::Error>> {
         if running.swap(true, Ordering::SeqCst) {
             return Err("Already running".into());
         }
-        // let rx = self.rx.clone();
-
         let handle = thread::spawn(move || {
+            let rx = rx.lock().unwrap();
             while running.load(Ordering::SeqCst) {
                 // Clone the sender.  Multiple senders are allowed
-                let current_tx = { opt_tx.lock().unwrap().clone() };
 
-                // Hold the receiver lock and loop receiving until the
-                // channels change
-                // let rx_guard = rx.lock().unwrap();
-
-                loop {
-                    if !running.load(Ordering::SeqCst) {
-                        break;
+                if !running.load(Ordering::SeqCst) {
+                    break;
+                }
+                let message = {
+                    match rx.recv_timeout(Duration::from_millis(100)) {
+                        Ok(m) => Some(m),
+                        Err(RecvTimeoutError::Timeout) => None,
+                        Err(RecvTimeoutError::Disconnected) => {
+                            // Channel disconnected, stop the proxy
+                            running.store(false, Ordering::SeqCst);
+                            break;
+                        }
                     }
-                    let message = {
-                        match rx.recv_timeout(Duration::from_millis(100)) {
-                            Ok(m) => Some(m),
-                            Err(RecvTimeoutError::Timeout) => None,
-                            Err(RecvTimeoutError::Disconnected) => {
-                                // Channel disconnected, stop the proxy
-                                running.store(false, Ordering::SeqCst);
-                                break;
-                            }
-                        }
-                    };
-                    // If there is a sender send the message,
-                    // otherwise drop it
-                    if let Some(sender) = &current_tx {
-                        if let Some(msg) = message {
-                            if sender.send(msg).is_err() {
-                                // Clear the sender on error
-                                *opt_tx.lock().unwrap() = None;
-                                break;
-                            }
-                        }
+                };
+                // If there is a sender send the message,
+                // otherwise drop it
+                if let Some(msg) = message {
+                    if tx.send(msg).is_err() {
+                        // Stop the proxy once `tx` stops working
+                        running.store(false, Ordering::SeqCst);
                     }
                 }
             }
@@ -96,22 +94,25 @@ where
 
     /// `rx` is the receiver to proxy
     pub fn new(rx: Receiver<T>) -> Self {
-        let opt_tx = Arc::new(Mutex::new(None));
+        let rx = Arc::new(Mutex::new(rx));
         let running = Arc::new(AtomicBool::new(false));
-        let thread_handle = match Self::run(rx, opt_tx.clone(), running.clone()) {
+        Self { rx, running }
+    }
+
+    /// Provide the sending end of a channel to proxy messages on
+    /// `rx`.  The proxy must be stopped when this is called.  As this
+    /// starts the proxy
+    pub fn set_sender(&mut self, tx: Sender<T>) -> Result<JoinHandle<()>, RxProxyError> {
+        if self.is_running() {
+            return Err(RxProxyError::SetTxOnRunning);
+        }
+        let rx = self.rx.clone();
+
+        let h = match Self::run(rx.clone(), tx, self.running.clone()) {
             Ok(h) => h,
             Err(err) => panic!("RxProxy::new: Starting thread failed; {err}"),
         };
-        Self {
-            opt_tx,
-            running,
-            thread_handle: Some(thread_handle),
-        }
-    }
-
-    /// Provide the sending end of a channel to proxy messages on `rx`
-    pub fn set_sender(&mut self, tx: Sender<T>) {
-        *self.opt_tx.lock().unwrap() = Some(tx);
+        Ok(h)
     }
 }
 

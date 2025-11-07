@@ -140,7 +140,7 @@ fn test_detection() -> Vec<TestResult> {
     // The pitch detection channels.
     vec![]
 }
-const TEST_DURATION: Duration = Duration::from_secs(4);
+const TEST_DURATION: Duration = Duration::from_millis(1790);
 fn main() {
     let args = Args::parse();
     #[allow(unused_variables)]
@@ -164,10 +164,10 @@ fn main() {
 
     // Parameters to be optimised
     let models = [Detector::McLeod, Detector::Yin, Detector::AutoCorrelation];
-    let power_thresholds = [0.1, 1.0, 10.0];
-    let clarity_thresholds = [0.3, 0.5, 0.9];
+    let power_thresholds = [0.1, 1.0, 5.0, 10.0];
+    let clarity_thresholds = [0.0, 0.1, 0.2, 0.3, 0.5, 0.9];
     let sizes = [1024, 4096, 16384]; // Size of the sample for detection
-    let paddings = [512, 256, 1024]; // TODO: Document
+    let paddings = [256, 512, 1024]; // TODO: Document
     #[derive(Debug)]
     struct TestCase {
         samples: Vec<f32>,
@@ -200,6 +200,16 @@ fn main() {
                 f32::from_ne_bytes(bytes_array)
             })
             .collect();
+        let sum = these_samples.iter().fold(0.0_f32, |a, b| a + *b);
+        let len = these_samples.len() as f32;
+        let _mean = sum / len;
+        let max = these_samples
+            .iter()
+            .fold(0.0_f32, |a, &b| if a > b { a } else { b });
+        let _min = these_samples
+            .iter()
+            .fold(0.0_f32, |a, &b| if a < b { a } else { b });
+        println!("Test case: {note}/{octave}: max: {max} length: {len}",);
         test_cache.push(TestCase {
             samples: these_samples,
             octave,
@@ -271,7 +281,7 @@ fn main() {
 
                         // Set up channles to proxy audio data
                         let (tx_p, rx_p) = channel::<f32>();
-                        rx_proxy.set_sender(tx_p);
+                        let proxy_h = rx_proxy.set_sender(tx_p).expect("Setting RxProxy sender");
                         let jh = pitch_detection_run(
                             tx_ndr,
                             rx_p,
@@ -327,6 +337,9 @@ fn main() {
                             // Stop this pitch detector
                             *pitch_detector_kill_switch.lock().unwrap() = true;
                         }
+                        // stop proxy
+                        rx_proxy.stop();
+                        _ = proxy_h.join();
                         _ = jh.join();
                     }
                 }

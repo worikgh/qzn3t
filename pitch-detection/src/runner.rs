@@ -43,7 +43,7 @@ pub struct JackProcessHandlerPD {
 }
 
 impl ProcessHandler for JackProcessHandlerPD {
-    /// Call back for Jack to put audio data n the ring bufer
+    /// Call back for Jack to put audio data in the ring bufer
     fn process(&mut self, c: &Client, ps: &ProcessScope) -> jack::Control {
         let buffer = self.capture_port.as_slice(ps);
         for b in buffer {
