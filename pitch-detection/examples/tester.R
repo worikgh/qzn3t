@@ -129,7 +129,7 @@ parse_music_text <- function(text) {
   file.remove(temp_file)
   return(result)
 }
-data_frames <- parse_music_data("tester.log")
+data_frames <- parse_music_data("pdclean")
 ## # Example with your sample data
 ## sample_data <- "Detector Configuration:  1024  256  1.000  0.300 McLeod
 ## Test case   1 E/2  0.000 examples/data/E2_0.raw
@@ -161,10 +161,10 @@ analysis_data <- data_frames$analysis_data
 ## Return a list summarising the quality of a configuration
 cfg_summary <- function(config_id) {
     ## Get the configuration for this configuration
-    cc <- data_frames$configurations[cfg$config_id == config_id, ]
+    cc <- data_frames$configurations[configurations$config_id == config_id, ]
 
     ## The results for this configuration
-    rr <- data_frames$results[r$config_id == config_id,]
+    rr <- data_frames$results[results$config_id == config_id,]
 
     if(nrow(rr) == 0) {
         return (list(data.frame(),  -1 ))
@@ -208,7 +208,7 @@ cfg_summary <- function(config_id) {
     list(merged, score, mean_score, params)
 }
 ids <- data_frames$configurations$config_id
-results <- lapply(ids, cfg_summary) 
+results <- lapply(ids, cfg_summary)
  get_or_na <- function(x, i) if (length(x) >= i) x[[i]] else NA_real_
 
 v2 <- sapply(results, get_or_na, 2)
