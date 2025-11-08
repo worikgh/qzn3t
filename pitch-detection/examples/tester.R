@@ -13,6 +13,9 @@ library(purrr)
 library(stringr)
 library(tidyr)
 
+infile <- "pdclean_normalised_2.log"
+## infile <- "test.log"
+outfile <- paste0(infile, ".out" )
 parse_music_data <- function(file_path) {
   # Read the file
   lines <- readLines(file_path)
@@ -129,7 +132,7 @@ parse_music_text <- function(text) {
   file.remove(temp_file)
   return(result)
 }
-data_frames <- parse_music_data("pdclean")
+data_frames <- parse_music_data(infile)
 ## # Example with your sample data
 ## sample_data <- "Detector Configuration:  1024  256  1.000  0.300 McLeod
 ## Test case   1 E/2  0.000 examples/data/E2_0.raw

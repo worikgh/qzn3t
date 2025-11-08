@@ -165,7 +165,8 @@ fn main() {
     // Parameters to be optimised
     let models = [Detector::McLeod, Detector::Yin, Detector::AutoCorrelation];
     let power_thresholds = [0.1, 1.0, 5.0, 10.0];
-    let clarity_thresholds = [0.0, 0.1, 0.2, 0.3, 0.5, 0.9];
+    let clarity_thresholds = [0.2];
+    // let clarity_thresholds = [0.0, 0.1, 0.2, 0.3, 0.5, 0.9];
     let sizes = [1024, 4096, 16384]; // Size of the sample for detection
     let paddings = [256, 512, 1024]; // TODO: Document
     #[derive(Debug)]
@@ -200,16 +201,23 @@ fn main() {
                 f32::from_ne_bytes(bytes_array)
             })
             .collect();
-        let sum = these_samples.iter().fold(0.0_f32, |a, b| a + *b);
+
         let len = these_samples.len() as f32;
-        let _mean = sum / len;
         let max = these_samples
             .iter()
             .fold(0.0_f32, |a, &b| if a > b { a } else { b });
-        let _min = these_samples
+        let these_samples = if max < 0.98 {
+            // Increase the volume
+            let target = 0.98_f32;
+            let gain = target / max;
+            these_samples.iter().map(|s| s * gain).collect()
+        } else {
+            these_samples
+        };
+        let max2 = these_samples
             .iter()
-            .fold(0.0_f32, |a, &b| if a < b { a } else { b });
-        println!("Test case: {note}/{octave}: max: {max} length: {len}",);
+            .fold(0.0_f32, |a, &b| if a > b { a } else { b });
+        println!("## Test case: {note}/{octave}: max: {max:0.4} -> {max2:0.4} length: {len}",);
         test_cache.push(TestCase {
             samples: these_samples,
             octave,
@@ -329,7 +337,7 @@ fn main() {
                                 let detect_cents = ndr.cents;
                                 let detect_note = ndr.note_name;
                                 let detect_octave = ndr.octave;
-                                println!("Result: {index:>3} {true_note:>2}/{detect_note:>2} {true_octave}/{detect_octave} {true_cents:6.3}/{detect_cents:6.3}");
+                                println!("Result: {index:>3} {true_note:>2}/{detect_note:<2} {true_octave:>2}/{detect_octave:<2} {true_cents:>6.3}/{detect_cents:<6.3}");
                             }
                         }
 
