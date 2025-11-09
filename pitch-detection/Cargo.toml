@@ -3,6 +3,7 @@ authors = ["Alessandro Genova <ales.genova@gmail.com>", "<root@worik.org>"]
 categories = ["algorithms", "multimedia::audio"]
 description = "A collection of algorithms to determine the pitch of a sound sample."
 edition = "2021"
+exclude=["*.raw"]
 homepage = "https://github.com/alesgenova/pitch-detection"
 keywords = ["pitch", "frequency", "detection", "sound", "jack"]
 license = "GPL-3.0-or-later"
