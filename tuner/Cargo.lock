@@ -290,18 +290,18 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.41"
+version = "1.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce25767e7b499d1b604768e7cde645d14cc8584231ea6b295e9c9eb22c02e1d1"
+checksum = "a338cc41d27e6cc6dce6cefc13a0729dfbb81c262b1f519331575dd80ef3067f"
 dependencies = [
  "proc-macro2",
 ]
 
 [[package]]
 name = "qzn3t-pitch-detection"
-version = "0.4.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a7a395b7f4a8571cee77a41f29e1384a6d30951bb3282e8c4811ce67a9b6a96"
+checksum = "ff1e746b3e87ceeaef1ff68f6df15bf70dfd085c48c42b887fda4fdb7cb9c9cb"
 dependencies = [
  "clap",
  "jack",
