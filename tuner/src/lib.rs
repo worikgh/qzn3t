@@ -98,9 +98,9 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
     };
     let detector_cfg = DetectorCfg {
         sample_rate: audio_dst_client.as_client().sample_rate() as u32,
-        size: 4096,
-        padding: 512,
-        power_threshold: 10.0,
+        size: 16384,
+        padding: 1024,
+        power_threshold: 0.1,
         clarity_threshold: 0.5,
         detector: Detector::McLeod,
     };
