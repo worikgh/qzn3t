@@ -167,22 +167,23 @@ cfg_summary <- function(config_id) {
     cc <- data_frames$configurations[configurations$config_id == config_id, ]
 
     ## The results for this configuration
-    rr <- data_frames$results[results$config_id == config_id,]
+    rr <- data_frames$results[data_frames$results$config_id == config_id,]
 
     if(nrow(rr) == 0) {
         return (list(data.frame(),  -1 ))
     }
     ## Notes combined with octave as key    
     rr$actual_key <- paste0(rr$actual_note, "/", rr$actual_octave)
+    ## rr$actual_key <- paste0(rr$actual_note)
 
     ## Calculate how accurate each note's estimation is
     rr$match <- with(rr,
                      actual_note == detected_note &
-                     actual_octave == detected_octave &
+                     ## actual_octave == detected_octave &
                      abs(detected_cents) < 10.0
                      )
     score <- aggregate(match ~ actual_key, data = rr, FUN = mean)
-    names(score)[1] <- "actual_note"
+    names(score)[1] <- "note"
 
     ## The actual notes reorted on by this configuration
     notes <- paste(rr$actual_note, rr$actual_octave, sep = "/")
@@ -192,10 +193,10 @@ cfg_summary <- function(config_id) {
     ## The occurence of the notes.  It is crucial all notes (strings)
     ## are represented fairly
     freq <- as.data.frame(table(notes_factor))
-    names(freq) <-  c("actual_note","frequency")
-    merged <- merge(freq, score, by = "actual_note", all.x = TRUE)
-    merged$actual_note <- factor(merged$actual_note, levels = levels_order)
-    merged <- merged[order(merged$actual_note), ]
+    names(freq) <-  c("note","frequency")
+    merged <- merge(freq, score, by = "note", all.x = TRUE)
+    merged$note <- factor(merged$note, levels = levels_order)
+    merged <- merged[order(merged$note), ]
     row.names(merged) <- NULL
 
     ## The threashold
@@ -208,7 +209,7 @@ cfg_summary <- function(config_id) {
         mean_score <- -1
     }
     params <- paste0(cc$method," size/", cc$size, " power/", cc$power,  " clarity/", cc$clarity,  " padding/", cc$padding )
-    list(merged, score, mean_score, params)
+    list(merged, score, mean_score, params, config_id)
 }
 ids <- data_frames$configurations$config_id
 results <- lapply(ids, cfg_summary)
@@ -240,3 +241,4 @@ walk2(results_sorted, seq_along(results_sorted), ~{
   }
 })
 
+saveRDS(results_sorted, file =  outfile)
