@@ -107,6 +107,8 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
 
     let _ = pitch_detection_run(tx, rx_f32, &detector_cfg, None);
     spawn(move || {
+        // Move the client into the thread so it is not shut down
+        let _audio_dst_client = audio_dst_client;
         let sender = sender.clone();
         loop {
             match rx.recv() {
