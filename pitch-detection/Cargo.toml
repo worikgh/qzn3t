@@ -14,7 +14,6 @@ version = "0.4.2"
 
 [dependencies]
 jack = "0.13.3"
-ringbuf = "0.4.8"
 rustfft = { version = "6.0.1", default-features = false }
 clap = { version = "4.5.47", features = ["derive"] }
 
