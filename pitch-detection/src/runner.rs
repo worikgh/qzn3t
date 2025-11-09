@@ -165,7 +165,6 @@ pub fn pitch_detection_run(
         };
 
         // Buffer to hold samples.
-        let mut samples = Vec::with_capacity(buf_sz);
         loop {
             let top_of_loop = Instant::now();
             if let Some(kill_switch) = &kill_switch {
@@ -179,7 +178,7 @@ pub fn pitch_detection_run(
             // being used so read data from `rx` until there have been
             // `buf_sz` bytes read and there are no more to read from
             // `rx`
-            samples.clear();
+            let mut samples = Vec::with_capacity(buf_sz);
             loop {
                 if let Some(kill_switch) = &kill_switch {
                     // Check for exit condition.
@@ -194,6 +193,19 @@ pub fn pitch_detection_run(
                     break;
                 }
             }
+
+            // Ensure that the sample is not very quiet.
+            let max = samples
+                .iter()
+                .fold(0.0_f32, |a, &b| if a > b { a } else { b });
+            let samples = if max < 0.98 {
+                // Increase the volume
+                let target = 0.98_f32;
+                let gain = target / max;
+                samples.iter().map(|s| s * gain).collect()
+            } else {
+                samples
+            };
 
             // Do the deed with the samples from Jack and send the
             // result back to the caller
