@@ -299,19 +299,18 @@ dependencies = [
 
 [[package]]
 name = "qzn3t-pitch-detection"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff1e746b3e87ceeaef1ff68f6df15bf70dfd085c48c42b887fda4fdb7cb9c9cb"
+checksum = "41fda2d2c288d8e7fdfca98012cad2d4d50914f8f4789b109986b24fd8700749"
 dependencies = [
  "clap",
  "jack",
- "ringbuf",
  "rustfft",
 ]
 
 [[package]]
 name = "qzn3t_tuner"
-version = "0.2.5"
+version = "0.2.6"
 dependencies = [
  "clap",
  "clap_builder",
