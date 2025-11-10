@@ -5,7 +5,7 @@ use clap::Parser;
 use qzn3t_pitch_detection::note_detection_result::NoteDetectionResult;
 use qzn3t_pitch_detection::note_detection_result::NoteName;
 use qzn3t_pitch_detection::runner::{Detector, DetectorCfg, pitch_detection_run};
-use std::sync::mpsc;
+use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering, mpsc};
 use std::thread::spawn;
 use std::{
     io::{self},
@@ -60,26 +60,15 @@ pub struct TunerData {
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct TunerArgs {
-    #[arg(short, long, default_value_t = 200)]
-    pub interval: u64, // MS between sample times
-    #[arg(short, long, default_value_t = 2_048_000)]
-    pub buffer_size: u64, // The number of samples in a tone to check
-    #[arg(short, long, default_value_t = 0.0)]
-    pub max_vol_min: f32, // The maximum volume must be bigger than this
-    #[arg(short = 'n', long, default_value_t = 1.0)]
-    pub mean_min: f32, // The absolute mean volume must be smaller than this
     #[arg(short = 'p', long)]
     pub connect_port: Option<String>, // If specified connct this port to the tuner
-    #[arg(
-        short = 'v',
-        long,
-        default_value_t = false,
-        help = "Emit debugging messages"
-    )]
-    pub verbose: bool,
 }
 
-pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHandle<()> {
+pub fn get_results(
+    args: &TunerArgs,
+    sender: mpsc::Sender<TunerData>,
+    kill_switch: Arc<AtomicBool>,
+) -> JoinHandle<()> {
     let port = match &args.connect_port {
         Some(p) => p.clone(),
         None => "system:capture_1".to_string(),
@@ -105,12 +94,18 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
         detector: Detector::McLeod,
     };
 
-    let _ = pitch_detection_run(tx, rx_f32, &detector_cfg, None);
+    let pd_handle = pitch_detection_run(tx, rx_f32, &detector_cfg, Some(kill_switch.clone()));
     spawn(move || {
         // Move the client into the thread so it is not shut down
         let _audio_dst_client = audio_dst_client;
         let sender = sender.clone();
         loop {
+            if kill_switch.load(Ordering::SeqCst) {
+                // Tuner disabled
+                _ = pd_handle.join();
+                break;
+            }
+
             match rx.recv() {
                 Ok(ndr) => {
                     let td = TunerData {
@@ -137,8 +132,9 @@ pub fn get_results(args: &TunerArgs, sender: mpsc::Sender<TunerData>) -> JoinHan
 }
 
 pub fn inner_main(args: &TunerArgs) {
+    let kill_switch = Arc::new(AtomicBool::new(false));
     let (sender, receiver) = mpsc::channel::<TunerData>();
-    _ = get_results(args, sender);
+    _ = get_results(args, sender, kill_switch.clone());
     loop {
         let ndr = match receiver.recv() {
             Ok(r) => r,
