@@ -16,8 +16,7 @@ use jack::{
 };
 use std::error::Error;
 use std::fmt::{self, Formatter};
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicBool, atomic::Ordering, mpsc::Receiver, mpsc::Sender, Arc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -146,7 +145,7 @@ pub fn pitch_detection_run(
     tx: Sender<NoteDetectionResult>,
     rx: Receiver<f32>,
     detector_cfg: &DetectorCfg,
-    kill_switch: Option<Arc<Mutex<bool>>>,
+    kill_switch: Option<Arc<AtomicBool>>,
 ) -> JoinHandle<()> {
     let detector = detector_cfg.detector.clone();
     let buf_sz = detector_cfg.size;
@@ -169,7 +168,7 @@ pub fn pitch_detection_run(
             let top_of_loop = Instant::now();
             if let Some(kill_switch) = &kill_switch {
                 // Check for exit condition.
-                if *kill_switch.lock().unwrap() {
+                if kill_switch.load(Ordering::SeqCst) {
                     return;
                 }
             }
@@ -182,7 +181,7 @@ pub fn pitch_detection_run(
             loop {
                 if let Some(kill_switch) = &kill_switch {
                     // Check for exit condition.
-                    if *kill_switch.lock().unwrap() {
+                    if kill_switch.load(Ordering::SeqCst) {
                         return;
                     }
                 }

@@ -3,7 +3,7 @@
 
 use qzn3t_pitch_detection::note_detection_result::NoteDetectionResult;
 use qzn3t_pitch_detection::runner::{pitch_detection_run, start_jack, Detector, DetectorCfg};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{atomic::AtomicBool, mpsc, Arc};
 
 fn main() {
     let (tx_f32, rx_f32) = mpsc::channel::<f32>();
@@ -14,7 +14,7 @@ fn main() {
         Err(err) => panic!("Error detect_pitch: Failed to start jack for pitch detection: {err}"),
     };
 
-    let kill_switch = Arc::new(Mutex::new(false));
+    let kill_switch = Arc::new(AtomicBool::new(false));
     // Results from `examples/tester.rs` for quite distorted guitar samples:
     // |actual_note | frequency| match|
     // |:-----------|---------:|-----:|

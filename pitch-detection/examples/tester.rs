@@ -27,8 +27,9 @@ use qzn3t_pitch_detection::runner;
 use qzn3t_pitch_detection::runner::{pitch_detection_run, Detector, DetectorCfg};
 use qzn3t_pitch_detection::rx_proxy::RxProxy;
 use std::fmt::Debug;
-use std::sync::mpsc::channel;
-use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use std::sync::{
+    atomic::AtomicBool, atomic::Ordering, mpsc, mpsc::channel, Arc, Mutex, MutexGuard,
+};
 use std::time::{Duration, Instant};
 use std::{f32, fs};
 #[derive(Parser, Debug)]
@@ -285,7 +286,7 @@ fn main() {
 
                         // The channel that pitch data will be received on
                         let (tx_ndr, rx_ndr) = mpsc::channel::<NoteDetectionResult>();
-                        let pitch_detector_kill_switch = Arc::new(Mutex::new(false));
+                        let pitch_detector_kill_switch = Arc::new(AtomicBool::new(false));
 
                         // Set up channles to proxy audio data
                         let (tx_p, rx_p) = channel::<f32>();
@@ -341,10 +342,9 @@ fn main() {
                             }
                         }
 
-                        {
-                            // Stop this pitch detector
-                            *pitch_detector_kill_switch.lock().unwrap() = true;
-                        }
+                        // Stop this pitch detector
+                        pitch_detector_kill_switch.store(true, Ordering::SeqCst);
+
                         // stop proxy
                         rx_proxy.stop();
                         _ = proxy_h.join();
