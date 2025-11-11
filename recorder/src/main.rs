@@ -1,7 +1,8 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use anyhow::{Context, Result, anyhow};
+use crate::io::Inputs;
+use anyhow::Result; // TODO: Get rid of this
 use clap::Parser;
 use compose::audio_to_flac;
 use compose::get_sample_rate;
@@ -10,7 +11,6 @@ use mixer::AudioMixer;
 use send_audio_to_jack::create_out_port;
 use std::error::Error;
 use std::fs;
-use std::process::Command as ProcessCommand;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -25,6 +25,8 @@ use structs::AudioFormat;
 use structs::Command;
 use structs::ThisError;
 use ui::{UI, UIError};
+mod errors;
+mod io;
 mod mixer;
 mod send_audio_to_jack;
 mod structs;
@@ -316,35 +318,6 @@ impl ConfigApp {
     }
 }
 
-fn validate_jack_pipe(pipe: &str) -> Result<()> {
-    let output = ProcessCommand::new("jack_lsp")
-        .output()
-        .context("Failed to run jack_lsp")?;
-
-    let pipes = String::from_utf8_lossy(&output.stdout);
-    if !pipes.lines().any(|line| line == pipe) {
-        return Err(anyhow!("Invalid Jack pipe: {}", pipe));
-    }
-
-    let type_output = ProcessCommand::new("jack_lsp")
-        .arg("-t")
-        .output()
-        .context("Failed to run jack_lsp -t")?;
-
-    let type_info = String::from_utf8_lossy(&type_output.stdout);
-    let lines: Vec<&str> = type_info.lines().collect();
-
-    if let Some(pos) = lines.iter().position(|&line| line == pipe) {
-        if pos + 1 < lines.len() && lines[pos + 1].ends_with("audio") {
-            Ok(())
-        } else {
-            Err(anyhow!("Pipe {} is not an audio type", pipe))
-        }
-    } else {
-        Err(anyhow!("Pipe {} not found in type listing", pipe))
-    }
-}
-
 /// The UI loop
 fn ui_loop(command_tx: &Sender<Command>, ok_to_run: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     // The user interface...
@@ -378,8 +351,8 @@ fn ui_loop(command_tx: &Sender<Command>, ok_to_run: Arc<AtomicBool>) -> Result<(
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
-    // Validate Jack pipe input
-    validate_jack_pipe(&args.input)?;
+    let mut inputs = Inputs::new();
+    inputs.add_input(&args.input)?;
 
     // Channel to send audio data to Jackd
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
