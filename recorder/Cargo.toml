@@ -13,10 +13,10 @@ jack = "0.13.3"
 jack_rec = {path = "../jack_rec/"}
 
 [lib]
-name = "compose"
+name = "recorder"
 path = "src/lib.rs"
 
 
 [[bin]]
-name = "compose"
+name = "recorder"
 path = "src/main.rs"
