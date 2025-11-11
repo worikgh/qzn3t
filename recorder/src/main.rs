@@ -32,8 +32,8 @@ mod ui;
 
 #[allow(dead_code)]
 #[derive(Clone)]
-struct ComopositionApp;
-impl ComopositionApp {}
+struct App;
+impl App {}
 struct ConfigApp {
     recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
@@ -240,7 +240,7 @@ impl ConfigApp {
         Ok(())
     }
 }
-impl ComopositionApp {
+impl App {
     fn new() -> Result<Self> {
         Ok(Self)
     }
@@ -418,7 +418,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (command_tx, command_rx) = mpsc::channel::<Command>();
 
     // The main programme runs in `CompositionApp`
-    let mut app = ComopositionApp::new()?;
+    let mut app = App::new()?;
     let file_name = format!("{}/{}", args.directory, args.file_name);
 
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
