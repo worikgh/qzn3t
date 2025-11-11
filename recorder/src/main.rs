@@ -367,8 +367,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     match args.kommand {
         None => {
-            let config: ConfigApp =
-                app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
+            let config: ConfigApp = app.initialise(
+                audio_tx,
+                command_rx,
+                inputs.names().first().unwrap().to_string(),
+                file_name,
+                args.raw,
+            )?;
             let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
             let ok_to_run = config.ok_to_run.clone();
             let t = app.run(config)?;
