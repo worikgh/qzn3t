@@ -346,16 +346,13 @@ fn validate_jack_pipe(pipe: &str) -> Result<()> {
 }
 
 /// The UI loop
-fn ui_loop(
-    mut app_handle: Option<JoinHandle<Result<(), ThisError>>>,
-    command_tx: &Sender<Command>,
-) -> Result<(), Box<dyn Error>> {
+fn ui_loop(command_tx: &Sender<Command>, ok_to_run: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     // The user interface...
     let mut ui = UI::new();
     let _ = UI::set_up_screen();
     loop {
         ui.display(None);
-        if !test_main_loop(&mut app_handle) {
+        if !ok_to_run.load(Ordering::SeqCst) {
             break;
         }
 
@@ -379,34 +376,6 @@ fn ui_loop(
     Ok(())
 }
 
-/// Check if the main loop is over
-fn test_main_loop(app_handle: &mut Option<JoinHandle<Result<(), ThisError>>>) -> bool {
-    // Test `is_finished`.  Set --> main loop finished
-    if app_handle.as_ref().unwrap().is_finished()
-	// Get the handle of the thread
-	&& let Some(t) = app_handle.take()
-    {
-        match t.join() {
-            Ok(result) => match result {
-                Ok(()) => {
-                    eprintln!("Thread finished successfully");
-                    false
-                }
-                Err(err) => {
-                    eprintln!("Thread finished with error: {err}",);
-                    false
-                }
-            },
-            Err(_) => {
-                // Thread has finished before this call
-                unreachable!()
-            }
-        }
-    } else {
-        true
-    }
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     // Validate Jack pipe input
@@ -428,10 +397,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let config: ConfigApp =
                 app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
             let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
+            let ok_to_run = config.ok_to_run.clone();
             let t = app.run(config)?;
-            let app_handle = Some(t);
             // The audio output.  Stays valid so long as `_out_port` exists.
-            ui_loop(app_handle, &command_tx)
+            ui_loop(&command_tx, ok_to_run)?;
+            _ = t.join();
+            Ok(())
         }
         Some(k) => {
             let mut cfg: ConfigApp =
