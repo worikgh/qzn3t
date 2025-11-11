@@ -33,7 +33,82 @@ mod ui;
 #[allow(dead_code)]
 #[derive(Clone)]
 struct App;
-impl App {}
+impl App {
+    fn new() -> Result<Self> {
+        Ok(Self)
+    }
+
+    /// Set up the environment to run in
+    fn initialise(
+        &mut self,
+        audio_tx: mpsc::Sender<f32>,
+        command_rx: mpsc::Receiver<Command>,
+        port: String,
+        file_name: String,
+        use_raw: bool,
+    ) -> Result<ConfigApp, Box<dyn Error>> {
+        let ok_to_run = Arc::new(AtomicBool::new(true));
+        let r = ok_to_run.clone();
+        ctrlc::set_handler(move || {
+            eprintln!("DBG qzn3t/composer: Received Ctrl-C, shutting down gracefully...");
+            r.store(false, Ordering::Relaxed);
+        })
+        .expect("Error qzn3t/composer: setting Ctrl-C handler");
+        Ok(ConfigApp {
+            recorded_audio: Vec::new(),
+            record_handle: None,
+            recorded_dub: Vec::new(),
+            audio_tx,
+            command_rx,
+            ok_to_run,
+            port_name: port,
+            file_name,
+            format: if use_raw {
+                AudioFormat::Raw
+            } else {
+                AudioFormat::Flac
+            },
+        })
+    }
+
+    /// Run the main loop that receives commands on a channel
+    fn run(
+        &mut self,
+        mut config_app: ConfigApp,
+    ) -> Result<JoinHandle<Result<(), ThisError>>, Box<dyn Error>> {
+        // The version of `self` used inside the loop
+
+        let app_handle = spawn(move || -> Result<(), ThisError> {
+            loop {
+                let command = match config_app.command_rx.recv() {
+                    Ok(s) => s,
+                    Err(err) => {
+                        eprintln!("Error composer: Getting state: {err}");
+                        break;
+                    }
+                };
+                match command {
+                    Command::Record => config_app.handle_recording()?,
+                    Command::Stop => config_app.handle_stop()?,
+                    Command::ReviewRecord => config_app.handle_review_record()?,
+                    Command::Dubing => config_app.handle_dubing()?,
+                    Command::DubReview => config_app.handle_dub_review()?,
+                    Command::DubAccept => config_app.handle_dub_accept()?,
+                    Command::Save => config_app.handle_save()?,
+                    Command::Continue => (),
+                    Command::Quit => {
+                        config_app.quit();
+                        break;
+                    }
+                }
+            }
+            eprintln!("DBG composer: Broken from main loop");
+            Ok(())
+        }); // Closure
+        Ok(app_handle)
+    }
+}
+
 struct ConfigApp {
     recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
@@ -45,10 +120,10 @@ struct ConfigApp {
     file_name: String,
     format: AudioFormat,
 }
-
 impl ConfigApp {
+    /// Stop all the processes
     fn quit(&mut self) {
-        self.handle_stop().unwrap();
+        _ = self.handle_stop();
     }
     fn get_audio_from_jack(
         &mut self,
@@ -238,80 +313,6 @@ impl ConfigApp {
             eprintln!("DBG composer: Sent {sent}/{} samples", data.len());
         });
         Ok(())
-    }
-}
-impl App {
-    fn new() -> Result<Self> {
-        Ok(Self)
-    }
-
-    /// Set up the environment to run in
-    fn initialise(
-        &mut self,
-        audio_tx: mpsc::Sender<f32>,
-        command_rx: mpsc::Receiver<Command>,
-        port: String,
-        file_name: String,
-        use_raw: bool,
-    ) -> Result<ConfigApp, Box<dyn Error>> {
-        let ok_to_run = Arc::new(AtomicBool::new(true));
-        let r = ok_to_run.clone();
-        ctrlc::set_handler(move || {
-            eprintln!("DBG qzn3t/composer: Received Ctrl-C, shutting down gracefully...");
-            r.store(false, Ordering::Relaxed);
-        })
-        .expect("Error qzn3t/composer: setting Ctrl-C handler");
-        Ok(ConfigApp {
-            recorded_audio: Vec::new(),
-            record_handle: None,
-            recorded_dub: Vec::new(),
-            audio_tx,
-            command_rx,
-            ok_to_run,
-            port_name: port,
-            file_name,
-            format: if use_raw {
-                AudioFormat::Raw
-            } else {
-                AudioFormat::Flac
-            },
-        })
-    }
-
-    fn run(
-        &mut self,
-        mut config_app: ConfigApp,
-    ) -> Result<JoinHandle<Result<(), ThisError>>, Box<dyn Error>> {
-        // The version of `self` used inside the loop
-
-        let app_handle = spawn(move || -> Result<(), ThisError> {
-            loop {
-                let command = match config_app.command_rx.recv() {
-                    Ok(s) => s,
-                    Err(err) => {
-                        eprintln!("Error composer: Getting state: {err}");
-                        break;
-                    }
-                };
-                match command {
-                    Command::Record => config_app.handle_recording()?,
-                    Command::Stop => config_app.handle_stop()?,
-                    Command::ReviewRecord => config_app.handle_review_record()?,
-                    Command::Dubing => config_app.handle_dubing()?,
-                    Command::DubReview => config_app.handle_dub_review()?,
-                    Command::DubAccept => config_app.handle_dub_accept()?,
-                    Command::Save => config_app.handle_save()?,
-                    Command::Continue => (),
-                    Command::Quit => {
-                        config_app.quit();
-                        break;
-                    }
-                }
-            }
-            eprintln!("DBG composer: Broken from main loop");
-            Ok(())
-        }); // Closure
-        Ok(app_handle)
     }
 }
 
