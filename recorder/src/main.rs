@@ -4,10 +4,10 @@
 use crate::io::Inputs;
 use anyhow::Result; // TODO: Get rid of this
 use clap::Parser;
-use compose::audio_to_flac;
-use compose::get_sample_rate;
 use jack_rec::run_port;
 use mixer::AudioMixer;
+use recorder::audio_to_flac;
+use recorder::get_sample_rate;
 use send_audio_to_jack::create_out_port;
 use std::error::Error;
 use std::fs;
@@ -137,7 +137,7 @@ impl ConfigApp {
             let mut audio_data: Vec<f32> = Vec::new();
             let (sender, receiver) = mpsc::channel::<f32>();
 
-            let async_jack_client = match run_port(port.clone(), sender) {
+            let async_jack_client = match run_port(port.clone(), sender, run_flag.clone()) {
                 Ok(p) => p,
                 Err(err) => {
                     eprintln!("Error composer: {err}: get audio from {port}");

@@ -16,6 +16,8 @@ use std::io::BufWriter;
 use std::io::prelude::*;
 use std::io::{self};
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::time::Duration;
 struct MyArgs {
@@ -122,43 +124,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // The mape the name of the stream to the channel receiving audio
     let mut channels: HashMap<String, mpsc::Receiver<f32>> = HashMap::new();
+
+    // The flag that shuts down `jack_rec`
+    let kill_flag = Arc::new(AtomicBool::new(false));
+
     for name in ports.iter() {
         let name = name.replace('/', "_").to_string();
 
         let (sender, receiver) = mpsc::channel::<f32>();
-        let async_client = jack_rec::run_port(name.clone(), sender)?;
+        let async_client = jack_rec::run_port(name.clone(), sender, kill_flag.clone())?;
         channels.insert(name.clone(), receiver);
         clients.push(async_client);
-
-        // let process_callback =
-        //     move |_jc: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        //         // Called every time there is data available
-        //         let in_a_p: &[f32] = inport.as_slice(ps);
-        //         for v in in_a_p {
-        //             let bytes = v.to_ne_bytes();
-        //             writer.write_all(&bytes).unwrap();
-        //         }
-
-        //         // Is this needed?  No.  `writer` goes out ouf scope
-        //         // when the Jack client is shut down with `deactivate`
-        //         //writer.flush().unwrap();
-        //         jack::Control::Continue
-        //     };
-
-        // let process = jack::ClosureProcessHandler::new(process_callback);
-        // // Activate the client, which starts the processing.
-        // let active_client = client.activate_async(Notifications, process).unwrap();
-        // let from_port = name;
-
-        // let (client, _status) =
-        //     jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
-        // match client.connect_ports_by_name(from_port.as_str(), to_port.as_str()) {
-        //     Ok(()) => (),
-        //     Err(err) => {
-        //         eprintln!("Failed  {from_port} -> {} '{err}'", to_port);
-        //     }
-        // };
-        // clients.push(active_client);
     }
 
     // Make the BufWriters to write the audio data to files

@@ -3,7 +3,8 @@
 
 use serde::Serialize;
 use std::error::Error;
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 
 pub struct Notifications;
 impl jack::NotificationHandler for Notifications {
@@ -24,6 +25,7 @@ pub struct Description {
 pub fn run_port(
     port: String,
     sender: mpsc::Sender<f32>,
+    run_flag: Arc<AtomicBool>,
 ) -> Result<
     jack::AsyncClient<
         Notifications,
@@ -42,6 +44,9 @@ pub fn run_port(
     };
     let to_port = inport.name().as_ref().unwrap().to_string();
     let process_callback = move |_jc: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+        if !run_flag.load(Ordering::SeqCst) {
+            return jack::Control::Quit;
+        }
         // Called every time there is data available
         let in_a_p: &[f32] = inport.as_slice(ps);
         let mut max = 0.0;
