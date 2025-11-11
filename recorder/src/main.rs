@@ -418,7 +418,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // The app is controlled through a channel with the front end UI
     let (command_tx, command_rx) = mpsc::channel::<Command>();
 
-    // The main programme runs in `CompositionApp`
+    // The main programme runs in `App`
     let mut app = App::new()?;
     let file_name = format!("{}/{}", args.directory, args.file_name);
 
