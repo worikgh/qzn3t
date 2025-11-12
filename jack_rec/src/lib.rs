@@ -21,7 +21,8 @@ pub struct Description {
 }
 
 #[allow(clippy::type_complexity)]
-/// Start a Jack client that sends data on the passed channel.
+/// Start a Jack client that reads audio data from `port` and sends
+/// them on `sender`.
 pub fn run_port(
     port: String,
     sender: mpsc::Sender<f32>,
@@ -38,11 +39,13 @@ pub fn run_port(
     let (client, _status) =
         jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
     let spec = jack::AudioIn;
-    let inport = match client.register_port(&port, spec) {
+    let inport = match client.register_port("input", spec) {
         Ok(p) => p,
         Err(err) => panic!("Error jack_rec: Cannot create inport: {port}.  Err({err})"),
     };
     let to_port = inport.name().as_ref().unwrap().to_string();
+
+    // Callback for Jack client
     let process_callback = move |_jc: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         if !run_flag.load(Ordering::SeqCst) {
             return jack::Control::Quit;
@@ -69,15 +72,19 @@ pub fn run_port(
         jack::Control::Continue
     };
     let process = jack::ClosureProcessHandler::new(process_callback);
+
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
-    let from_port = port;
-    let (client, _status) =
-        jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
-    match client.connect_ports_by_name(from_port.as_str(), to_port.as_str()) {
+
+    // let (client, _status) =
+    //     jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
+    match active_client
+        .as_client()
+        .connect_ports_by_name(port.as_str(), to_port.as_str())
+    {
         Ok(()) => (),
         Err(err) => {
-            eprintln!("Failed  {from_port} -> {} '{err}'", to_port);
+            eprintln!("qzn3t/jack_rec: Failed  {} '{err}'", to_port);
         }
     }
     Ok(active_client)
