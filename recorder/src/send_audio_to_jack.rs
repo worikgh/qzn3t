@@ -24,7 +24,7 @@ impl AudioSenderState {
 pub fn create_out_port(
     port_name: &str,
     data_channel: mpsc::Receiver<f32>,
-    ok_to_run: Arc<AtomicBool>,
+    audio_run: Arc<AtomicBool>,
 ) -> Result<impl std::any::Any, jack::Error> {
     let (client, _status) = Client::new("qzn3t", ClientOptions::NO_START_SERVER)?;
     let mut out_port = client.register_port(port_name, AudioOut::default())?;
@@ -33,7 +33,7 @@ pub fn create_out_port(
     };
     let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let out = out_port.as_mut_slice(ps);
-        let run_flag = ok_to_run.load(Ordering::Relaxed);
+        let run_flag = audio_run.load(Ordering::Relaxed);
         if run_flag {
             for sample in out.iter_mut() {
                 match state.audio_rx.try_recv() {

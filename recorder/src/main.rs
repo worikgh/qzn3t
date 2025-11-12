@@ -48,21 +48,23 @@ impl App {
         port: String,
         file_name: String,
         use_raw: bool,
-    ) -> Result<ConfigApp, Box<dyn Error>> {
-        let ok_to_run = Arc::new(AtomicBool::new(true));
-        let r = ok_to_run.clone();
+    ) -> Result<AppData, Box<dyn Error>> {
+        let audio_run = Arc::new(AtomicBool::new(true));
+        let ui_run = Arc::new(AtomicBool::new(true));
+        let r = audio_run.clone();
         ctrlc::set_handler(move || {
             eprintln!("DBG qzn3t/composer: Received Ctrl-C, shutting down gracefully...");
             r.store(false, Ordering::Relaxed);
         })
         .expect("Error qzn3t/composer: setting Ctrl-C handler");
-        Ok(ConfigApp {
+        Ok(AppData {
             recorded_audio: Vec::new(),
-            record_handle: None,
+            audio_handle: None,
             recorded_dub: Vec::new(),
             audio_tx,
             command_rx,
-            ok_to_run,
+            audio_run,
+            ui_run,
             port_name: port,
             file_name,
             format: if use_raw {
@@ -76,7 +78,7 @@ impl App {
     /// Run the main loop that receives commands on a channel
     fn run(
         &mut self,
-        mut config_app: ConfigApp,
+        mut config_app: AppData,
     ) -> Result<JoinHandle<Result<(), ThisError>>, Box<dyn Error>> {
         // The version of `self` used inside the loop
 
@@ -91,7 +93,7 @@ impl App {
                 };
                 match command {
                     Command::Record => config_app.handle_recording()?,
-                    Command::Stop => config_app.handle_stop()?,
+                    Command::Stop => config_app.handle_audio_stop()?,
                     Command::ReviewRecord => config_app.handle_review_record()?,
                     Command::Dubing => config_app.handle_dubing()?,
                     Command::DubReview => config_app.handle_dub_review()?,
@@ -111,27 +113,29 @@ impl App {
     }
 }
 
-struct ConfigApp {
+struct AppData {
     recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
-    record_handle: Option<JoinHandle<Vec<f32>>>,
+    audio_handle: Option<JoinHandle<Vec<f32>>>,
     audio_tx: mpsc::Sender<f32>,
     command_rx: mpsc::Receiver<Command>,
-    ok_to_run: Arc<AtomicBool>,
+    audio_run: Arc<AtomicBool>,
+    ui_run: Arc<AtomicBool>,
     port_name: String,
     file_name: String,
     format: AudioFormat,
 }
-impl ConfigApp {
+impl AppData {
     /// Stop all the processes
     fn quit(&mut self) {
-        _ = self.handle_stop();
+        _ = self.handle_audio_stop();
+        self.ui_run.store(false, Ordering::SeqCst);
     }
     fn get_audio_from_jack(
         &mut self,
         port: String,
     ) -> Result<thread::JoinHandle<Vec<f32>>, ThisError> {
-        let run_flag = self.ok_to_run.clone();
+        let run_flag = self.audio_run.clone();
         Ok(thread::spawn(move || -> Vec<f32> {
             // Buffer and channel to get data on
             let mut audio_data: Vec<f32> = Vec::new();
@@ -179,7 +183,7 @@ impl ConfigApp {
         self.recorded_audio.truncate(0);
         let port = self.port_name.clone();
         match self.get_audio_from_jack(port) {
-            Ok(handle) => self.record_handle = Some(handle),
+            Ok(handle) => self.audio_handle = Some(handle),
             Err(err) => {
                 eprintln!("Error composer: Error from get_audio_from_jack");
                 return Err(err.into());
@@ -189,11 +193,11 @@ impl ConfigApp {
     }
 
     /// The command: stop
-    fn handle_stop(&mut self) -> Result<(), Box<dyn Error>> {
+    fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
-        self.ok_to_run.store(false, Ordering::Relaxed);
-        if let Some(handle) = self.record_handle.take() {
-            self.ok_to_run.store(false, Ordering::Relaxed);
+        self.audio_run.store(false, Ordering::Relaxed);
+        if let Some(handle) = self.audio_handle.take() {
+            self.audio_run.store(false, Ordering::Relaxed);
             if let Ok(audio_data) = handle.join() {
                 self.recorded_audio.extend(audio_data.iter());
             }
@@ -203,7 +207,7 @@ impl ConfigApp {
 
     /// Play back the audio data
     fn handle_review_record(&mut self) -> Result<(), Box<dyn Error>> {
-        self.ok_to_run.store(true, Ordering::Relaxed);
+        self.audio_run.store(true, Ordering::Relaxed);
         self.play_audio(&self.recorded_audio)
     }
 
@@ -256,7 +260,7 @@ impl ConfigApp {
             Command::Record => {
                 println!("Recording.  C-c to stop");
                 self.handle_recording()?;
-                if let Some(h) = self.record_handle.take() {
+                if let Some(h) = self.audio_handle.take() {
                     match h.join() {
                         Ok(data) => {
                             self.recorded_audio = data;
@@ -281,7 +285,7 @@ impl ConfigApp {
         let tx = self.audio_tx.clone();
 
         // Flag to shut down playback from the UI
-        let ok_to_run = self.ok_to_run.clone();
+        let audio_run = self.audio_run.clone();
 
         // Must copy the data so the playback is independant of the
         // original buffer remaining
@@ -296,7 +300,7 @@ impl ConfigApp {
             // Record how much data sent
             let mut sent = 0_usize;
             for i in data.iter() {
-                if !ok_to_run.load(Ordering::Relaxed) {
+                if !audio_run.load(Ordering::Relaxed) {
                     break;
                 }
 
@@ -319,13 +323,13 @@ impl ConfigApp {
 }
 
 /// The UI loop
-fn ui_loop(command_tx: &Sender<Command>, ok_to_run: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
+fn ui_loop(command_tx: &Sender<Command>, ui_run: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
     // The user interface...
     let mut ui = UI::new();
     let _ = UI::set_up_screen();
     loop {
         ui.display(None);
-        if !ok_to_run.load(Ordering::SeqCst) {
+        if !ui_run.load(Ordering::SeqCst) {
             break;
         }
 
@@ -367,23 +371,24 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     match args.kommand {
         None => {
-            let config: ConfigApp = app.initialise(
+            let config: AppData = app.initialise(
                 audio_tx,
                 command_rx,
                 inputs.names().first().unwrap().to_string(),
                 file_name,
                 args.raw,
             )?;
-            let _out_port = create_out_port("output", audio_rx, config.ok_to_run.clone())?;
-            let ok_to_run = config.ok_to_run.clone();
+            let _out_port = create_out_port("output", audio_rx, config.audio_run.clone())?;
+            let ui_run = config.ui_run.clone();
             let t = app.run(config)?;
             // The audio output.  Stays valid so long as `_out_port` exists.
-            ui_loop(&command_tx, ok_to_run)?;
+            ui_loop(&command_tx, ui_run)?;
+
             _ = t.join();
             Ok(())
         }
         Some(k) => {
-            let mut cfg: ConfigApp =
+            let mut cfg: AppData =
                 app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
             cfg.handle_kommand(k)?;
             Ok(())

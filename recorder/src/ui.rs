@@ -58,7 +58,6 @@ impl UI {
         let selected = if selected.is_some() {
             selected
         } else if self.last_command.is_some() {
-            eprintln!("DBG composer: UI.display Using `last_command`");
             self.last_command.clone()
         } else {
             None
