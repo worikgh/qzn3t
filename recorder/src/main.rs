@@ -8,7 +8,7 @@ use jack_rec::run_port;
 use mixer::AudioMixer;
 use recorder::audio_to_flac;
 use recorder::get_sample_rate;
-use send_audio_to_jack::create_out_port;
+use send_audio_to_jack::send_audo_to_jack;
 use std::error::Error;
 use std::fs;
 use std::sync::Arc;
@@ -378,7 +378,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 file_name,
                 args.raw,
             )?;
-            let _out_port = create_out_port("output", audio_rx, config.audio_run.clone())?;
+            let _out_port = send_audo_to_jack("output", audio_rx, config.audio_run.clone())?;
             let ui_run = config.ui_run.clone();
             let t = app.run(config)?;
             // The audio output.  Stays valid so long as `_out_port` exists.
