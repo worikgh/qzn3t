@@ -1,8 +1,7 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
+use crate::errors::RecorderError;
 use jack::{Client, ClientOptions};
-use structs::ThisError;
-mod structs;
 pub fn get_sample_rate() -> usize {
     let (client, _status) = Client::new("SampleRateQuery", ClientOptions::default()).unwrap();
 
@@ -10,8 +9,8 @@ pub fn get_sample_rate() -> usize {
     client.sample_rate()
 }
 
-pub fn audio_to_flac(input: &[f32]) -> Result<Vec<u8>, ThisError> {
+pub fn audio_to_flac(input: &[f32]) -> Result<Vec<u8>, RecorderError> {
     flac_encoder::FlacBuilder::from_planar(&[input.to_vec()], get_sample_rate() as u32)
         .build()
-        .map_err(|_| ThisError::Generic)
+        .map_err(|err| RecorderError::Generic(format!("{err:?}")))
 }

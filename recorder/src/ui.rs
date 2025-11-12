@@ -1,8 +1,10 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-//! The user interface for Qzn3t Composer
-use crate::structs::{Command, ThisError};
+//! The user interface for Qzn3t Recorder
+use crate::errors::RecorderError;
+use crate::structs::Command;
+
 #[allow(dead_code, unused_imports)]
 use crossterm::{
     ExecutableCommand, cursor,
@@ -101,7 +103,7 @@ impl UI {
 
     /// Maintain the UI's state.  This assumes that all commands sent
     /// to the backend succeed.
-    fn state_transition(cmd: &Command, state: &State) -> Result<State, ThisError> {
+    fn state_transition(cmd: &Command, state: &State) -> Result<State, RecorderError> {
         // Quit is always a valid command
         if cmd == &Command::Quit {
             return Ok(State::AtRest);
@@ -112,7 +114,7 @@ impl UI {
                 if *cmd == Command::Stop {
                     Ok(State::AtRest)
                 } else {
-                    Err(ThisError::BadCommand(cmd.clone()))
+                    Err(RecorderError::BadCommand(cmd.clone()))
                 }
             }
             State::AtRest => match cmd {
@@ -139,13 +141,13 @@ impl UI {
                 if let Some(command) = self.index.get(&i) {
                     match Self::state_transition(command, &self.state) {
                         Ok(state) => {
-                            eprintln!("DBG composer: State change {:?} -> {:?}", self.state, state);
+                            eprintln!("DBG recorder: State change {:?} -> {:?}", self.state, state);
                             self.state = state;
                             self.last_command = Some(command.clone());
                             Ok(command.clone())
                         }
                         Err(err) => {
-                            if err == ThisError::BadCommand(command.clone()) {
+                            if err == RecorderError::BadCommand(command.clone()) {
                                 Err(UIError::BadChoice(c))
                             } else {
                                 panic!("Impossible error {err:?}")
@@ -159,7 +161,7 @@ impl UI {
                 Err(UIError::BadChoice(c))
             }
         } else {
-            eprintln!("DBG composer: UI.get_command: {e:?}: This should not be reachable");
+            eprintln!("DBG recorder: UI.get_command: {e:?}: This should not be reachable");
             Ok(Command::Continue)
         }
     }

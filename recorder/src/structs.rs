@@ -3,7 +3,6 @@
 
 use clap::Parser;
 use clap::ValueEnum;
-use std::error::Error;
 use std::fmt;
 use std::path::PathBuf;
 #[derive(Parser, Debug)]
@@ -67,30 +66,6 @@ impl fmt::Display for Command {
                 _ => "Unknown command {self:?}",
             }
         )
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum ThisError {
-    BadCommand(Command),
-    Generic,
-}
-impl Error for ThisError {}
-impl fmt::Display for ThisError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-impl From<anyhow::Error> for ThisError {
-    fn from(err: anyhow::Error) -> Self {
-        eprintln!("Error composer: `From<anyhow::Error> for ThisError` err: {err}");
-        ThisError::Generic
-    }
-}
-impl From<Box<dyn Error>> for ThisError {
-    fn from(err: Box<dyn Error>) -> Self {
-        eprintln!("Error composer: `From<Box<dyn Error>> for ThisError` err: {err}");
-        ThisError::Generic
     }
 }
 

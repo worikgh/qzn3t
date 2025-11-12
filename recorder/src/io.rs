@@ -63,7 +63,6 @@ impl Inputs {
             Err(RecorderError::InvalidPipeName(pipe.to_string()))
         } else if let Some(port) = client.port_by_name(pipe) {
             let flags = port.flags();
-            eprintln!("DBG: flags: {flags:?}");
             if flags.contains(PortFlags::IS_OUTPUT) {
                 Ok(())
             } else {
