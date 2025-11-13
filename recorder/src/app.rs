@@ -121,6 +121,7 @@ impl AppData {
         Ok(spawn(move || -> Vec<f32> {
             // Buffer and channel to get data on
             let mut audio_data: Vec<f32> = Vec::new();
+
             let (sender, receiver) = mpsc::channel::<f32>();
 
             let async_jack_client = match run_port(port.clone(), sender, run_flag.clone()) {
@@ -163,6 +164,7 @@ impl AppData {
     }
     fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.truncate(0);
+        self.audio_run.store(true, Ordering::SeqCst);
         let port = self.port_name.clone();
         match self.get_audio_from_jack(port) {
             Ok(handle) => self.audio_handle = Some(handle),
@@ -179,8 +181,8 @@ impl AppData {
         // This ends the main loop
         self.audio_run.store(false, Ordering::Relaxed);
         if let Some(handle) = self.audio_handle.take() {
-            self.audio_run.store(false, Ordering::Relaxed);
             if let Ok(audio_data) = handle.join() {
+                eprintln!("DBG handle_audio_stop 3 len: {}", audio_data.len());
                 self.recorded_audio.extend(audio_data.iter());
             }
         }
