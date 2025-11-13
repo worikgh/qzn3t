@@ -116,6 +116,7 @@ impl AppData {
         _ = self.handle_audio_stop();
         self.ui_run.store(false, Ordering::SeqCst);
     }
+
     fn get_audio_from_jack(&mut self, port: String) -> Result<JoinHandle<Vec<f32>>, RecorderError> {
         let run_flag = self.audio_run.clone();
         Ok(spawn(move || -> Vec<f32> {
@@ -154,6 +155,7 @@ impl AppData {
             audio_data
         }))
     }
+
     fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.truncate(0);
         self.audio_run.store(true, Ordering::SeqCst);
@@ -172,11 +174,11 @@ impl AppData {
     fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
         self.audio_run.store(false, Ordering::Relaxed);
-        if let Some(handle) = self.audio_handle.take() {
-            if let Ok(audio_data) = handle.join() {
-                eprintln!("DBG handle_audio_stop 3 len: {}", audio_data.len());
-                self.recorded_audio.extend(audio_data.iter());
-            }
+        if let Some(handle) = self.audio_handle.take()
+            && let Ok(audio_data) = handle.join()
+        {
+            eprintln!("DBG handle_audio_stop 3 len: {}", audio_data.len());
+            self.recorded_audio.extend(audio_data.iter());
         }
         Ok(())
     }
