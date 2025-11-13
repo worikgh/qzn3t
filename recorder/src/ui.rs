@@ -12,10 +12,13 @@ use crossterm::{
     style::{self, Color, Stylize},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::io::{self, Write};
+use std::{collections::HashMap, sync::mpsc::Sender};
+use std::{
+    error::Error,
+    sync::{Arc, atomic::AtomicBool},
+};
+use std::{fmt, sync::atomic::Ordering};
 
 #[derive(Debug)]
 enum State {
@@ -201,4 +204,38 @@ impl fmt::Display for UIError {
         };
         write!(f, "{msg}")
     }
+}
+
+/// The UI loop
+pub fn ui_loop(
+    command_tx: &Sender<Command>,
+    ui_run: Arc<AtomicBool>,
+) -> Result<(), Box<dyn Error>> {
+    // The user interface...
+    let mut ui = UI::new();
+    let _ = UI::set_up_screen();
+    loop {
+        ui.display(None);
+        if !ui_run.load(Ordering::SeqCst) {
+            break;
+        }
+
+        let command = match ui.get_command() {
+            Ok(c) => c,
+            Err(uierr) => match uierr {
+                UIError::BadChoice(_) => {
+                    eprintln!("{uierr}");
+                    continue;
+                }
+                UIError::Fatal(err) => return Err(err.into()),
+            },
+        };
+        command_tx.send(command.clone())?;
+        if command == Command::Quit {
+            break;
+        }
+        eprintln!("DBG recorder: After send command: {command:?}");
+    }
+    let _ = UI::cleanup_screen();
+    Ok(())
 }

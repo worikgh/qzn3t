@@ -5,17 +5,13 @@ use crate::app::App;
 use crate::app::AppData;
 use crate::io::Inputs;
 use crate::structs::Command;
+use crate::ui::ui_loop;
 use anyhow::Result; // TODO: Get rid of this
 use clap::Parser;
 use send_audio_to_jack::send_audo_to_jack;
 use std::error::Error;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc;
-use std::sync::mpsc::Sender;
 use structs::Args;
-use ui::{UI, UIError};
 mod app;
 mod errors;
 mod io;
@@ -24,37 +20,6 @@ mod send_audio_to_jack;
 mod structs;
 mod ui;
 mod utils;
-
-/// The UI loop
-fn ui_loop(command_tx: &Sender<Command>, ui_run: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    // The user interface...
-    let mut ui = UI::new();
-    let _ = UI::set_up_screen();
-    loop {
-        ui.display(None);
-        if !ui_run.load(Ordering::SeqCst) {
-            break;
-        }
-
-        let command = match ui.get_command() {
-            Ok(c) => c,
-            Err(uierr) => match uierr {
-                UIError::BadChoice(_) => {
-                    eprintln!("{uierr}");
-                    continue;
-                }
-                UIError::Fatal(err) => return Err(err.into()),
-            },
-        };
-        command_tx.send(command.clone())?;
-        if command == Command::Quit {
-            break;
-        }
-        eprintln!("DBG recorder: After send command: {command:?}");
-    }
-    let _ = UI::cleanup_screen();
-    Ok(())
-}
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
