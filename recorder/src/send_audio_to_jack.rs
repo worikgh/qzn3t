@@ -53,8 +53,8 @@ pub fn send_audo_to_jack(
                     Err(TryRecvError::Empty) => *sample = 0.0,
                     Err(TryRecvError::Disconnected) => {
                         *sample = 0.0;
-                        eprintln!(
-                            "Error compose: Disconnected from audio channel in create_out_port"
+                        println!(
+                            "Error recorder: Disconnected from audio channel in create_out_port"
                         );
                         return jack::Control::Quit;
                     }

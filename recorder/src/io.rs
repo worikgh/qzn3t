@@ -36,6 +36,7 @@ impl Inputs {
         &self.names
     }
 
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self { names: Vec::new() }
     }

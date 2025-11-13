@@ -1,25 +1,17 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use crate::app::App;
-use crate::app::AppData;
-use crate::io::Inputs;
-use crate::structs::Command;
-use crate::ui::ui_loop;
 use anyhow::Result; // TODO: Get rid of this
 use clap::Parser;
-use send_audio_to_jack::send_audo_to_jack;
+use qzn3t_recorder::app::App;
+use qzn3t_recorder::app::AppData;
+use qzn3t_recorder::io::Inputs;
+use qzn3t_recorder::send_audio_to_jack::send_audo_to_jack;
+use qzn3t_recorder::structs::Args;
+use qzn3t_recorder::structs::Command;
+use qzn3t_recorder::ui::ui_loop;
 use std::error::Error;
 use std::sync::mpsc;
-use structs::Args;
-mod app;
-mod errors;
-mod io;
-mod mixer;
-mod send_audio_to_jack;
-mod structs;
-mod ui;
-mod utils;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();

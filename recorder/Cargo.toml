@@ -1,5 +1,5 @@
 [package]
-name = "qznt-record"
+name = "qzn3t-record"
 version = "0.1.1"
 edition = "2024"
 
@@ -12,7 +12,11 @@ flac-encoder = "0.1.2"
 jack = "0.13.3"
 jack_rec = {path = "../jack_rec/"}
 
+[lib]
+name = "qzn3t_recorder"
+path = "src/lib.rs"
+
 
 [[bin]]
 name = "recorder"
-path = "src/main.rs"
+path = "src/recorder.rs"

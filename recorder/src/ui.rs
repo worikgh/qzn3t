@@ -38,6 +38,7 @@ pub struct UI {
     state: State,
 }
 impl UI {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             index: HashMap::new(),
@@ -186,6 +187,12 @@ impl UI {
         Ok(())
     }
 }
+
+// impl Default for UI {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
 /// Errors fo rthe user interface.  There are two sorts of error:
 /// UIFatal and UIBadChoice

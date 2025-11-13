@@ -8,6 +8,7 @@ pub struct AudioMixer {
 }
 
 impl AudioMixer {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
             clip_threshold: 0.9, // Start limiting before actual clipping
