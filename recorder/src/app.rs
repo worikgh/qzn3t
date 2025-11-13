@@ -11,9 +11,9 @@ use crate::utils::{audio_to_flac, get_sample_rate};
 use std::error::Error;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, mpsc};
 use std::thread::{JoinHandle, sleep, spawn};
+use std::time::Duration;
 #[allow(dead_code)]
 #[derive(Clone)]
 
@@ -132,30 +132,22 @@ impl AppData {
                 }
             };
             loop {
-                if !run_flag.load(Ordering::Relaxed) {
-                    break;
-                }
-                loop {
-                    match receiver.try_recv() {
-                        Ok(b) => audio_data.push(b),
-                        Err(e) => match e {
-                            TryRecvError::Empty =>
-                            // Got all data available
-                            {
+                match receiver.recv_timeout(Duration::from_millis(100)) {
+                    Ok(b) => audio_data.push(b),
+                    Err(e) => match e {
+                        mpsc::RecvTimeoutError::Timeout => {
+                            if !run_flag.load(Ordering::Relaxed) {
                                 break;
                             }
-                            TryRecvError::Disconnected =>
-                            // Broken channel
-                            {
-                                eprintln!(
-                                    "Error compose: audio data channel has become disconnected"
-                                );
-                                run_flag.store(true, Ordering::Relaxed)
-                            }
-                        },
-                    };
-                }
-                sleep(std::time::Duration::from_millis(100));
+                        }
+                        mpsc::RecvTimeoutError::Disconnected =>
+                        // Broken channel
+                        {
+                            eprintln!("Error compose: audio data channel has become disconnected");
+                            run_flag.store(false, Ordering::Relaxed)
+                        }
+                    },
+                };
             }
 
             async_jack_client.deactivate().unwrap();
