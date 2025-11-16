@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let (command_tx, command_rx) = mpsc::channel::<Command>();
 
     // The main programme runs in `App`
-    let mut app = App::new()?;
+    let mut app = App::new();
     let file_name = format!("{}/{}", args.directory, args.file_name);
 
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let app_data: AppData = app.initialise(
                 audio_tx,
                 command_rx,
-                inputs.names().first().unwrap().to_string(),
+                inputs.names().first().unwrap(),
                 file_name,
                 args.raw,
             )?;
@@ -49,8 +49,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         Some(k) => {
-            let mut cfg: AppData =
-                app.initialise(audio_tx, command_rx, args.input, file_name, args.raw)?;
+            let mut cfg: AppData = app.initialise(
+                audio_tx,
+                command_rx,
+                args.input.as_str(),
+                file_name,
+                args.raw,
+            )?;
             cfg.handle_kommand(k)?;
             Ok(())
         }

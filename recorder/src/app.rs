@@ -20,8 +20,9 @@ use std::time::Duration;
 /// Hold the code that runs the programme
 pub struct App;
 impl App {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
-        Ok(Self)
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self
     }
 
     /// Set up the environment to run in
@@ -29,7 +30,7 @@ impl App {
         &mut self,
         audio_tx: mpsc::Sender<f32>,
         command_rx: mpsc::Receiver<Command>,
-        port: String,
+        port: &str,
         file_name: String,
         use_raw: bool,
     ) -> Result<AppData, Box<dyn Error>> {
@@ -49,7 +50,7 @@ impl App {
             command_rx,
             audio_run,
             ui_run,
-            port_name: port,
+            port_name: port.to_string(),
             file_name,
             format: if use_raw {
                 AudioFormat::Raw
@@ -101,7 +102,7 @@ impl App {
 pub struct AppData {
     recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
-    audio_handle: Option<JoinHandle<Vec<f32>>>,
+    pub audio_handle: Option<JoinHandle<Result<Vec<f32>, RecorderError>>>,
     audio_tx: mpsc::Sender<f32>,
     command_rx: mpsc::Receiver<Command>,
     pub audio_run: Arc<AtomicBool>,
@@ -117,19 +118,25 @@ impl AppData {
         self.ui_run.store(false, Ordering::SeqCst);
     }
 
-    fn get_audio_from_jack(&mut self, port: String) -> Result<JoinHandle<Vec<f32>>, RecorderError> {
+    /// Spawn a thread to get data
+    fn get_audio_from_jack(
+        &mut self,
+        client: String,
+        port: String,
+    ) -> Result<JoinHandle<Result<Vec<f32>, RecorderError>>, RecorderError> {
         let run_flag = self.audio_run.clone();
-        Ok(spawn(move || -> Vec<f32> {
+        Ok(spawn(move || -> Result<Vec<f32>, RecorderError> {
             // Buffer and channel to get data on
             let mut audio_data: Vec<f32> = Vec::new();
 
             let (sender, receiver) = mpsc::channel::<f32>();
 
-            let async_jack_client = match run_port(port.clone(), sender, run_flag.clone()) {
+            let async_jack_client = match run_port(client, port, sender, run_flag.clone()) {
                 Ok(p) => p,
                 Err(err) => {
-                    eprintln!("Error composer: {err}: get audio from {port}");
-                    return vec![];
+                    eprintln!("Error recorder: {err}: get audio");
+                    return Err(err.into());
+                    //return vec![0.1];
                 }
             };
             loop {
@@ -152,7 +159,7 @@ impl AppData {
             }
 
             async_jack_client.deactivate().unwrap();
-            audio_data
+            Ok(audio_data)
         }))
     }
 
@@ -160,8 +167,10 @@ impl AppData {
         self.recorded_audio.truncate(0);
         self.audio_run.store(true, Ordering::SeqCst);
         let port = self.port_name.clone();
-        match self.get_audio_from_jack(port) {
-            Ok(handle) => self.audio_handle = Some(handle),
+        match self.get_audio_from_jack("qzn3t".to_string(), port) {
+            Ok(handle) => {
+                self.audio_handle = Some(handle);
+            }
             Err(err) => {
                 eprintln!("Error composer: Error from get_audio_from_jack");
                 return Err(err.into());
@@ -174,13 +183,20 @@ impl AppData {
     fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
         self.audio_run.store(false, Ordering::Relaxed);
-        if let Some(handle) = self.audio_handle.take()
-            && let Ok(audio_data) = handle.join()
-        {
-            eprintln!("DBG handle_audio_stop 3 len: {}", audio_data.len());
-            self.recorded_audio.extend(audio_data.iter());
+        if let Some(handle) = self.audio_handle.take() {
+            let j = handle.join();
+            match j {
+                Ok(Ok(audio_data)) => {
+                    println!("DBG handle_audio_stop  len: {}", audio_data.len());
+                    self.recorded_audio.extend(audio_data.iter());
+                    Ok(())
+                }
+                Ok(Err(recorder_error)) => Err(recorder_error.into()),
+                Err(err) => Err(format!("Error {err:?}").into()),
+            }
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 
     /// Play back the audio data
@@ -242,11 +258,12 @@ impl AppData {
                 self.handle_recording()?;
                 if let Some(h) = self.audio_handle.take() {
                     match h.join() {
-                        Ok(data) => {
+                        Ok(Ok(data)) => {
                             self.recorded_audio = data;
                             self.handle_save()?;
                             Ok(())
                         }
+                        Ok(Err(recorder_error)) => Err(recorder_error.into()),
                         Err(err) => Err(format!(
                             "Error qzn3t/composer: Failed getting data: {err:?}"
                         )
