@@ -38,10 +38,10 @@ impl App {
         let ui_run = Arc::new(AtomicBool::new(true));
         let r = audio_run.clone();
         ctrlc::set_handler(move || {
-            eprintln!("DBG qzn3t/composer: Received Ctrl-C, shutting down gracefully...");
+            eprintln!("DBG qzn3t/recorder: Received Ctrl-C, shutting down gracefully...");
             r.store(false, Ordering::Relaxed);
         })
-        .expect("Error qzn3t/composer: setting Ctrl-C handler");
+        .expect("Error qzn3t/recorder: setting Ctrl-C handler");
         Ok(AppData {
             recorded_audio: Vec::new(),
             audio_handle: None,
@@ -72,7 +72,7 @@ impl App {
                 let command = match config_app.command_rx.recv() {
                     Ok(s) => s,
                     Err(err) => {
-                        eprintln!("Error composer: Getting state: {err}");
+                        eprintln!("Error recorder: Getting state: {err}");
                         break;
                     }
                 };
@@ -91,7 +91,7 @@ impl App {
                     }
                 }
             }
-            eprintln!("DBG composer: Broken from main loop");
+            eprintln!("DBG recorder: Broken from main loop");
             Ok(())
         }); // Closure
         Ok(app_handle)
@@ -172,7 +172,7 @@ impl AppData {
                 self.audio_handle = Some(handle);
             }
             Err(err) => {
-                eprintln!("Error composer: Error from get_audio_from_jack");
+                eprintln!("Error recorder: Error from get_audio_from_jack");
                 return Err(err.into());
             }
         };
@@ -224,9 +224,9 @@ impl AppData {
     }
 
     /// Save the audio from the `recorded_audio` to a FLAC file
-    fn handle_save(&mut self) -> Result<(), RecorderError> {
+    pub fn handle_save(&mut self) -> Result<(), RecorderError> {
         eprintln!(
-            "DBG composer: Save to file name {}: {} samples.  AudioFormat: {:?}",
+            "DBG recorder: Save to file name {}: {} samples.  AudioFormat: {:?}",
             self.file_name,
             self.recorded_audio.len(),
             self.format,
@@ -265,15 +265,15 @@ impl AppData {
                         }
                         Ok(Err(recorder_error)) => Err(recorder_error.into()),
                         Err(err) => Err(format!(
-                            "Error qzn3t/composer: Failed getting data: {err:?}"
+                            "Error qzn3t/recorder: Failed getting data: {err:?}"
                         )
                         .into()),
                     }
                 } else {
-                    Err("Error qzn3t/composer: Failed to take record_handle".into())
+                    Err("Error qzn3t/recorder: Failed to take record_handle".into())
                 }
             }
-            _ => panic!("Error composer: -k {k:?} is not handled"),
+            _ => panic!("Error recorder: -k {k:?} is not handled"),
         }
     }
 
@@ -308,12 +308,12 @@ impl AppData {
                 }
 
                 if let Err(e) = tx.send(*i) {
-                    eprintln!("Error composer: Playing audio: {e}");
+                    eprintln!("Error recorder: Playing audio: {e}");
                     break;
                 }
                 sent += 1;
             }
-            eprintln!("DBG composer: Sent {sent}/{} samples", data.len());
+            eprintln!("DBG recorder: Sent {sent}/{} samples", data.len());
         });
         Ok(())
     }
