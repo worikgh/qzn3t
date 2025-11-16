@@ -100,7 +100,7 @@ impl App {
 
 /// Hold the data for the programme.
 pub struct AppData {
-    recorded_audio: Vec<f32>,
+    pub recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
     pub audio_handle: Option<JoinHandle<Result<Vec<f32>, RecorderError>>>,
     audio_tx: mpsc::Sender<f32>,
@@ -163,7 +163,7 @@ impl AppData {
         }))
     }
 
-    fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.truncate(0);
         self.audio_run.store(true, Ordering::SeqCst);
         let port = self.port_name.clone();
@@ -180,7 +180,7 @@ impl AppData {
     }
 
     /// The command: stop
-    fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
         self.audio_run.store(false, Ordering::Relaxed);
         if let Some(handle) = self.audio_handle.take() {
