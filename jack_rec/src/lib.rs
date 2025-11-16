@@ -44,7 +44,10 @@ pub fn run_port(
     let spec = jack::AudioIn;
     let inport = match client.register_port("input", spec) {
         Ok(p) => p,
-        Err(err) => panic!("Error jack_rec: Cannot create inport: {port}.  Err({err})"),
+        Err(err) => panic!(
+            "Error jack_rec: Cannot create inport: {}:input.  Err({err})",
+            client.name()
+        ),
     };
     let to_port = inport.name().as_ref().unwrap().to_string();
 
@@ -83,11 +86,15 @@ pub fn run_port(
     //     jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
     match active_client
         .as_client()
-        .connect_ports_by_name(port.as_str(), to_port.as_str())
+        .connect_ports_by_name(&port, to_port.as_str())
     {
         Ok(()) => (),
         Err(err) => {
-            eprintln!("qzn3t/jack_rec: Failed  {} '{err}'", to_port);
+            return Err(format!(
+                "qzn3t/jack_rec: Failed to connect {port} -> {} {err}",
+                to_port
+            )
+            .into());
         }
     }
     Ok(active_client)
