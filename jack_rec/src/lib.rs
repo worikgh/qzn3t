@@ -23,7 +23,9 @@ pub struct Description {
 #[allow(clippy::type_complexity)]
 /// Start a Jack client that reads audio data from `port` and sends
 /// them on `sender`.
+/// TODO: Add a parameter for the client name.
 pub fn run_port(
+    client: String,
     port: String,
     sender: mpsc::Sender<f32>,
     run_flag: Arc<AtomicBool>,
@@ -37,7 +39,8 @@ pub fn run_port(
     Box<dyn Error>,
 > {
     let (client, _status) =
-        jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
+        jack::Client::new(client.as_str(), jack::ClientOptions::NO_START_SERVER)
+            .expect("Client qzn3t");
     let spec = jack::AudioIn;
     let inport = match client.register_port("input", spec) {
         Ok(p) => p,

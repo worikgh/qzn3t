@@ -132,8 +132,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let name = name.replace('/', "_").to_string();
 
         let (sender, receiver) = mpsc::channel::<f32>();
-        let async_client = jack_rec::run_port(name.clone(), sender, kill_flag.clone())?;
         channels.insert(name.clone(), receiver);
+        let async_client =
+            jack_rec::run_port("qzn3t".to_string(), name, sender, kill_flag.clone())?;
         clients.push(async_client);
     }
 
