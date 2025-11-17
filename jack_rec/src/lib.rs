@@ -32,7 +32,8 @@ pub fn run_port(
 ) -> Result<
     jack::AsyncClient<
         Notifications,
-        jack::ClosureProcessHandler<
+        jack::contrib::ClosureProcessHandler<
+            (),
             impl FnMut(&jack::Client, &jack::ProcessScope) -> jack::Control,
         >,
     >,
@@ -41,7 +42,7 @@ pub fn run_port(
     let (client, _status) =
         jack::Client::new(client.as_str(), jack::ClientOptions::NO_START_SERVER)
             .expect("Client qzn3t");
-    let spec = jack::AudioIn;
+    let spec = jack::AudioIn::default();
     let inport = match client.register_port("input", spec) {
         Ok(p) => p,
         Err(err) => panic!(
@@ -77,13 +78,11 @@ pub fn run_port(
         //writer.flush().unwrap();
         jack::Control::Continue
     };
-    let process = jack::ClosureProcessHandler::new(process_callback);
+    let process = jack::contrib::ClosureProcessHandler::new(process_callback);
 
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, process).unwrap();
 
-    // let (client, _status) =
-    //     jack::Client::new("qzn3t", jack::ClientOptions::NO_START_SERVER).expect("Client qzn3t");
     match active_client
         .as_client()
         .connect_ports_by_name(&port, to_port.as_str())
