@@ -21,12 +21,12 @@ pub struct Description {
 }
 
 #[allow(clippy::type_complexity)]
-/// Start a Jack client that reads audio data from `port` and sends
-/// them on `sender`.
-/// TODO: Add a parameter for the client name.
+/// Start a Jack client named `client` that reads audio data from
+/// `jack_input` and sends them on `sender`.
 pub fn run_port(
     client: String,
-    port: String,
+    // TODO: Multi-channel.  This will need to be a collection of inputs
+    jack_input: String,
     sender: mpsc::Sender<f32>,
     run_flag: Arc<AtomicBool>,
 ) -> Result<
@@ -85,12 +85,12 @@ pub fn run_port(
 
     match active_client
         .as_client()
-        .connect_ports_by_name(&port, to_port.as_str())
+        .connect_ports_by_name(&jack_input, to_port.as_str())
     {
         Ok(()) => (),
         Err(err) => {
             return Err(format!(
-                "qzn3t/jack_rec: Failed to connect {port} -> {} {err}",
+                "qzn3t/jack_rec: Failed to connect {jack_input} -> {} {err}",
                 to_port
             )
             .into());
