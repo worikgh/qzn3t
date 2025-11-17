@@ -62,10 +62,10 @@ impl ProcessHandler for OutProcess {
 
         for (i, _) in (0..frames).enumerate() {
             if self.position >= samples.len() {
-                self.run_flag.store(false, Ordering::SeqCst);
+                dbg!(self.position, samples.len(), &self.run_flag);
                 self.position = 0;
-                println!("DBG Return from OutProcess: Position {}", self.position);
-                return Control::Continue;
+                self.run_flag.store(false, Ordering::SeqCst);
+                return Control::Quit;
             }
             let sample = samples[self.position];
             output[i] = sample;
@@ -76,6 +76,10 @@ impl ProcessHandler for OutProcess {
 }
 pub struct Notifications;
 impl jack::NotificationHandler for Notifications {}
+
+/// Create a source for testing.  Creates a client `client_name` with
+/// output port `port_name` and when the flag `run_flag` is set it
+/// sends the contents of `audio_buffer` to the pipe.
 fn make_jack_client_port(
     client_name: &str,
     port_name: &str,
@@ -87,7 +91,7 @@ fn make_jack_client_port(
             Ok(cs) => cs,
             Err(err) => panic!("Failed creating test client {client_name}: {err}"),
         };
-    let output = match client.register_port("outout", AudioOut::default()) {
+    let output = match client.register_port(port_name, AudioOut::default()) {
         Ok(p) => p,
         Err(err) => panic!("Cannot create output port {port_name} for client {client_name}. {err}"),
     };
@@ -120,14 +124,22 @@ fn play_note() {
     thread::sleep(Duration::from_millis(1_100));
 }
 
+// Tests todo:
+// `get_audio_from_jack` when the pipe is disconnected.
+
 /// Generate a sin vave in a buffer
-/// Send it to the recorder with a file and directory specified.
+/// Send it to the recorder from a Jackd client
+/// Test writing the data to a file
 /// Read the recorded buffer from the file system
 /// Compare it to original sin wave
 #[test]
 fn record_audio_to_file() {
+    // The test audio
     let audio_buffer = generate_sin_wave(220, 0.75, 48_000);
+
+    // Set this to start the test audio
     let run_flag = Arc::new(AtomicBool::new(false));
+
     let port = "output";
     let client_name = "integration_test";
     let ac = make_jack_client_port(client_name, port, audio_buffer.clone(), run_flag.clone());
@@ -135,34 +147,44 @@ fn record_audio_to_file() {
 
     // Set up recorder
     // These two channels will not be used but they are required to build `AppData`
-    // Channel to send audio data to Jackd
     let (audio_tx, _audio_rx) = mpsc::channel::<f32>();
-    // The app is controlled through a channel with the front end UI
     let (_command_tx, command_rx) = mpsc::channel::<Command>();
-    // The main programme runs in `App`
+
+    // Set up output file to save audio in
     let mut dir = temp_dir();
     dir.push("sinwave.raw");
     let file_name = match dir.as_path().to_str() {
         Some(f) => f,
         None => panic!("Cannot convert {dir:?} to string"),
     };
+
     let mut app = App::new();
+
     let mut app_data: AppData =
         match app.initialise(audio_tx, command_rx, &port_name, file_name.into(), true) {
             Ok(a) => a,
             Err(err) => panic!("Cannot initalise AppData: {err}"),
         };
+
     if let Err(err) = app_data.handle_recording() {
         panic!("Called handle_recording(): {err}");
     }
     // <Connect the port up to the recorder to test>
+
     run_flag.store(true, Ordering::SeqCst);
-    sleep(Duration::from_secs(1)); // Wait for sin wave to play
-    // Test that Jack Client has shut down.
-    assert!(!run_flag.load(Ordering::SeqCst));
+
+    // Wait for audio to stop
+    loop {
+        if !run_flag.load(Ordering::SeqCst) {
+            break;
+        }
+        sleep(Duration::from_millis(100));
+    }
+
     if let Err(err) = app_data.handle_audio_stop() {
         panic!("Could not stop audio: {err}");
     }
+
     let new_buffer = app_data.recorded_audio.clone();
 
     // Check recorded data is same as submitted data

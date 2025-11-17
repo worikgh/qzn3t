@@ -10,7 +10,7 @@ use jack::{Client, PortFlags};
 use crate::errors::RecorderError;
 
 pub struct Inputs {
-    names: Vec<String>,
+    port_names: Vec<String>,
 }
 
 /// Public interface
@@ -19,10 +19,10 @@ impl Inputs {
     pub fn add_input(&mut self, name: &str) -> Result<(), RecorderError> {
         match Self::validate_jack_input_pipe(name) {
             Ok(()) => {
-                if self.names.iter().any(|n| n == name) {
+                if self.port_names.iter().any(|n| n == name) {
                     Err(RecorderError::DuplicatePipeName(name.to_string()))
                 } else {
-                    self.names.push(name.to_string());
+                    self.port_names.push(name.to_string());
                     Ok(())
                 }
             }
@@ -33,12 +33,14 @@ impl Inputs {
     /// Get a copy of all the input names
     #[allow(dead_code)]
     pub fn names(&self) -> &Vec<String> {
-        &self.names
+        &self.port_names
     }
 
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
-        Self { names: Vec::new() }
+        Self {
+            port_names: Vec::new(),
+        }
     }
 }
 

@@ -2,12 +2,11 @@
 // License: GPL-3.0
 
 //! The main container for the programme
-use jack_rec::run_port;
-
 use crate::errors::RecorderError;
 use crate::mixer::AudioMixer;
 use crate::structs::{AudioFormat, Command};
 use crate::utils::{audio_to_flac, get_sample_rate};
+use jack_rec;
 use std::error::Error;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -50,7 +49,7 @@ impl App {
             command_rx,
             audio_run,
             ui_run,
-            port_name: port.to_string(),
+            jack_input: port.to_string(),
             file_name,
             format: if use_raw {
                 AudioFormat::Raw
@@ -102,14 +101,20 @@ impl App {
 pub struct AppData {
     pub recorded_audio: Vec<f32>,
     recorded_dub: Vec<f32>,
+    // TODO: Multi channel.  Need to return several channels at once
+    // in JoinHandle, or join a thread per channel and have a
+    // collection of handles.
     pub audio_handle: Option<JoinHandle<Result<Vec<f32>, RecorderError>>>,
+    // TODO: Multi channel.  Need a collection of channels.
     audio_tx: mpsc::Sender<f32>,
     command_rx: mpsc::Receiver<Command>,
     pub audio_run: Arc<AtomicBool>,
     pub ui_run: Arc<AtomicBool>,
-    port_name: String,
     file_name: String,
     format: AudioFormat,
+    // Identify the Jackd source to record from
+    // TODO: Multi-channel. There must be a collection of these
+    jack_input: String,
 }
 impl AppData {
     /// Stop all the processes
@@ -118,12 +123,14 @@ impl AppData {
         self.ui_run.store(false, Ordering::SeqCst);
     }
 
-    /// Spawn a thread to get data
+    /// Spawn a thread to get audio data from a Jack portdata
     fn get_audio_from_jack(
         &mut self,
-        client: String,
-        port: String,
+        // TODO: Multi-channel.  This should be a collection of
+        // client/port pairs for input
+        jack_input: String,
     ) -> Result<JoinHandle<Result<Vec<f32>, RecorderError>>, RecorderError> {
+        dbg!(&jack_input);
         let run_flag = self.audio_run.clone();
         Ok(spawn(move || -> Result<Vec<f32>, RecorderError> {
             // Buffer and channel to get data on
@@ -131,14 +138,17 @@ impl AppData {
 
             let (sender, receiver) = mpsc::channel::<f32>();
 
-            let async_jack_client = match run_port(client, port, sender, run_flag.clone()) {
+            dbg!("Here", &jack_input, &sender, &run_flag);
+            let client = "qzn3t/recorder".to_string();
+            let ac = match jack_rec::run_port(client, jack_input, sender, run_flag.clone()) {
                 Ok(p) => p,
                 Err(err) => {
                     eprintln!("Error recorder: {err}: get audio");
                     return Err(err.into());
-                    //return vec![0.1];
                 }
             };
+            dbg!(&ac);
+
             loop {
                 match receiver.recv_timeout(Duration::from_millis(100)) {
                     Ok(b) => audio_data.push(b),
@@ -152,13 +162,14 @@ impl AppData {
                         // Broken channel
                         {
                             eprintln!("Error compose: audio data channel has become disconnected");
-                            run_flag.store(false, Ordering::Relaxed)
+                            run_flag.store(false, Ordering::Relaxed);
+                            break;
                         }
                     },
                 };
             }
 
-            async_jack_client.deactivate().unwrap();
+            ac.deactivate().unwrap();
             Ok(audio_data)
         }))
     }
@@ -166,8 +177,10 @@ impl AppData {
     pub fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.truncate(0);
         self.audio_run.store(true, Ordering::SeqCst);
-        let port = self.port_name.clone();
-        match self.get_audio_from_jack("qzn3t".to_string(), port) {
+        let port = self.jack_input.clone();
+        // let client = "qzn3t".to_string();
+        dbg!(&port);
+        match self.get_audio_from_jack(port) {
             Ok(handle) => {
                 self.audio_handle = Some(handle);
             }
@@ -183,6 +196,9 @@ impl AppData {
     pub fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
         self.audio_run.store(false, Ordering::Relaxed);
+        // TODO: Multi-track.  Either JoinHandle that holds a
+        // collection of buffers or join a collectiion of JoinHandles
+        // one per channel
         if let Some(handle) = self.audio_handle.take() {
             let j = handle.join();
             match j {

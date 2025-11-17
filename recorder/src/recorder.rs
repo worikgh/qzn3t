@@ -15,7 +15,13 @@ use std::sync::mpsc;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
+
     let mut inputs = Inputs::new();
+    let input = &args.input;
+    let parts: Vec<&str> = input.split(':').collect();
+    if parts.len() != 2 {
+        return Err(Box::from("Input must be in the format 'client:port'"));
+    }
     inputs.add_input(&args.input)?;
 
     // Channel to send audio data to Jackd
