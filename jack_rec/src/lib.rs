@@ -14,6 +14,29 @@ impl jack::NotificationHandler for Notifications {
     }
 }
 
+pub struct OutProcess {
+    run_flag: Arc<AtomicBool>,
+    inport: jack::Port<jack::AudioIn>,
+    sender: mpsc::Sender<f32>,
+}
+impl jack::ProcessHandler for OutProcess {
+    fn process(&mut self, _c: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        // Called every time there is data available
+        let in_a_p: &[f32] = self.inport.as_slice(ps);
+        for v in in_a_p {
+            if let Err(err) = self.sender.send(*v) {
+                panic!("Error jack_rec: Cannot send data ({v}) through channel. Error: {err} ");
+            }
+        }
+        if !self.run_flag.load(Ordering::SeqCst) {
+            dbg!(&self.run_flag);
+            jack::Control::Quit
+        } else {
+            jack::Control::Continue
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct Description {
     pub sample_rate: usize,
@@ -29,16 +52,7 @@ pub fn run_port(
     jack_input: String,
     sender: mpsc::Sender<f32>,
     run_flag: Arc<AtomicBool>,
-) -> Result<
-    jack::AsyncClient<
-        Notifications,
-        jack::contrib::ClosureProcessHandler<
-            (),
-            impl FnMut(&jack::Client, &jack::ProcessScope) -> jack::Control,
-        >,
-    >,
-    Box<dyn Error>,
-> {
+) -> Result<jack::AsyncClient<Notifications, OutProcess>, Box<dyn Error>> {
     let (client, _status) =
         jack::Client::new(client.as_str(), jack::ClientOptions::NO_START_SERVER)
             .expect("Client qzn3t");
@@ -52,36 +66,13 @@ pub fn run_port(
     };
     let to_port = inport.name().as_ref().unwrap().to_string();
 
-    // Callback for Jack client
-    let process_callback = move |_jc: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        if !run_flag.load(Ordering::SeqCst) {
-            return jack::Control::Quit;
-        }
-        // Called every time there is data available
-        let in_a_p: &[f32] = inport.as_slice(ps);
-        let mut max = 0.0;
-        let mut min = 0.0;
-        for v in in_a_p {
-            if *v > max {
-                max = *v;
-            }
-            if *v < min {
-                min = *v;
-            }
-            if let Err(err) = sender.send(*v) {
-                panic!("Error jack_rec: Cannot send data ({v}) through channel. Error: {err} ");
-            }
-        }
-
-        // Is this needed?  No.  `writer` goes out ouf scope
-        // when the Jack client is shut down with `deactivate`
-        //writer.flush().unwrap();
-        jack::Control::Continue
+    let out_process = OutProcess {
+        run_flag: run_flag.clone(),
+        inport,
+        sender,
     };
-    let process = jack::contrib::ClosureProcessHandler::new(process_callback);
-
     // Activate the client, which starts the processing.
-    let active_client = client.activate_async(Notifications, process).unwrap();
+    let active_client = client.activate_async(Notifications, out_process).unwrap();
 
     match active_client
         .as_client()
