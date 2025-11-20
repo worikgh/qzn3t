@@ -11,6 +11,7 @@ ctrlc = "3.4"
 flac-encoder = "0.1.2"
 jack = "0.13.3"
 jack_rec = {path = "../jack_rec/"}
+qzn3t-pitch-detection = "0.4.3"
 
 [lib]
 name = "qzn3t_recorder"
@@ -20,3 +21,4 @@ path = "src/lib.rs"
 [[bin]]
 name = "recorder"
 path = "src/recorder.rs"
+
