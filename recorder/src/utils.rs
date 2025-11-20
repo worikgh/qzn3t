@@ -2,6 +2,7 @@
 // License: GPL-3.0
 use crate::errors::RecorderError;
 use jack::{Client, ClientOptions};
+/// Get the sample rate of the Jackd server
 pub fn get_sample_rate() -> usize {
     let (client, _status) = Client::new("SampleRateQuery", ClientOptions::default()).unwrap();
 

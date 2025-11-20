@@ -139,7 +139,7 @@ pub fn start_jack(
 
 /// Get data from from Jack on `rx` jack port and analyze its pitch.
 /// Send pitch data, continuously, on `tx`.  The configuration for the
-/// pitch detector is in `detector_cfg` and `kill_switch` is used to
+/// pitch detector is in `detector_cfg` and `kill_switch` is set to
 /// stop the process
 pub fn pitch_detection_run(
     tx: Sender<NoteDetectionResult>,
