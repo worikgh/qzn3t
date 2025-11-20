@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 file_name,
                 args.raw,
             )?;
-            let _out_port = send_audo_to_jack("output", audio_rx, app_data.audio_run.clone())?;
+            let _out_port = send_audo_to_jack("output", audio_rx, app_data.recorder_run.clone())?;
             let ui_run = app_data.ui_run.clone();
             let t = app.run(app_data)?;
 

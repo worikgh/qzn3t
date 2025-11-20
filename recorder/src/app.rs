@@ -11,7 +11,7 @@ use std::error::Error;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
-use std::thread::{JoinHandle, sleep, spawn};
+use std::thread;
 use std::time::Duration;
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -33,9 +33,9 @@ impl App {
         file_name: String,
         use_raw: bool,
     ) -> Result<AppData, Box<dyn Error>> {
-        let audio_run = Arc::new(AtomicBool::new(true));
+        let recorder_run = Arc::new(AtomicBool::new(true));
         let ui_run = Arc::new(AtomicBool::new(true));
-        let r = audio_run.clone();
+        let r = recorder_run.clone();
         ctrlc::set_handler(move || {
             eprintln!("DBG qzn3t/recorder: Received Ctrl-C, shutting down gracefully...");
             r.store(false, Ordering::Relaxed);
@@ -47,7 +47,7 @@ impl App {
             recorded_dub: Vec::new(),
             audio_tx,
             command_rx,
-            audio_run,
+            recorder_run,
             ui_run,
             jack_input: port.to_string(),
             file_name,
@@ -63,10 +63,10 @@ impl App {
     pub fn run(
         &mut self,
         mut config_app: AppData,
-    ) -> Result<JoinHandle<Result<(), RecorderError>>, Box<dyn Error>> {
+    ) -> Result<thread::JoinHandle<Result<(), RecorderError>>, Box<dyn Error>> {
         // The version of `self` used inside the loop
 
-        let app_handle = spawn(move || -> Result<(), RecorderError> {
+        let app_handle = thread::spawn(move || -> Result<(), RecorderError> {
             loop {
                 let command = match config_app.command_rx.recv() {
                     Ok(s) => s,
@@ -104,11 +104,11 @@ pub struct AppData {
     // TODO: Multi channel.  Need to return several channels at once
     // in JoinHandle, or join a thread per channel and have a
     // collection of handles.
-    pub audio_handle: Option<JoinHandle<Result<Vec<f32>, RecorderError>>>,
+    pub audio_handle: Option<thread::JoinHandle<Result<Vec<f32>, RecorderError>>>,
     // TODO: Multi channel.  Need a collection of channels.
     audio_tx: mpsc::Sender<f32>,
     command_rx: mpsc::Receiver<Command>,
-    pub audio_run: Arc<AtomicBool>,
+    pub recorder_run: Arc<AtomicBool>,
     pub ui_run: Arc<AtomicBool>,
     file_name: String,
     format: AudioFormat,
@@ -129,57 +129,62 @@ impl AppData {
         // TODO: Multi-channel.  This should be a collection of
         // client/port pairs for input
         jack_input: String,
-    ) -> Result<JoinHandle<Result<Vec<f32>, RecorderError>>, RecorderError> {
-        dbg!(&jack_input);
-        let run_flag = self.audio_run.clone();
-        Ok(spawn(move || -> Result<Vec<f32>, RecorderError> {
+    ) -> Result<thread::JoinHandle<Result<Vec<f32>, RecorderError>>, RecorderError> {
+        // Copy of the switch to turn the recorder off
+        let recorder_run = self.recorder_run.clone();
+
+        // Local switch that is set when recordr is ready and recording
+        let active_1 = Arc::new(AtomicBool::new(false));
+        let active_2 = active_1.clone();
+        let result = Ok(thread::spawn(move || -> Result<Vec<f32>, RecorderError> {
             // Buffer and channel to get data on
             let mut audio_data: Vec<f32> = Vec::new();
 
             let (sender, receiver) = mpsc::channel::<f32>();
 
-            dbg!("Here", &jack_input, &sender, &run_flag);
             let client = "qzn3t/recorder".to_string();
-            let ac = match jack_rec::run_port(client, jack_input, sender, run_flag.clone()) {
+            let ac = match jack_rec::run_port(client, jack_input, sender, recorder_run.clone()) {
                 Ok(p) => p,
                 Err(err) => {
                     eprintln!("Error recorder: {err}: get audio");
                     return Err(err.into());
                 }
             };
-            dbg!(&ac);
 
             loop {
-                match receiver.recv_timeout(Duration::from_millis(100)) {
-                    Ok(b) => audio_data.push(b),
-                    Err(e) => match e {
-                        mpsc::RecvTimeoutError::Timeout => {
-                            if !run_flag.load(Ordering::Relaxed) {
-                                break;
-                            }
-                        }
-                        mpsc::RecvTimeoutError::Disconnected =>
-                        // Broken channel
-                        {
-                            eprintln!("Error compose: audio data channel has become disconnected");
-                            run_flag.store(false, Ordering::Relaxed);
-                            break;
-                        }
-                    },
-                };
+                let itr = receiver.try_iter();
+                active_2.store(true, Ordering::SeqCst);
+                for b in itr {
+                    audio_data.push(b);
+                }
+                if !recorder_run.load(Ordering::Relaxed) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
             }
 
             ac.deactivate().unwrap();
             Ok(audio_data)
-        }))
+        }));
+        // Do not return until Jack client is active.  About 5ms in testing
+        let mut stuck_guard = 0;
+        const STUCK_LIMIT: u32 = 100;
+        while !active_1.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_millis(10));
+            stuck_guard += 1;
+            if stuck_guard == STUCK_LIMIT {
+                panic!("qzn3t/recorder Timed out creating Jack client");
+            }
+        }
+        result
     }
 
     pub fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.truncate(0);
-        self.audio_run.store(true, Ordering::SeqCst);
+        self.recorder_run.store(true, Ordering::SeqCst);
         let port = self.jack_input.clone();
         // let client = "qzn3t".to_string();
-        dbg!(&port);
+
         match self.get_audio_from_jack(port) {
             Ok(handle) => {
                 self.audio_handle = Some(handle);
@@ -195,7 +200,8 @@ impl AppData {
     /// The command: stop
     pub fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
-        self.audio_run.store(false, Ordering::Relaxed);
+
+        self.recorder_run.store(false, Ordering::Relaxed);
         // TODO: Multi-track.  Either JoinHandle that holds a
         // collection of buffers or join a collectiion of JoinHandles
         // one per channel
@@ -203,7 +209,6 @@ impl AppData {
             let j = handle.join();
             match j {
                 Ok(Ok(audio_data)) => {
-                    println!("DBG handle_audio_stop  len: {}", audio_data.len());
                     self.recorded_audio.extend(audio_data.iter());
                     Ok(())
                 }
@@ -217,7 +222,7 @@ impl AppData {
 
     /// Play back the audio data
     fn handle_review_record(&mut self) -> Result<(), Box<dyn Error>> {
-        self.audio_run.store(true, Ordering::Relaxed);
+        self.recorder_run.store(true, Ordering::Relaxed);
         self.play_audio(&self.recorded_audio)
     }
 
@@ -298,12 +303,12 @@ impl AppData {
         let tx = self.audio_tx.clone();
 
         // Flag to shut down playback from the UI
-        let audio_run = self.audio_run.clone();
+        let audio_run = self.recorder_run.clone();
 
         // Must copy the data so the playback is independant of the
         // original buffer remaining
         let data = data.to_vec();
-        spawn(move || {
+        thread::spawn(move || {
             let sample_rate = get_sample_rate();
 
             // Send a block of data every 100ms
@@ -319,7 +324,7 @@ impl AppData {
 
                 k += 1;
                 if k == blk_sz {
-                    sleep(std::time::Duration::from_millis(100));
+                    thread::sleep(std::time::Duration::from_millis(100));
                     k = 0;
                 }
 
