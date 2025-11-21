@@ -10,10 +10,11 @@ use std::path::PathBuf;
 #[command(version, about, long_about = None)]
 #[allow(dead_code)]
 pub struct Args {
-    /// Input Jack pipe to record (e.g., -i yoshimi:left).  Only one
-    /// at a tme (for now)
-    #[arg(short = 'i', long)]
-    pub input: String,
+    /// Input Jack pipe to record in format: `<client>:<port>`. Can be
+    /// given multiple times: `-i <client_a>:<port_a> -i
+    /// <client_b>:<port_b>`.
+    #[arg(short = 'i', long, action = clap::ArgAction::Append)]
+    pub input: Vec<String>,
 
     /// Backing track for immediate overdubbing
     #[arg(short = 'b', long)]
@@ -37,6 +38,19 @@ pub struct Args {
     pub kommand: Option<Command>,
 }
 
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            // Empty input will panic
+            input: Vec::new(),
+            backing_track: None,
+            directory: ".".to_string(),
+            file_name: "test.flac".to_string(),
+            raw: false,
+            kommand: None,
+        }
+    }
+}
 #[derive(Debug, Clone, ValueEnum, PartialEq, Hash, Eq)]
 #[allow(dead_code)]
 pub enum Command {

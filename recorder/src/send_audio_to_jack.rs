@@ -3,6 +3,7 @@
 
 //! Create a client ad a port that can be used to play audio
 
+use crate::errors::RecorderError;
 use jack::contrib::ClosureProcessHandler;
 use jack::{AudioOut, Client, ClientOptions};
 use std::sync::Arc;
@@ -35,9 +36,23 @@ pub fn send_audo_to_jack(
 
     // When this is set to false all data is ignored
     audio_run: Arc<AtomicBool>,
-) -> Result<impl std::any::Any, jack::Error> {
-    let (client, _status) = Client::new(CLIENT_NAME, ClientOptions::NO_START_SERVER)?;
-    let mut out_port = client.register_port(port_name, AudioOut::default())?;
+) -> Result<impl std::any::Any, RecorderError> {
+    let (client, _status) = match Client::new(CLIENT_NAME, ClientOptions::NO_START_SERVER) {
+        Ok(cs) => cs,
+        Err(err) => {
+            return Err(RecorderError::Generic(format!(
+                "Cannot create client {CLIENT_NAME}: {err}"
+            )));
+        }
+    };
+    let mut out_port = match client.register_port(port_name, AudioOut::default()) {
+        Ok(p) => p,
+        Err(err) => {
+            return Err(RecorderError::Generic(format!(
+                "Cannot register port {port_name} for {CLIENT_NAME}: {err}"
+            )));
+        }
+    };
     let mut state = AudioSenderState {
         audio_rx: data_channel,
     };
@@ -70,12 +85,30 @@ pub fn send_audo_to_jack(
     };
     let process_handler = ClosureProcessHandler::new(process_callback);
     let full_port_name = format!("{CLIENT_NAME}:{port_name}");
-    let active_client = client.activate_async((), process_handler)?;
-    active_client
+    let active_client = match client.activate_async((), process_handler) {
+        Ok(ac) => ac,
+        Err(err) => {
+            return Err(RecorderError::Generic(format!(
+                "Cannot activate client {CLIENT_NAME}: {err}"
+            )));
+        }
+    };
+    if let Err(err) = active_client
         .as_client()
-        .connect_ports_by_name(&full_port_name, "system:playback_1")?;
-    active_client
+        .connect_ports_by_name(&full_port_name, "system:playback_1")
+    {
+        return Err(RecorderError::Generic(format!(
+            "Cannot connect ports: {err}"
+        )));
+    }
+    if let Err(err) = active_client
         .as_client()
-        .connect_ports_by_name(&full_port_name, "system:playback_2")?;
+        .connect_ports_by_name(&full_port_name, "system:playback_2")
+    {
+        return Err(RecorderError::Generic(format!(
+            "Cannot connect ports: {err}"
+        )));
+    }
+
     Ok(active_client)
 }

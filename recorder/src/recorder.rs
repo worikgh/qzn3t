@@ -5,25 +5,26 @@ use anyhow::Result; // TODO: Get rid of this
 use clap::Parser;
 use qzn3t_recorder::app::App;
 use qzn3t_recorder::app::AppData;
+use qzn3t_recorder::errors::RecorderError;
 use qzn3t_recorder::io::Inputs;
 use qzn3t_recorder::send_audio_to_jack::send_audo_to_jack;
 use qzn3t_recorder::structs::Args;
 use qzn3t_recorder::structs::Command;
 use qzn3t_recorder::ui::ui_loop;
-use std::error::Error;
 use std::sync::mpsc;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-
+fn inner_main(args: Args) -> Result<(), RecorderError> {
     let mut inputs = Inputs::new();
-    let input = &args.input;
-    let parts: Vec<&str> = input.split(':').collect();
-    if parts.len() != 2 {
-        return Err(Box::from("Input must be in the format 'client:port'"));
+    if args.input.is_empty() {
+        return Err(RecorderError::NoInputs);
     }
-    inputs.add_input(&args.input)?;
-
+    for i in args.input.iter() {
+        let parts: Vec<&str> = i.split(':').collect();
+        if parts.len() != 2 {
+            return Err(RecorderError::InvalidPipeName(i.to_string()));
+        }
+        inputs.add_input(i)?;
+    }
     // Channel to send audio data to Jackd
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
 
@@ -55,12 +56,46 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut cfg: AppData = app.initialise(
                 audio_tx,
                 command_rx,
-                args.input.as_str(),
+                inputs.names().first().unwrap(),
                 file_name,
                 args.raw,
             )?;
             cfg.handle_kommand(k)?;
             Ok(())
         }
+    }
+}
+
+fn main() {
+    let args = Args::parse();
+    if let Err(err) = inner_main(args) {
+        panic!("Error in recorder: {err}");
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_no_input() {
+        let args = Args::default();
+        let test = inner_main(args);
+        assert!(matches!(test, Err(RecorderError::NoInputs)));
+    }
+
+    #[test]
+    fn invalid_input_pipe() {
+        let mut args = Args::default();
+        args.input.push("abcdefg".to_string());
+        let test = inner_main(args);
+        assert!(matches!(test, Err(RecorderError::InvalidPipeName(_))));
+    }
+
+    #[test]
+    fn non_exist_pipe() {
+        let mut args = Args::default();
+        args.input.push("abcdefg:1234".to_string());
+        let test = inner_main(args);
+        assert!(matches!(test, Err(RecorderError::PipeNotFound(_))));
     }
 }

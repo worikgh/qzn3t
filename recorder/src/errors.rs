@@ -10,32 +10,51 @@ use crate::structs::Command;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RecorderError {
+    // Command sent from UI to recorder is invalid
     BadCommand(Command),
+
+    // If a client cannot be created: Client/error
     CannotCreateClient(String, String),
-    DuplicatePipeName(String),
-    Generic(String), // For errors from other systems
-    InvalidOutputPipe(String),
-    InvalidPipeName(String),
+
+    // An error when deactivating a cleint
     DeactivateClientFailed(String),
+
+    // An input was defined twice
+    DuplicatePipeName(String),
+
+    // For errors from other systems
+    Generic(String),
+
+    // No inputs supplied
+    NoInputs,
+
+    // A pipe to act as input to recorder is not an output pipe
+    NotOutputPipe(String),
+
+    // The pipe name was invalid
+    InvalidPipeName(String),
+
+    // Cannot find the pipe
+    PipeNotFound(String),
 }
 impl fmt::Display for RecorderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecorderError::DuplicatePipeName(error)
-            | RecorderError::DeactivateClientFailed(error)
-            | RecorderError::InvalidPipeName(error)
-            | RecorderError::InvalidOutputPipe(error) => {
-                write!(f, "{self:?} Name {error}")
+            RecorderError::NoInputs => write!(f, "There are no input pipes supplied"),
+            RecorderError::DuplicatePipeName(name)
+            | RecorderError::InvalidPipeName(name)
+            | RecorderError::PipeNotFound(name)
+            | RecorderError::NotOutputPipe(name) => {
+                write!(f, "{self:?} Name {name}")
             }
+            RecorderError::DeactivateClientFailed(error) => write!(f, "{self:?}: Error: {error}"),
             RecorderError::CannotCreateClient(name, reason) => {
                 write!(f, "{self:?}: Name: {name}. Reason: {reason}")
             }
-            RecorderError::Generic(err) => {
-                write!(f, "{self:?}: {err}")
-            }
-            RecorderError::BadCommand(command) => {
-                write!(f, "{self:?}: Command: {command}")
-            }
+
+            RecorderError::Generic(err) => write!(f, "{self:?}: {err}"),
+
+            RecorderError::BadCommand(command) => write!(f, "{self:?}: Command: {command}"),
         }
     }
 }

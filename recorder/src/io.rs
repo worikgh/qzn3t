@@ -62,17 +62,20 @@ impl Inputs {
 
         // List all audio ports
         let ports = client.ports(None, Some("32 bit float mono audio"), PortFlags::empty());
+
+        // Check if `pipe` exists and is an output pipe (input to this
+        // is an output from another)
         if !ports.iter().any(|p| p == pipe) {
-            Err(RecorderError::InvalidPipeName(pipe.to_string()))
+            Err(RecorderError::PipeNotFound(pipe.to_string()))
         } else if let Some(port) = client.port_by_name(pipe) {
             let flags = port.flags();
             if flags.contains(PortFlags::IS_OUTPUT) {
                 Ok(())
             } else {
-                Err(RecorderError::InvalidOutputPipe(pipe.to_string()))
+                Err(RecorderError::NotOutputPipe(pipe.to_string()))
             }
         } else {
-            Err(RecorderError::InvalidPipeName(pipe.to_string()))
+            Err(RecorderError::PipeNotFound(pipe.to_string()))
         }
     }
 }
