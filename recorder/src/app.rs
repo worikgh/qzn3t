@@ -163,8 +163,11 @@ impl AppData {
                 thread::sleep(Duration::from_millis(10));
             }
 
-            ac.deactivate().unwrap();
-            Ok(audio_data)
+            if let Err(err) = ac.deactivate() {
+                Err(RecorderError::DeactivateClientFailed(format!("{err}")))
+            } else {
+                Ok(audio_data)
+            }
         }));
         // Do not return until Jack client is active.  About 5ms in testing
         let mut stuck_guard = 0;

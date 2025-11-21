@@ -16,14 +16,16 @@ pub enum RecorderError {
     Generic(String), // For errors from other systems
     InvalidOutputPipe(String),
     InvalidPipeName(String),
+    DeactivateClientFailed(String),
 }
 impl fmt::Display for RecorderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecorderError::DuplicatePipeName(name)
-            | RecorderError::InvalidPipeName(name)
-            | RecorderError::InvalidOutputPipe(name) => {
-                write!(f, "{self:?} Name {name}")
+            RecorderError::DuplicatePipeName(error)
+            | RecorderError::DeactivateClientFailed(error)
+            | RecorderError::InvalidPipeName(error)
+            | RecorderError::InvalidOutputPipe(error) => {
+                write!(f, "{self:?} Name {error}")
             }
             RecorderError::CannotCreateClient(name, reason) => {
                 write!(f, "{self:?}: Name: {name}. Reason: {reason}")

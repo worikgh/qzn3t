@@ -37,13 +37,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     match args.kommand {
         None => {
-            let app_data: AppData = app.initialise(
-                audio_tx,
-                command_rx,
-                inputs.names().first().unwrap(),
-                file_name,
-                args.raw,
-            )?;
+            // There must be inputs.  Checked in `Args::parse()`
+            let port = inputs.names().first().unwrap();
+            let app_data: AppData =
+                app.initialise(audio_tx, command_rx, port, file_name, args.raw)?;
             let _out_port = send_audo_to_jack("output", audio_rx, app_data.recorder_run.clone())?;
             let ui_run = app_data.ui_run.clone();
             let t = app.run(app_data)?;
