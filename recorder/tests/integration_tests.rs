@@ -2,14 +2,12 @@
 // License: GPL-3.0
 
 use jack::{AsyncClient, AudioOut, Client, Control, Port, ProcessHandler, ProcessScope};
-use qzn3t_pitch_detection::note_detection_result;
-use qzn3t_pitch_detection::runner;
 use qzn3t_recorder::{
     app::{App, AppData},
     structs::Command,
     utils::get_sample_rate,
 };
-use std::time::Instant;
+
 use std::{
     env::temp_dir,
     sync::{
@@ -202,16 +200,6 @@ fn record_audio() {
     let audio_buffer = generate_test_audio(220, 0.25, 1_000, WaveForm::Triangle);
     let audio_buffer = trim_audio(&audio_buffer);
 
-    // A pitch detector to get the pitch of the original and recorded audio
-    let (note_rx, audio_tx) = start_pitch_detection();
-
-    // Get frequency and RMS volume
-    let frequency = get_mean_pitch(&audio_buffer, &note_rx, &audio_tx);
-    let rms = (audio_buffer.iter().fold(0.0, |a, b| a + b * b) / audio_buffer.len() as f32).sqrt();
-
-    // // Set this to start the test audio
-    // let play_audio_flag = Arc::new(AtomicBool::new(false));
-
     let port_name = "output";
     let client_name = "integration_test";
     let (ac, play_audio_flag) = play_test_audio(client_name, port_name, &audio_buffer);
@@ -250,25 +238,13 @@ fn record_audio() {
     // Get data out of the recorder
     let new_buffer = trim_audio(&app_data.recorded_audio);
 
-    let new_duration_ms = (1_000 * new_buffer.len()) / sample_rate;
-    let duration_ms = (1_000 * audio_buffer.len()) / sample_rate;
-    assert_eq!(new_duration_ms, duration_ms);
+    // The buffers should be the same length
+    assert_eq!(audio_buffer.len(), new_buffer.len());
 
-    // Get pitch of the recorded data
-    let mean_freq_new = get_mean_pitch(&new_buffer, &note_rx, &audio_tx);
-
-    // Allow 1hz difference.  Pitch detection is not perfect
-    assert!((frequency - mean_freq_new).abs() < 1.0);
-
-    let rms_new = (new_buffer.iter().fold(0.0, |a, b| a + b * b) / new_buffer.len() as f32).sqrt();
-
-    // Test to two decimal points
-    let rms = (rms * 100.0).round() as u32;
-    let rms_new = (rms_new * 100.0).round() as u32;
-    assert_eq!(rms, rms_new);
-
-    // Always fail so output can be examined.  Remove this when the
-    // test is implemented properly
+    // The buffers should be the same exactly
+    for i in 0..audio_buffer.len() {
+        assert!((audio_buffer[i] - new_buffer[i]).abs() < f32::EPSILON);
+    }
 }
 
 // If the programme `jack-scope` is available use it to display an original wave and a recorded wave, for visual confirmation
@@ -401,66 +377,6 @@ fn display_audio() {
     }
     // Fail the test so the output is dislayed.
     panic![];
-}
-
-fn start_pitch_detection() -> (
-    mpsc::Receiver<note_detection_result::NoteDetectionResult>,
-    mpsc::Sender<f32>,
-) {
-    // A pitch detector to get the pitch of the sin wave
-    let (note_data_tx, note_data_rx) =
-        mpsc::channel::<note_detection_result::NoteDetectionResult>();
-    let (audio_data_tx, audio_data_rx) = mpsc::channel::<f32>();
-    let sample_rate = get_sample_rate() as u32;
-    let detector_cfg = runner::DetectorCfg {
-        sample_rate,
-        size: 16384,
-        padding: 1024,
-        power_threshold: 0.1,
-        clarity_threshold: 0.5,
-        detector: runner::Detector::McLeod,
-    };
-    let _jh = runner::pitch_detection_run(note_data_tx, audio_data_rx, &detector_cfg, None);
-    (note_data_rx, audio_data_tx)
-}
-
-fn get_mean_pitch(
-    audio_buffer: &[f32],
-    note_rx: &mpsc::Receiver<note_detection_result::NoteDetectionResult>,
-    audio_tx: &mpsc::Sender<f32>,
-) -> f32 {
-    let sample_rate = get_sample_rate();
-    // Clear the channel sending note results
-    while note_rx.try_recv().is_ok() {}
-
-    // Calculate the pitch
-    for a in audio_buffer.iter() {
-        if let Err(err) = audio_tx.send(*a) {
-            panic!("{err}");
-        }
-    }
-
-    // For the number of milli seconds the audio buffer is, loop detecting notes
-    let ms = audio_buffer.len() * 1_000 / sample_rate;
-    // Store the frequency readings.  this will be averaged.
-    let mut freqs = Vec::new();
-    let now = Instant::now();
-    loop {
-        if now.elapsed().as_millis() >= ms as u128 {
-            break;
-        }
-        let ndr = match note_rx.recv_timeout(Duration::from_millis((12 * ms / 10) as u64)) {
-            Ok(ndr) => ndr,
-            Err(mpsc::RecvTimeoutError::Timeout) => break,
-            Err(err) => panic!("{err}"),
-        };
-        freqs.push(ndr.actual_freq);
-    }
-    if freqs.is_empty() {
-        0_f32
-    } else {
-        freqs.iter().fold(0.0, |a, &b| a + b) / freqs.len() as f32
-    }
 }
 
 /// Remove leading and trailing zeros frm an audio buffer
