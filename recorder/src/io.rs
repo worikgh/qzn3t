@@ -9,13 +9,16 @@ use jack::{Client, PortFlags};
 
 use crate::errors::RecorderError;
 
+/// The information required for a Jack pipe to record.
+#[derive(Debug)]
 pub struct Inputs {
     port_names: Vec<String>,
 }
 
 /// Public interface
 impl Inputs {
-    /// Add an input to the collection
+    /// Add an input to the collection.  The port must be of the type
+    /// form "<client>:<port name>"
     pub fn add_input(&mut self, name: &str) -> Result<(), RecorderError> {
         match Self::validate_jack_input_pipe(name) {
             Ok(()) => {
@@ -31,7 +34,6 @@ impl Inputs {
     }
 
     /// Get a copy of all the input names
-    #[allow(dead_code)]
     pub fn names(&self) -> &Vec<String> {
         &self.port_names
     }
