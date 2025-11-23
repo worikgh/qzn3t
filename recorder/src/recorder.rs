@@ -80,6 +80,7 @@ mod tests {
     fn check_no_input() {
         let args = Args::default();
         let test = inner_main(args);
+        eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::NoInputs)));
     }
 
@@ -88,14 +89,35 @@ mod tests {
         let mut args = Args::default();
         args.input.push("abcdefg".to_string());
         let test = inner_main(args);
+        eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::InvalidPipeName(_))));
+    }
+
+    #[test]
+    fn invalid_pipe_type() {
+        let mut args = Args::default();
+        args.input.push("system:playback_1".to_string());
+        let test = inner_main(args);
+        eprintln!("{test:?}");
+        assert!(matches!(test, Err(RecorderError::NotOutputPipe(_))));
     }
 
     #[test]
     fn non_exist_pipe() {
         let mut args = Args::default();
-        args.input.push("abcdefg:1234".to_string());
+        args.input.push("asdfdg:1234".to_string());
         let test = inner_main(args);
+        eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::PipeNotFound(_))));
+    }
+
+    #[test]
+    fn duplicate_pipe() {
+        let mut args = Args::default();
+        args.input.push("system:capture_1".to_string());
+        args.input.push("system:capture_1".to_string());
+        let test = inner_main(args);
+        eprintln!("{test:?}");
+        assert!(matches!(test, Err(RecorderError::DuplicatePipeName(_))));
     }
 }
