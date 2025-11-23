@@ -81,3 +81,28 @@ impl Inputs {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_capture_add_valid_port() {
+        let port = "system:capture_1";
+        let mut inputs = Inputs::new();
+        inputs.add_input(port).unwrap();
+        eprintln!("{inputs:?}");
+        assert!(inputs.names().iter().find(|p| p.as_str() == port).is_some());
+    }
+
+    #[test]
+    fn list_capture_add_invalid_port() {
+        let port = "system_capture_1";
+        let mut inputs = Inputs::new();
+        eprintln!("{inputs:?}");
+        match inputs.add_input(port) {
+            Err(RecorderError::PipeNotFound(p)) => assert_eq!(p, port),
+            Err(err) => panic!("Unknown error: {err}"),
+            Ok(_) => panic!("Should not be able to add {port}"),
+        };
+    }
+}
