@@ -19,8 +19,14 @@ pub enum RecorderError {
     // An error when deactivating a cleint
     DeactivateClientFailed(String),
 
-    // An input was defined twice
-    DuplicatePipeName(String),
+    // A dupliacte ouput buffer.  The names must be unique
+    DuplicateBufferName(String),
+
+    // An input port was defined twice
+    DuplicateInput(String),
+
+    // An input port was defined twice with the same name
+    DuplicateInputName(String),
 
     // For errors from other systems
     Generic(String),
@@ -41,7 +47,9 @@ impl fmt::Display for RecorderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RecorderError::NoInputs => write!(f, "There are no input pipes supplied"),
-            RecorderError::DuplicatePipeName(name)
+            RecorderError::DuplicateBufferName(name)
+            | RecorderError::DuplicateInput(name)
+            | RecorderError::DuplicateInputName(name)
             | RecorderError::InvalidPipeName(name)
             | RecorderError::PipeNotFound(name)
             | RecorderError::NotOutputPipe(name) => {

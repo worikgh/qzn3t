@@ -3,54 +3,59 @@
 
 //! The main container for the programme
 use crate::errors::RecorderError;
-use crate::mixer::AudioMixer;
+use crate::io::{AudioBuffers, Inputs};
 use crate::structs::{AudioFormat, Command};
 use crate::utils::{audio_to_flac, get_sample_rate};
 use jack_rec;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
+use std::path::PathBuf;
+use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
-#[allow(dead_code)]
-#[derive(Clone)]
+
+static SET_HANDLER: Once = Once::new();
 
 /// Hold the code that runs the programme
 pub struct App;
 impl App {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self
-    }
 
     /// Set up the environment to run in
     pub fn initialise(
         &mut self,
         audio_tx: mpsc::Sender<f32>,
         command_rx: mpsc::Receiver<Command>,
-        port: &str,
-        file_name: String,
+        inputs: Inputs,
+        directory: PathBuf,
         use_raw: bool,
     ) -> Result<AppData, Box<dyn Error>> {
         let recorder_run = Arc::new(AtomicBool::new(true));
         let ui_run = Arc::new(AtomicBool::new(true));
         let r = recorder_run.clone();
-        ctrlc::set_handler(move || {
-            eprintln!("DBG qzn3t/recorder: Received Ctrl-C, shutting down gracefully...");
-            r.store(false, Ordering::Relaxed);
-        })
-        .expect("Error qzn3t/recorder: setting Ctrl-C handler");
+
+        // This has to be done so this function can be tested in parallel
+        SET_HANDLER.call_once(|| {
+            if let Err(err) = ctrlc::set_handler(move || {
+                eprintln!("DBG qzn3t/recorder: Received Ctrl-C, shutting down gracefully...");
+                r.store(false, Ordering::Relaxed);
+            }) {
+                panic!("Error qzn3t/recorder: setting Ctrl-C handler: {err}");
+            }
+        });
+
         Ok(AppData {
-            recorded_audio: Vec::new(),
+            recorded_audio: AudioBuffers::new(),
             audio_handle: None,
             recorded_dub: Vec::new(),
-            audio_tx,
+            audio_tx: vec![audio_tx],
             command_rx,
             recorder_run,
             ui_run,
-            jack_input: port.to_string(),
-            file_name,
+            inputs,
+            save_dir: directory,
             format: if use_raw {
                 AudioFormat::Raw
             } else {
@@ -98,23 +103,19 @@ impl App {
 }
 
 /// Hold the data for the programme.
+#[allow(dead_code)]
 pub struct AppData {
-    pub recorded_audio: Vec<f32>,
+    pub recorded_audio: AudioBuffers, 
     recorded_dub: Vec<f32>,
-    // TODO: Multi channel.  Need to return several channels at once
-    // in JoinHandle, or join a thread per channel and have a
-    // collection of handles.
-    pub audio_handle: Option<thread::JoinHandle<Result<Vec<f32>, RecorderError>>>,
+    pub audio_handle: Option<thread::JoinHandle<Result<AudioBuffers, RecorderError>>>,
     // TODO: Multi channel.  Need a collection of channels.
-    audio_tx: mpsc::Sender<f32>,
+    audio_tx: Vec<mpsc::Sender<f32>>,
     command_rx: mpsc::Receiver<Command>,
     pub recorder_run: Arc<AtomicBool>,
     pub ui_run: Arc<AtomicBool>,
-    file_name: String,
+    save_dir: PathBuf,
     format: AudioFormat,
-    // Identify the Jackd source to record from
-    // TODO: Multi-channel. There must be a collection of these
-    jack_input: String,
+    inputs: Inputs,
 }
 impl AppData {
     /// Stop all the processes
@@ -126,49 +127,66 @@ impl AppData {
     /// Spawn a thread to get audio data from a Jack portdata
     fn get_audio_from_jack(
         &mut self,
-        // TODO: Multi-channel.  This should be a collection of
-        // client/port pairs for input
-        jack_input: String,
-    ) -> Result<thread::JoinHandle<Result<Vec<f32>, RecorderError>>, RecorderError> {
+    ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
         // Copy of the switch to turn the recorder off
         let recorder_run = self.recorder_run.clone();
 
-        // Local switch that is set when recordr is ready and recording
+        // Local switch that is set when recorder is ready and recording
         let active_1 = Arc::new(AtomicBool::new(false));
         let active_2 = active_1.clone();
-        let result = Ok(thread::spawn(move || -> Result<Vec<f32>, RecorderError> {
-            // Buffer and channel to get data on
-            let mut audio_data: Vec<f32> = Vec::new();
 
-            let (sender, receiver) = mpsc::channel::<f32>();
+        let jack_ports = self.inputs.named_ports();
+        let result = Ok(thread::spawn(
+            move || -> Result<AudioBuffers, RecorderError> {
+                // Buffer and channel to get data on
+                let mut audio_data = AudioBuffers::new();
+                let mut audio_input_pipe = HashMap::new();
+                let mut senders = Vec::new();
+                let mut inputs = Vec::new();
+                for np in jack_ports.iter() {
+                    let name = np.0.as_str();
+                    let input = np.1.clone();
+                    audio_data.add_buffer(name, Vec::new())?;
 
-            let client = "qzn3t/recorder".to_string();
-            let ac = match jack_rec::run_port(client, jack_input, sender, recorder_run.clone()) {
-                Ok(p) => p,
-                Err(err) => {
-                    eprintln!("Error recorder: {err}: get audio");
-                    return Err(err.into());
+                    let (sender, receiver) = mpsc::channel::<f32>();
+                    audio_input_pipe.insert(name.to_string(), receiver);
+                    senders.push(sender);
+                    inputs.push(input);
                 }
-            };
 
-            loop {
-                let itr = receiver.try_iter();
-                active_2.store(true, Ordering::SeqCst);
-                for b in itr {
-                    audio_data.push(b);
-                }
-                if !recorder_run.load(Ordering::Relaxed) {
-                    break;
-                }
-                thread::sleep(Duration::from_millis(10));
-            }
+                let client = "qzn3t/recorder".to_string();
+                let ac = match jack_rec::run_port(client, inputs, senders, recorder_run.clone()) {
+                    Ok(p) => p,
+                    Err(err) => {
+                        eprintln!("Error recorder: {err}: get audio");
+                        return Err(err.into());
+                    }
+                };
 
-            if let Err(err) = ac.deactivate() {
-                Err(RecorderError::DeactivateClientFailed(format!("{err}")))
-            } else {
-                Ok(audio_data)
-            }
-        }));
+                loop {
+                    // Signal that this is running to caller (parent)
+                    active_2.store(true, Ordering::SeqCst);
+                    for pk in audio_input_pipe.iter() {
+                        let receiver = pk.1;
+                        let buffer: &mut Vec<f32> = audio_data.get_mut(pk.0).unwrap();
+                        let itr = receiver.try_iter();
+                        for b in itr {
+                            buffer.push(b);
+                        }
+                    }
+                    if !recorder_run.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(10));
+                }
+
+                if let Err(err) = ac.deactivate() {
+                    Err(RecorderError::DeactivateClientFailed(format!("{err}")))
+                } else {
+                    Ok(audio_data)
+                }
+            },
+        ));
         // Do not return until Jack client is active.  About 5ms in testing
         let mut stuck_guard = 0;
         const STUCK_LIMIT: u32 = 100;
@@ -183,12 +201,11 @@ impl AppData {
     }
 
     pub fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
-        self.recorded_audio.truncate(0);
-        self.recorder_run.store(true, Ordering::SeqCst);
-        let port = self.jack_input.clone();
-        // let client = "qzn3t".to_string();
+        self.recorded_audio.reset();
 
-        match self.get_audio_from_jack(port) {
+        self.recorder_run.store(true, Ordering::SeqCst);
+
+        match self.get_audio_from_jack() {
             Ok(handle) => {
                 self.audio_handle = Some(handle);
             }
@@ -205,14 +222,14 @@ impl AppData {
         // This ends the main loop
 
         self.recorder_run.store(false, Ordering::Relaxed);
-        // TODO: Multi-track.  Either JoinHandle that holds a
-        // collection of buffers or join a collectiion of JoinHandles
-        // one per channel
+        // JoinHandle holds a collection of buffers
         if let Some(handle) = self.audio_handle.take() {
             let j = handle.join();
             match j {
-                Ok(Ok(audio_data)) => {
-                    self.recorded_audio.extend(audio_data.iter());
+                Ok(Ok(mut audio_data)) => {
+                    for (n, b) in audio_data.iter_mut() {
+                        self.recorded_audio.add_buffer(n, b.to_vec())?;
+                    }
                     Ok(())
                 }
                 Ok(Err(recorder_error)) => Err(recorder_error.into()),
@@ -226,50 +243,52 @@ impl AppData {
     /// Play back the audio data
     fn handle_review_record(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorder_run.store(true, Ordering::Relaxed);
-        self.play_audio(&self.recorded_audio)
+        // This is possibly quite a big copy.  FIXME: There must be a
+        // better way
+        self.play_audio(self.recorded_audio.clone())
     }
 
     /// Play the contents of `recorded_audio` while recording separately
     fn handle_dubing(&mut self) -> Result<(), Box<dyn Error>> {
-        Ok(())
+        unimplemented!();
     }
 
     /// Mix `recorded_audio` and `recorded_dub` and play it back
     fn handle_dub_review(&mut self) -> Result<(), Box<dyn Error>> {
         // Mix together `recorded_audio` and `recorded_dub` and play it back
-        let mixer = AudioMixer::new();
-        let mixed = mixer.mix_buffers(&self.recorded_audio, &self.recorded_dub);
-        self.play_audio(&mixed)?;
-        Ok(())
+        unimplemented!();
     }
 
     fn handle_dub_accept(&mut self) -> Result<(), RecorderError> {
-        Ok(())
+        unimplemented!();
     }
 
     /// Save the audio from the `recorded_audio` to a FLAC file
     pub fn handle_save(&mut self) -> Result<(), RecorderError> {
-        eprintln!(
-            "DBG recorder: Save to file name {}: {} samples.  AudioFormat: {:?}",
-            self.file_name,
-            self.recorded_audio.len(),
-            self.format,
-        );
-        let data = match self.format {
-            AudioFormat::Flac => audio_to_flac(&self.recorded_audio)?,
-            AudioFormat::Raw => {
-                // The data as received from Jack.
-                unsafe {
-                    std::slice::from_raw_parts(
-                        self.recorded_audio.as_ptr() as *const u8,
-                        self.recorded_audio.len() * std::mem::size_of::<f32>(),
-                    )
+        for (name, audio_data) in self.recorded_audio.iter() {
+            eprintln!(
+                "DBG recorder: Save to file name {:?}/{}: {} samples.  AudioFormat: {:?}",
+                self.save_dir,
+                name,
+                audio_data.len(),
+                self.format,
+            );
+            let data = match self.format {
+                AudioFormat::Flac => audio_to_flac(audio_data)?,
+                AudioFormat::Raw => {
+                    // The data as received from Jack.
+                    unsafe {
+                        std::slice::from_raw_parts(
+                            audio_data.as_ptr() as *const u8,
+                            audio_data.len() * std::mem::size_of::<f32>(),
+                        )
+                    }
+                    .to_vec()
                 }
-                .to_vec()
-            }
-        };
-        fs::write(self.file_name.as_str(), &data)
-            .map_err(|err| RecorderError::Generic(err.to_string()))?;
+            };
+            let dest: PathBuf = self.save_dir.join(name);
+            fs::write(dest, &data).map_err(|err| RecorderError::Generic(err.to_string()))?;
+        }
         Ok(())
     }
 
@@ -302,7 +321,8 @@ impl AppData {
     }
 
     /// Send `recorded_audio` to the backend to play.
-    fn play_audio(&self, data: &[f32]) -> Result<(), Box<dyn Error>> {
+    fn play_audio(&self, audio: AudioBuffers) -> Result<(), Box<dyn Error>> {
+        // FIXME: Multi-channel.  A sender for each channel?
         let tx = self.audio_tx.clone();
 
         // Flag to shut down playback from the UI
@@ -310,7 +330,7 @@ impl AppData {
 
         // Must copy the data so the playback is independant of the
         // original buffer remaining
-        let data = data.to_vec();
+        // let data = data.to_vec();
         thread::spawn(move || {
             let sample_rate = get_sample_rate();
 
@@ -320,9 +340,17 @@ impl AppData {
 
             // Record how much data sent
             let mut sent = 0_usize;
-            for i in data.iter() {
+
+            for i in audio.iter() {
                 if !audio_run.load(Ordering::Relaxed) {
                     break;
+                }
+                for (j, d) in i.1.iter().enumerate() {
+                    if let Err(e) = tx[j].send(*d) {
+                        eprintln!("Error recorder: Playing audio: {e}");
+                        break;
+                    }
+                    sent += 1;
                 }
 
                 k += 1;
@@ -330,14 +358,8 @@ impl AppData {
                     thread::sleep(std::time::Duration::from_millis(100));
                     k = 0;
                 }
-
-                if let Err(e) = tx.send(*i) {
-                    eprintln!("Error recorder: Playing audio: {e}");
-                    break;
-                }
-                sent += 1;
+                eprintln!("DBG recorder: Sent {sent}/{} samples", i.1.len());
             }
-            eprintln!("DBG recorder: Sent {sent}/{} samples", data.len());
         });
         Ok(())
     }

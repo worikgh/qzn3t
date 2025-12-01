@@ -93,6 +93,7 @@ pub fn send_audo_to_jack(
             )));
         }
     };
+
     if let Err(err) = active_client
         .as_client()
         .connect_ports_by_name(&full_port_name, "system:playback_1")

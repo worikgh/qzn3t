@@ -4,6 +4,7 @@
 use jack::{AsyncClient, AudioOut, Client, Control, Port, ProcessHandler, ProcessScope};
 use qzn3t_recorder::{
     app::{App, AppData},
+    io::Inputs,
     structs::Command,
     utils::get_sample_rate,
 };
@@ -23,7 +24,7 @@ use std::{
 #[derive(Debug)]
 #[allow(dead_code)]
 enum WaveForm {
-    Sin,
+    Sine,
     Triangle,
     Square,
 }
@@ -44,8 +45,8 @@ fn generate_test_audio(
     let duration_samples = (duration_ms as u64 * sample_rate as u64) / 1_000;
     const PI: f32 = std::f32::consts::PI;
     match wave_form {
-        WaveForm::Sin => {
-            // sin(2πft)
+        WaveForm::Sine => {
+            // sine(2πft)
             let angular_frequency = 2.0 * PI * frequency as f32 / sample_rate as f32;
             (0..duration_samples)
                 .map(|i| (angular_frequency * i as f32).sin() * volume)
@@ -79,58 +80,72 @@ fn generate_test_audio(
         }
     }
 }
-// fn generate_test_audio(
-//     frequency: u16,
-//     volume: f32,
-//     sample_rate: u32,
-//     duration_ms: u32,
-//     wave_form: WaveForm,
-// ) -> Vec<f32> {
-//     let duration_samples = (duration_ms as u64 * sample_rate as u64) / 1_000;
-//     match wave_form {
-//         WaveForm::Sin => {
-//             let angular_frequency =
-//                 2.0 * std::f32::consts::PI * frequency as f32 / sample_rate as f32;
-
-//             (0..duration_samples)
-//                 .map(|i| (angular_frequency * i as f32).sin() * volume)
-//                 .collect()
-//         }
-//         wave_form => panic!("Unimplemented waveform: {wave_form:?}"),
-//     }
-// }
 
 /// A test client that plays an audio buffer when the `run_flag` is
 /// set.  It resets `run_flag` when it is finished.  It sets `active`
 /// on the first `process` invocation
 ///
 struct TestAudioOutProcess {
-    audio_buffer: Vec<f32>,
-    output: Port<AudioOut>,
+    audio_buffers: Vec<Vec<f32>>,
+    outputs: Vec<Port<AudioOut>>,
     position: usize,
     play_audio_flag: Arc<AtomicBool>,
-    active: Arc<AtomicBool>, // Set this when the first `process` invocation
+    active: Arc<AtomicBool>, // Set this on the first `process` invocation
 }
+
 impl ProcessHandler for TestAudioOutProcess {
     fn process(&mut self, _c: &Client, ps: &ProcessScope) -> Control {
-        self.active.store(true, Ordering::SeqCst);
-        let output = self.output.as_mut_slice(ps);
-        let frames = output.len();
-        let samples: &Vec<f32> = &self.audio_buffer;
+        // FIXME: Create a struct to hold the audio buffers and the
+        // output ports together
+        assert_eq!(self.audio_buffers.len(), self.outputs.len());
+        let olen = self.outputs.len();
 
-        for (i, _) in (0..frames).enumerate() {
-            if self.position >= samples.len() {
+        self.active.store(true, Ordering::SeqCst);
+
+        let mut outputs: Vec<&mut [f32]> = self
+            .outputs
+            .iter_mut()
+            .map(|o| o.as_mut_slice(ps))
+            .collect();
+
+        // The frame lengths must all be the same.
+        let frames: Vec<usize> = outputs.iter().map(|o| o.len()).collect();
+        assert!(
+            frames
+                .first()
+                .map(|first| frames.iter().all(|x| x == first))
+                .unwrap_or(false)
+        );
+        let frames: &usize = frames.first().unwrap();
+
+        // All the audi buffers must be the same length
+        assert!(
+            self.audio_buffers
+                .first()
+                .map(|first| self.audio_buffers.iter().all(|x| x.len() == first.len()))
+                .unwrap_or(false)
+        );
+        let slen = self.audio_buffers[0].len();
+
+        for j in 0..*frames {
+            if self.position >= slen {
                 self.position = 0;
                 self.play_audio_flag.store(false, Ordering::SeqCst);
             }
+
             if self.play_audio_flag.load(Ordering::SeqCst) {
-                let sample = samples[self.position];
-                output[i] = sample;
+                for (i, out) in outputs.iter_mut().enumerate().take(olen) {
+                    let sample = self.audio_buffers[i][self.position];
+                    out[j] = sample;
+                }
                 self.position += 1;
             } else {
-                output[i] = 0_f32;
+                for out in outputs.iter_mut() {
+                    out[j] = 0_f32;
+                }
             }
         }
+
         Control::Continue
     }
 }
@@ -138,14 +153,18 @@ pub struct Notifications;
 impl jack::NotificationHandler for Notifications {}
 
 /// Create a source for testing.  Creates a client `client_name` with
-/// output port `port_name` and when the flag `run_flag` is set it
-/// sends the contents of `audio_buffer` to the pipe.
+/// output port `port_name` and when the flag `play_audio_flag` is set
+/// it sends the contents of `audio_buffer` to the pipe.
 fn make_jack_client_port(
     client_name: &str,
-    port_name: &str,
-    audio_buffer: Vec<f32>,
+    port_names: Vec<&str>,
+    audio_buffers: Vec<Vec<f32>>,
     play_audio_flag: Arc<AtomicBool>,
 ) -> AsyncClient<Notifications, TestAudioOutProcess> {
+    // FIXME: Create a struct to hold theport names and the audio
+    // buffers
+    assert_eq!(port_names.len(), audio_buffers.len());
+
     // Do not return the active client until it has started
     let active_flag = Arc::new(AtomicBool::new(false));
 
@@ -154,14 +173,21 @@ fn make_jack_client_port(
             Ok(cs) => cs,
             Err(err) => panic!("Failed creating test client {client_name}: {err}"),
         };
-    let output = match client.register_port(port_name, AudioOut::default()) {
-        Ok(p) => p,
-        Err(err) => panic!("Cannot create output port {port_name} for client {client_name}. {err}"),
-    };
+
+    // The names of the ports to output data on
+    let outputs: Vec<jack::Port<jack::AudioOut>> = port_names
+        .iter()
+        .map(|p| match client.register_port(p, AudioOut::default()) {
+            Ok(p) => p,
+            Err(err) => {
+                panic!("Cannot create output port {p} for client {client_name}. {err}")
+            }
+        })
+        .collect();
 
     let out_process = TestAudioOutProcess {
-        audio_buffer,
-        output,
+        audio_buffers,
+        outputs,
         position: 0,
         play_audio_flag,
         active: active_flag.clone(),
@@ -188,10 +214,119 @@ fn make_jack_client_port(
 // Tests todo:
 // `get_audio_from_jack` when the pipe is disconnected.  Test the error
 
-/// Generate a sin wave in a buffer
+/// Generate a sine wave in a buffer
 /// Send it to the recorder from a Jackd client
 /// Check the recorded audio is essentially the same
-/// TODO: Why is it not exact?
+
+#[test]
+/// Multi-channel processing
+fn record_two_channels() {
+    // The test audio
+    let audio_duration_ms = 1;
+    let audio_buffer_sine = generate_test_audio(220, 0.25, audio_duration_ms, WaveForm::Sine);
+    let audio_buffer_sine = trim_audio(&audio_buffer_sine);
+    let audio_buffer_tri = generate_test_audio(220, 0.25, audio_duration_ms, WaveForm::Triangle);
+    let audio_buffer_tri = trim_audio(&audio_buffer_tri);
+
+    // Client to play the output
+    let port_sine = "sine-wave";
+    let port_sine_label = "Sine wave";
+    let port_tri = "tri-wave";
+    let port_tri_label = "Triangle wave";
+    let client_name = "integration_test";
+    let (ac, play_audio_flag) = play_test_audio(
+        client_name,
+        vec![port_sine, port_tri],
+        vec![&audio_buffer_sine, &audio_buffer_tri],
+        // vec![port_tri, port_sine],
+        // vec![&audio_buffer_tri, &audio_buffer_sine],
+    );
+
+    // Set up the recorder
+    // The inputs (Jack pipes to record) first
+    let mut inputs = Inputs::new();
+    let port_tri = format!("{}:{port_tri}", ac.as_client().name());
+    if let Err(err) = inputs.add_name(&port_tri, port_tri_label) {
+        panic!("{err}");
+    }
+    let port_sine = format!("{}:{port_sine}", ac.as_client().name());
+    if let Err(err) = inputs.add_name(&port_sine, port_sine_label) {
+        panic!("{err}");
+    }
+    let mut app_data = set_up_recorder_inputs(inputs);
+
+    // Start the recorder.
+    if let Err(err) = app_data.handle_recording() {
+        panic!("Called handle_recording(): {err}");
+    }
+
+    // Start the test signal
+    play_audio_flag.store(true, Ordering::SeqCst);
+
+    // Wait for audio to stop
+    thread::sleep(Duration::from_millis(audio_duration_ms as u64));
+    loop {
+        if !play_audio_flag.load(Ordering::SeqCst) {
+            break;
+        }
+        eprintln!("Waiting for audio to stop");
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    if let Err(err) = app_data.handle_audio_stop() {
+        panic!("Could not stop audio: {err}");
+    }
+
+    // Get two recorded buffers
+    dbg!(app_data.recorded_audio.keys().collect::<Vec<&String>>());
+    let rec_tri = app_data.recorded_audio.get(port_tri_label).unwrap();
+    eprintln!("Trim tri:");
+    let rec_tri = trim_audio(rec_tri);
+
+    let rec_sine = app_data.recorded_audio.get(port_sine_label).unwrap();
+    eprintln!("Trim sine:");
+    let rec_sine = trim_audio(rec_sine);
+
+    dbg!(rec_sine.len());
+    dbg!(audio_buffer_sine.len());
+    dbg!(rec_tri.len());
+    dbg!(audio_buffer_tri.len());
+
+    let mut result = true;
+
+    // The two buffers must be identical
+    if rec_sine.len() != audio_buffer_sine.len() {
+        eprintln!("Sine lengths differ");
+        result = false;
+    }
+    dbg!(&rec_sine[0..7]);
+    dbg!(&rec_tri[0..7]);
+    for i in 0..audio_buffer_sine.len().min(rec_sine.len()) {
+        eprintln!(
+            "Sine at {i} {:0.4}/{:0.4}",
+            rec_sine[i], audio_buffer_sine[i]
+        );
+        if (rec_sine[i] - audio_buffer_sine[i]).abs() > f32::EPSILON {
+            eprintln!("Sine differs at {i}");
+            result = false;
+            break;
+        }
+    }
+    if rec_tri.len() != audio_buffer_tri.len().min(rec_tri.len()) {
+        eprintln!("Triangle lengths differ");
+        result = false;
+    }
+
+    for i in 0..audio_buffer_tri.len().min(rec_tri.len()) {
+        if (rec_tri[i] - audio_buffer_tri[i]).abs() > f32::EPSILON {
+            eprintln!("Triangle differs at {i}");
+            result = false;
+            break;
+        }
+    }
+    assert!(result);
+}
+
 #[test]
 fn record_audio() {
     let sample_rate = get_sample_rate();
@@ -200,22 +335,17 @@ fn record_audio() {
     let audio_buffer = generate_test_audio(220, 0.25, 1_000, WaveForm::Triangle);
     let audio_buffer = trim_audio(&audio_buffer);
 
-    let port_name = "output";
+    let port_name = "out put"; // Spaces are allowed in pipe names.
     let client_name = "integration_test";
-    let (ac, play_audio_flag) = play_test_audio(client_name, port_name, &audio_buffer);
+    let (ac, play_audio_flag) = play_test_audio(client_name, vec![port_name], vec![&audio_buffer]);
     let port_name = format!("{}:{port_name}", ac.as_client().name());
-
     // Set up recorder
-    let mut app_data = set_up_recorder(&port_name);
+    let mut app_data = set_up_recorder(vec![port_name.clone()]);
 
     // Record data from `port_name`
     if let Err(err) = app_data.handle_recording() {
         panic!("Called handle_recording(): {err}");
     }
-
-    // FIXME: This should be a test (or `jack_rec` should be fixed to
-    // not return a handle until the client is ready)
-    // thread::sleep(Duration::from_secs(1));
 
     // Start the test signal
     play_audio_flag.store(true, Ordering::SeqCst);
@@ -236,7 +366,7 @@ fn record_audio() {
     }
 
     // Get data out of the recorder
-    let new_buffer = trim_audio(&app_data.recorded_audio);
+    let new_buffer = trim_audio(app_data.recorded_audio.get(port_name.as_str()).unwrap());
 
     // The buffers should be the same length
     assert_eq!(audio_buffer.len(), new_buffer.len());
@@ -258,11 +388,11 @@ fn display_audio() {
     let test_audio = generate_test_audio(110, 0.42, 10_500, WaveForm::Triangle);
     let port_name = "output";
     let client_name = "integration_test";
-    let (ac, play_audio_flag) = play_test_audio(client_name, port_name, &test_audio);
+    let (ac, play_audio_flag) = play_test_audio(client_name, vec![port_name], vec![&test_audio]);
     let port_name = format!("{}:{port_name}", ac.as_client().name());
 
     // Set up the recorder to test and start recording
-    let mut app_data = set_up_recorder(&port_name);
+    let mut app_data = set_up_recorder(vec![port_name]);
     if let Err(err) = app_data.handle_recording() {
         panic!("Called handle_recording(): {err}");
     }
@@ -291,10 +421,14 @@ fn display_audio() {
     let port_name = "output";
     let client_name_1 = "origanal_audio";
     let client_name_2 = "recorded_audio";
-    let (ac_1, play_audio_flag_1) = play_test_audio(client_name_1, port_name, &test_audio);
+    let (ac_1, play_audio_flag_1) =
+        play_test_audio(client_name_1, vec![port_name], vec![&test_audio]);
     let port_name_1 = format!("{}:{port_name}", ac_1.as_client().name());
-    let (ac_2, play_audio_flag_2) =
-        play_test_audio(client_name_2, port_name, &app_data.recorded_audio);
+    let (ac_2, play_audio_flag_2) = play_test_audio(
+        client_name_2,
+        vec![port_name],
+        vec![app_data.recorded_audio.get(&port_name_1).unwrap()],
+    );
     let port_name_2 = format!("{}:{port_name}", ac_2.as_client().name());
 
     // Start the scope
@@ -394,34 +528,44 @@ fn trim_audio(audio_buffer: &[f32]) -> Vec<f32> {
         }
     }
     // Remove trailing zeros
+    let mut dbg = 0;
     while result.last().is_some_and(|&x| x.abs() < f32::EPSILON) {
         result.pop();
+        dbg += 1;
     }
+    eprintln!("Trimmed {dbg} trailing zeros");
     result
 }
 
-/// Set up the recorder for use
-fn set_up_recorder(port_name: &str) -> AppData {
+/// Seting up the recorder for testing
+fn set_up_recorder_inputs(inputs: Inputs) -> AppData {
     // Set up recorder
     // These two channels will not be used but they are required to build `AppData`
     let (_audio_tx, _audio_rx) = mpsc::channel::<f32>();
     let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
-    // Set up output file to save audio in Not used in this test but
+    // Set up output directory to save audio in Not used in this test but
     // there must be an output file for a `recorder`
     let mut dir = temp_dir();
-    dir.push("sinwave.raw");
-    let file_name = match dir.as_path().to_str() {
+    dir.push("sinewave.raw");
+    let directory = match dir.as_path().to_str() {
         Some(f) => f,
         None => panic!("Cannot convert {dir:?} to string"),
     };
 
-    let mut app = App::new();
-
-    match app.initialise(_audio_tx, _command_rx, port_name, file_name.into(), true) {
+    let mut app = App;
+    match app.initialise(_audio_tx, _command_rx, inputs, directory.into(), true) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     }
+}
+
+fn set_up_recorder(port_names: Vec<String>) -> AppData {
+    let mut inputs = Inputs::new();
+    for p in port_names.iter() {
+        inputs.add(p).unwrap();
+    }
+    set_up_recorder_inputs(inputs)
 }
 
 /// Output some audio through a new Jack client.  Return the async
@@ -430,8 +574,8 @@ fn set_up_recorder(port_name: &str) -> AppData {
 /// will stop the audio playing)
 fn play_test_audio(
     client_name: &str,
-    port_name: &str,
-    audio_buffer: &[f32],
+    port_names: Vec<&str>,
+    audio_data: Vec<&[f32]>,
 ) -> (
     AsyncClient<Notifications, TestAudioOutProcess>,
     Arc<AtomicBool>,
@@ -441,8 +585,11 @@ fn play_test_audio(
 
     let ac = make_jack_client_port(
         client_name,
-        port_name,
-        audio_buffer.to_vec(),
+        port_names,
+        audio_data
+            .iter()
+            .map(|b| b.to_vec())
+            .collect::<Vec<Vec<f32>>>(),
         play_audio_flag.clone(),
     );
     (ac, play_audio_flag)

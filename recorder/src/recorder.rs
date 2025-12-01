@@ -23,7 +23,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
         if parts.len() != 2 {
             return Err(RecorderError::InvalidPipeName(i.to_string()));
         }
-        inputs.add_input(i)?;
+        inputs.add(i)?;
     }
     // Channel to send audio data to Jackd
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
@@ -32,16 +32,18 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
     let (command_tx, command_rx) = mpsc::channel::<Command>();
 
     // The main programme runs in `App`
-    let mut app = App::new();
-    let file_name = format!("{}/{}", args.directory, args.file_name);
+    let mut app = App;
 
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     match args.kommand {
         None => {
-            // There must be inputs.  Checked in `Args::parse()`
-            let port = inputs.names().first().unwrap();
-            let app_data: AppData =
-                app.initialise(audio_tx, command_rx, port, file_name, args.raw)?;
+            let app_data: AppData = app.initialise(
+                audio_tx,
+                command_rx,
+                inputs,
+                args.directory.into(),
+                args.raw,
+            )?;
             let _out_port = send_audo_to_jack("output", audio_rx, app_data.recorder_run.clone())?;
             let ui_run = app_data.ui_run.clone();
             let t = app.run(app_data)?;
@@ -56,8 +58,8 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
             let mut cfg: AppData = app.initialise(
                 audio_tx,
                 command_rx,
-                inputs.names().first().unwrap(),
-                file_name,
+                inputs,
+                args.directory.into(),
                 args.raw,
             )?;
             cfg.handle_kommand(k)?;
@@ -118,6 +120,6 @@ mod tests {
         args.input.push("system:capture_1".to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
-        assert!(matches!(test, Err(RecorderError::DuplicatePipeName(_))));
+        assert!(matches!(test, Err(RecorderError::DuplicateInput(_))));
     }
 }

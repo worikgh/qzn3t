@@ -2,6 +2,8 @@
 // License: GPL-3.0
 
 //! Mix audio signals together.  This is barely started.
+
+use crate::io::AudioBuffers;
 pub struct AudioMixer {
     clip_threshold: f32,
     use_soft_clip: bool,
@@ -16,21 +18,16 @@ impl AudioMixer {
         }
     }
 
-    /// Mix two buffers into one
-    pub fn mix_buffers(&self, left_in: &[f32], right_in: &[f32]) -> Vec<f32> {
-        let max_len = if left_in.len() > right_in.len() {
-            left_in.len()
-        } else {
-            right_in.len()
-        };
+    /// Mix two buffers into one.
+    pub fn mix_buffers(&self, audio_buffers: &AudioBuffers) -> Vec<f32> {
+        let max_len = audio_buffers.iter().fold(0, |a, b| a.max(b.1.len()));
         let mut mixed = vec![0.0f32; max_len];
 
         // Sum all buffers
-        for (i, sample) in left_in.iter().enumerate() {
-            mixed[i] = *sample;
-        }
-        for (i, sample) in right_in.iter().enumerate() {
-            mixed[i] += *sample;
+        for (_, data) in audio_buffers.iter() {
+            for (i, sample) in data.iter().enumerate() {
+                mixed[i] += *sample;
+            }
         }
 
         // Apply clipping protection

@@ -16,16 +16,18 @@ impl jack::NotificationHandler for Notifications {
 
 pub struct OutProcess {
     run_flag: Arc<AtomicBool>,
-    inport: jack::Port<jack::AudioIn>,
-    sender: mpsc::Sender<f32>,
+    inports: Vec<jack::Port<jack::AudioIn>>,
+    senders: Vec<mpsc::Sender<f32>>,
 }
 impl jack::ProcessHandler for OutProcess {
     fn process(&mut self, _c: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
         // Called every time there is data available
-        let in_a_p: &[f32] = self.inport.as_slice(ps);
-        for v in in_a_p {
-            if let Err(err) = self.sender.send(*v) {
-                panic!("Error jack_rec: Cannot send data ({v}) through channel. Error: {err} ");
+        for i in 0..self.inports.len() {
+            let in_a_p: &[f32] = self.inports[i].as_slice(ps);
+            for v in in_a_p {
+                if let Err(err) = self.senders[i].send(*v) {
+                    panic!("Error jack_rec: Cannot send data ({v}) through channel {i}. Error: {err} ");
+                }
             }
         }
         if !self.run_flag.load(Ordering::SeqCst) {
@@ -49,42 +51,50 @@ pub struct Description {
 pub fn run_port(
     client: String,
     // TODO: Multi-channel.  This will need to be a collection of inputs
-    jack_input: String,
-    sender: mpsc::Sender<f32>,
+    jack_input: Vec<String>,
+    senders: Vec<mpsc::Sender<f32>>,
     run_flag: Arc<AtomicBool>,
 ) -> Result<jack::AsyncClient<Notifications, OutProcess>, Box<dyn Error>> {
     let (client, _status) =
         jack::Client::new(client.as_str(), jack::ClientOptions::NO_START_SERVER)
             .expect("Client qzn3t");
     let spec = jack::AudioIn::default();
-    let inport = match client.register_port("input", spec) {
-        Ok(p) => p,
-        Err(err) => panic!(
-            "Error jack_rec: Cannot create inport: {}:input.  Err({err})",
-            client.name()
-        ),
-    };
-    let to_port = inport.name().as_ref().unwrap().to_string();
-
+    let inports = jack_input
+        .iter()
+        .map(|ip| match client.register_port(ip, spec) {
+            Ok(p) => p,
+            Err(err) => panic!(
+                "Error jack_rec: Cannot create inport: {}:input.  Err({err})",
+                client.name()
+            ),
+        })
+        .collect::<Vec<jack::Port<jack::AudioIn>>>();
+    let inport_names = inports
+        .iter()
+        .map(|p| p.name().as_ref().unwrap().to_string())
+        .collect::<Vec<String>>();
     let out_process = OutProcess {
         run_flag: run_flag.clone(),
-        inport,
-        sender,
+        inports,
+        senders,
     };
     // Activate the client, which starts the processing.
     let active_client = client.activate_async(Notifications, out_process).unwrap();
-
-    match active_client
-        .as_client()
-        .connect_ports_by_name(&jack_input, to_port.as_str())
-    {
-        Ok(()) => (),
-        Err(err) => {
-            return Err(format!(
-                "qzn3t/jack_rec: Failed to connect {jack_input} -> {} {err}",
-                to_port
-            )
-            .into());
+    assert_eq!(jack_input.len(), inport_names.len());
+    for i in 0..jack_input.len() {
+        let source_port = &jack_input[i];
+        let destination_port = &inport_names[i];
+        match active_client
+            .as_client()
+            .connect_ports_by_name(source_port, destination_port)
+        {
+            Ok(()) => (),
+            Err(err) => {
+                return Err(format!(
+                    "qzn3t/jack_rec: Failed to connect {source_port} -> {destination_port} {err}",
+                )
+                .into());
+            }
         }
     }
     Ok(active_client)

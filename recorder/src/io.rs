@@ -4,6 +4,8 @@
 //! Structures and code to maintain the input and output buffers and
 //! processes
 
+use std::collections::HashMap;
+
 /// The inputs.  Audio to record. Controls the Jack inputs.
 use jack::{Client, PortFlags};
 
@@ -12,44 +14,68 @@ use crate::errors::RecorderError;
 /// The information required for a Jack pipe to record.
 #[derive(Debug)]
 pub struct Inputs {
-    port_names: Vec<String>,
+    ports: Vec<String>,
+    names_ports: HashMap<String, String>,
 }
 
 /// Public interface
 impl Inputs {
-    /// Add an input to the collection.  The port must be of the type
-    /// form "<client>:<port name>"
-    pub fn add_input(&mut self, name: &str) -> Result<(), RecorderError> {
-        match Self::validate_jack_input_pipe(name) {
-            Ok(()) => {
-                if self.port_names.iter().any(|n| n == name) {
-                    Err(RecorderError::DuplicatePipeName(name.to_string()))
-                } else {
-                    self.port_names.push(name.to_string());
-                    Ok(())
-                }
-            }
-            Err(err) => Err(err),
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            ports: Vec::new(),
+            names_ports: HashMap::new(),
+        }
+    }
+
+    /// Add an input to the collection with a default name.  The port
+    /// must be of the type form "<client>:<port name>"
+    pub fn add(&mut self, port: &str) -> Result<(), RecorderError> {
+        self.add_name(port, port)
+    }
+
+    /// Add an input to the collection with a defined name.  The port
+    /// must be of the type form "<client>:<port name>"
+    pub fn add_name(&mut self, port: &str, name: &str) -> Result<(), RecorderError> {
+        eprintln!("add_name {port} {name}");
+        Self::validate_jack_input_pipe(port)?;
+        if self.ports.iter().any(|n| n == port) {
+            Err(RecorderError::DuplicateInput(port.to_string()))
+        } else if self.names_ports.iter().any(|pn| pn.0 == name) {
+            Err(RecorderError::DuplicateInputName(name.to_string()))
+        } else {
+            self.ports.push(port.to_string());
+            self.names_ports.insert(name.to_string(), port.to_string());
+            Ok(())
         }
     }
 
     /// Get a copy of all the input names
-    pub fn names(&self) -> &Vec<String> {
-        &self.port_names
+    pub fn ports(&self) -> Vec<String> {
+        self.ports.clone()
     }
 
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            port_names: Vec::new(),
-        }
+    /// Get a copy of the named ports
+    pub fn named_ports(&self) -> HashMap<String, String> {
+        self.names_ports.clone()
     }
 }
 
 /// Private interface
 impl Inputs {
-    /// An input to this programme is a Jack 32-bit audio output pipe
+    /// An input to this programme is the name of a Jack 32-bit audio
+    /// output pipe.  It is of the form: "<client>:<pipe name>"
     fn validate_jack_input_pipe(pipe: &str) -> Result<(), RecorderError> {
+        // Check form of `pipe`
+        if let Some(n) = pipe.find(":") {
+            // There is a ":" character in `pipe`.  It must not be the first character
+            if n == 0 {
+                return Err(RecorderError::InvalidPipeName(pipe.to_string()));
+            }
+        } else {
+            // No client:port
+            return Err(RecorderError::InvalidPipeName(pipe.to_string()));
+        }
         // Create a temporary client for port discovery
         let client_name = "port_lister";
         let (client, _) = match Client::new(client_name, jack::ClientOptions::NO_START_SERVER) {
@@ -81,6 +107,102 @@ impl Inputs {
         }
     }
 }
+
+/// Recorded data.  Named buffers.
+#[derive(Clone, Debug)]
+pub struct AudioBuffers {
+    buffers: HashMap<String, Vec<f32>>,
+}
+
+/// Public interface
+impl AudioBuffers {
+    pub fn add_buffer(&mut self, name: &str, buffer: Vec<f32>) -> Result<(), RecorderError> {
+        match self.buffers.get_mut(name) {
+            Some(_) => Err(RecorderError::DuplicateBufferName(name.into())),
+            None => {
+                _ = self.buffers.insert(name.into(), buffer);
+                Ok(())
+            }
+        }
+    }
+    pub fn reset(&mut self) {
+        for b in self.iter_mut() {
+            b.1.truncate(0);
+        }
+    }
+}
+
+/// Iterators
+impl AudioBuffers {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            buffers: HashMap::new(),
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<f32>)> {
+        self.buffers.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Vec<f32>)> {
+        self.buffers.iter_mut()
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.buffers.keys()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &Vec<f32>> {
+        self.buffers.values()
+    }
+
+    pub fn insert(&mut self, name: String, data: Vec<f32>) {
+        self.buffers.insert(name, data);
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Vec<f32>> {
+        self.buffers.get(name)
+    }
+
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut Vec<f32>> {
+        self.buffers.get_mut(name)
+    }
+}
+
+/* --------------------------------------------------------------- */
+/* Consuming iterator – implements `IntoIterator` for the struct.  */
+impl IntoIterator for AudioBuffers {
+    type Item = (String, Vec<f32>);
+    type IntoIter = std::collections::hash_map::IntoIter<String, Vec<f32>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffers.into_iter()
+    }
+}
+
+/* --------------------------------------------------------------- */
+/* Borrowed iterator – implements `IntoIterator` for `&OutputBuffers`. */
+impl<'a> IntoIterator for &'a AudioBuffers {
+    type Item = (&'a String, &'a Vec<f32>);
+    type IntoIter = std::collections::hash_map::Iter<'a, String, Vec<f32>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffers.iter()
+    }
+}
+
+/* --------------------------------------------------------------- */
+/* Mutable borrowed iterator – implements `IntoIterator` for `&mut OutputBuffers`. */
+impl<'a> IntoIterator for &'a mut AudioBuffers {
+    type Item = (&'a String, &'a mut Vec<f32>);
+    type IntoIter = std::collections::hash_map::IterMut<'a, String, Vec<f32>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.buffers.iter_mut()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,18 +211,19 @@ mod tests {
     fn list_capture_add_valid_port() {
         let port = "system:capture_1";
         let mut inputs = Inputs::new();
-        inputs.add_input(port).unwrap();
-        eprintln!("{inputs:?}");
-        assert!(inputs.names().iter().find(|p| p.as_str() == port).is_some());
+        inputs.add(port).unwrap();
+        dbg!(&inputs, port);
+        assert!(inputs.ports().iter().any(|p| p.as_str() == port));
     }
 
     #[test]
     fn list_capture_add_invalid_port() {
         let port = "system_capture_1";
         let mut inputs = Inputs::new();
-        eprintln!("{inputs:?}");
-        match inputs.add_input(port) {
-            Err(RecorderError::PipeNotFound(p)) => assert_eq!(p, port),
+        match inputs.add(port) {
+            Err(RecorderError::InvalidPipeName(p)) | Err(RecorderError::PipeNotFound(p)) => {
+                assert_eq!(p, port)
+            }
             Err(err) => panic!("Unknown error: {err}"),
             Ok(_) => panic!("Should not be able to add {port}"),
         };

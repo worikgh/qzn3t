@@ -24,10 +24,6 @@ pub struct Args {
     #[arg(short = 'd', long, default_value = ".")]
     pub directory: String,
 
-    /// Output file name
-    #[arg(short = 'f', long, default_value = "test.flac")]
-    pub file_name: String,
-
     /// Write audio as raw.  Defaults to using FLAC
     #[arg(short = 'r', long, default_value_t = false)]
     pub raw: bool,
@@ -45,7 +41,6 @@ impl Default for Args {
             input: Vec::new(),
             backing_track: None,
             directory: ".".to_string(),
-            file_name: "test.flac".to_string(),
             raw: false,
             kommand: None,
         }
