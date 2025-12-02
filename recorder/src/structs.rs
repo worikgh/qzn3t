@@ -6,13 +6,18 @@ use clap::ValueEnum;
 use std::fmt;
 use std::path::PathBuf;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[command(version, about, long_about = None)]
 #[allow(dead_code)]
 pub struct Args {
+    /// Input Jack pipe to record from with an optional name
+    ///
     /// Input Jack pipe to record in format: `<client>:<port>`. Can be
     /// given multiple times: `-i <client_a>:<port_a> -i
-    /// <client_b>:<port_b>`.
+    /// <client_b>:<port_b>`.  The port can be specified as `-i
+    /// Cclient>:<port>:<name>` where <name> will be used to identify
+    /// the port.  If the name is not specified the name is
+    /// `<client>:<port>`
     #[arg(short = 'i', long, action = clap::ArgAction::Append)]
     pub input: Vec<String>,
 

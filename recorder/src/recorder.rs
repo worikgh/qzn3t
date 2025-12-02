@@ -20,10 +20,17 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
     }
     for i in args.input.iter() {
         let parts: Vec<&str> = i.split(':').collect();
-        if parts.len() != 2 {
+        if parts.len() < 2 || parts.len() > 3 {
             return Err(RecorderError::InvalidPipeName(i.to_string()));
+        } else if parts.len() == 2 {
+            inputs.add(i)?;
+        } else {
+            let client = parts[0];
+            let port = parts[1];
+            let name = parts[2];
+            let client_port = format!("{client}:{port}");
+            inputs.add_name(&client_port, &name)?;
         }
-        inputs.add(i)?;
     }
     // Channel to send audio data to Jackd
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
