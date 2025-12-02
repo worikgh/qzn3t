@@ -86,12 +86,16 @@ pub fn get_results(
 	),
     };
     let detector_cfg = DetectorCfg {
-	sample_rate:
-	size: 16384,
-	padding: 1024,
-	power_threshold: 0.1,
-	clarity_threshold: 0.5,
-	detector: Detector::McLeod,
+        sample_rate: audio_dst_client
+            .as_client()
+            .sample_rate()
+            .try_into()
+            .unwrap(),
+        size: 16384,
+        padding: 1024,
+        power_threshold: 0.1,
+        clarity_threshold: 0.5,
+        detector: Detector::McLeod,
     };
 
     let pd_handle = pitch_detection_run(tx, rx_f32, &detector_cfg, Some(kill_switch.clone()));
