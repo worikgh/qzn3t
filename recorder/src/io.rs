@@ -12,7 +12,7 @@ use jack::{Client, PortFlags};
 use crate::errors::RecorderError;
 
 /// The information required for a Jack pipe to record.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Inputs {
     ports: Vec<String>,
     names_ports: HashMap<String, String>,
@@ -26,6 +26,31 @@ impl Inputs {
             ports: Vec::new(),
             names_ports: HashMap::new(),
         }
+    }
+
+    /// Using the strings from the command line `-i` add input pipes.
+    pub fn from_command_line(input_pipes: Vec<String>) -> Result<Self, RecorderError> {
+        let mut inputs = Self::new();
+        if input_pipes.is_empty() {
+            return Err(RecorderError::NoInputs);
+        }
+
+        for i in input_pipes.iter() {
+            let parts: Vec<&str> = i.split(':').collect();
+            if parts.len() < 2 || parts.len() > 3 {
+                return Err(RecorderError::InvalidPipeName(i.to_string()));
+            } else if parts.len() == 2 {
+                inputs.add(i)?;
+            } else {
+                let client = parts[0];
+                let port = parts[1];
+                let name = parts[2];
+                let client_port = format!("{client}:{port}");
+                inputs.add_name(&client_port, name)?;
+            }
+        }
+
+        Ok(inputs)
     }
 
     /// Add an input to the collection with a default name.  The port
@@ -224,8 +249,18 @@ mod tests {
             Err(RecorderError::InvalidPipeName(p)) | Err(RecorderError::PipeNotFound(p)) => {
                 assert_eq!(p, port)
             }
-            Err(err) => panic!("Unknown error: {err}"),
+            Err(err) => panic!("Got error: {err}"),
             Ok(_) => panic!("Should not be able to add {port}"),
         };
+    }
+
+    #[test]
+    fn add_port_with_name() {
+        let port = "system:capture_1".to_string();
+        let name = "Capture One";
+        let portv = vec![format!("{port}:{name}")];
+        let inputs = Inputs::from_command_line(portv).unwrap();
+        assert_eq!(inputs.ports()[0], port);
+        assert_eq!(inputs.names_ports.get(name), Some(&port));
     }
 }
