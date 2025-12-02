@@ -21,8 +21,12 @@ pub struct Args {
     pub backing_track: Option<PathBuf>,
 
     /// Directory to write files to
-    #[arg(short = 'd', long, default_value = ".")]
-    pub directory: String,
+    ///
+    /// Directory to write files to.  If specified raw files will be
+    /// written to the specified channel containing the raw audio for
+    /// each input.
+    #[arg(short = 'd', long)]
+    pub directory: Option<String>,
 
     /// Write audio as raw.  Defaults to using FLAC
     #[arg(short = 'r', long, default_value_t = false)]
@@ -34,18 +38,6 @@ pub struct Args {
     pub kommand: Option<Command>,
 }
 
-impl Default for Args {
-    fn default() -> Self {
-        Self {
-            // Empty input will panic
-            input: Vec::new(),
-            backing_track: None,
-            directory: ".".to_string(),
-            raw: false,
-            kommand: None,
-        }
-    }
-}
 #[derive(Debug, Clone, ValueEnum, PartialEq, Hash, Eq)]
 #[allow(dead_code)]
 pub enum Command {

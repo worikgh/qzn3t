@@ -41,7 +41,11 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
                 audio_tx,
                 command_rx,
                 inputs,
-                args.directory.into(),
+                if args.directory.is_some() {
+                    Some(args.directory.as_ref().unwrap().into())
+                } else {
+                    None
+                },
                 args.raw,
             )?;
             let _out_port = send_audo_to_jack("output", audio_rx, app_data.recorder_run.clone())?;
@@ -59,7 +63,11 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
                 audio_tx,
                 command_rx,
                 inputs,
-                args.directory.into(),
+                if args.directory.is_some() {
+                    Some(args.directory.as_ref().unwrap().into())
+                } else {
+                    None
+                },
                 args.raw,
             )?;
             cfg.handle_kommand(k)?;

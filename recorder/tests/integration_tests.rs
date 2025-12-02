@@ -554,7 +554,7 @@ fn set_up_recorder_inputs(inputs: Inputs) -> AppData {
     };
 
     let mut app = App;
-    match app.initialise(_audio_tx, _command_rx, inputs, directory.into(), true) {
+    match app.initialise(_audio_tx, _command_rx, inputs, Some(directory.into()), true) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     }

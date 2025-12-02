@@ -22,14 +22,13 @@ static SET_HANDLER: Once = Once::new();
 /// Hold the code that runs the programme
 pub struct App;
 impl App {
-
     /// Set up the environment to run in
     pub fn initialise(
         &mut self,
         audio_tx: mpsc::Sender<f32>,
         command_rx: mpsc::Receiver<Command>,
         inputs: Inputs,
-        directory: PathBuf,
+        directory: Option<PathBuf>,
         use_raw: bool,
     ) -> Result<AppData, Box<dyn Error>> {
         let recorder_run = Arc::new(AtomicBool::new(true));
@@ -113,7 +112,7 @@ pub struct AppData {
     command_rx: mpsc::Receiver<Command>,
     pub recorder_run: Arc<AtomicBool>,
     pub ui_run: Arc<AtomicBool>,
-    save_dir: PathBuf,
+    save_dir: Option<PathBuf>,
     format: AudioFormat,
     inputs: Inputs,
 }
@@ -265,6 +264,7 @@ impl AppData {
 
     /// Save the audio from the `recorded_audio` to a FLAC file
     pub fn handle_save(&mut self) -> Result<(), RecorderError> {
+        assert!(self.save_dir.is_some());
         for (name, audio_data) in self.recorded_audio.iter() {
             eprintln!(
                 "DBG recorder: Save to file name {:?}/{}: {} samples.  AudioFormat: {:?}",
@@ -286,7 +286,8 @@ impl AppData {
                     .to_vec()
                 }
             };
-            let dest: PathBuf = self.save_dir.join(name);
+            // `self.save_dir` is not `None`
+            let dest: PathBuf = self.save_dir.as_ref().unwrap().join(name);
             fs::write(dest, &data).map_err(|err| RecorderError::Generic(err.to_string()))?;
         }
         Ok(())
