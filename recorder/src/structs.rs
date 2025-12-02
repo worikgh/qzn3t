@@ -11,14 +11,11 @@ use std::path::PathBuf;
 #[allow(dead_code)]
 pub struct Args {
     /// Input Jack pipe to record from with an optional name
-    ///
-    /// Input Jack pipe to record in format: `<client>:<port>`. Can be
-    /// given multiple times: `-i <client_a>:<port_a> -i
-    /// <client_b>:<port_b>`.  The port can be specified as `-i
-    /// Cclient>:<port>:<name>` where <name> will be used to identify
-    /// the port.  If the name is not specified the name is
-    /// `<client>:<port>`
-    #[arg(short = 'i', long, action = clap::ArgAction::Append)]
+    #[arg(short = 'i', long, action = clap::ArgAction::Append, long_help = "Input Jack pipe to record from with an optional name\n\n\
+		    Input Jack pipe to record in format: `<client>:<port>`. Can be given multiple\n\
+		    times: `-i <client_a>:<port_a> -i <client_b>:<port_b>`. The port can be\n\
+		    specified as `-i <client>:<port>:<name>` where <name> will be used to identify\n\
+		    the port. If the name is not specified the name is `<client>:<port>`")]
     pub input: Vec<String>,
 
     /// Backing track for immediate overdubbing
@@ -27,10 +24,15 @@ pub struct Args {
 
     /// Directory to write files to
     ///
-    /// Directory to write files to.  If specified raw files will be
-    /// written to the specified channel containing the raw audio for
-    /// each input.
-    #[arg(short = 'd', long)]
+    /// Directory to write files to.  If specified raw files will be written to the \n\
+    /// specified channel containing the raw audio for each input.
+    #[arg(
+        short = 'd',
+        long,
+        long_help = "Directory to write files to\n\n\
+Directory to write files to.  If specified raw files will be written to the \n\
+specified channel containing the raw audio for each input."
+    )]
     pub directory: Option<String>,
 
     /// Write audio as raw.  Defaults to using FLAC
