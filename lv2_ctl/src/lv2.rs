@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 //! Definition of an LV2 simulator as defined in the Turtle files
 use crate::mod_host_controller::ModHostController;
 use crate::port::ControlPortProperties;
@@ -12,7 +15,7 @@ use std::io::Lines;
 use std::io::Result;
 /// Process LV2 descriptions and simulators
 use std::io::StdinLock;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 
 /// The assembled simulator with all the data necessary to load it

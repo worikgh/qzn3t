@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use crate::lv2_simulator::Lv2Simulator;
 use crate::lv2_simulator::Status;
 /// Display LV2 simulators and select/deselect them
@@ -31,9 +34,9 @@ impl Lv2StatefulList {
             .iter()
             .enumerate()
             .map(|t| Lv2Simulator {
-               name: t.1 .0.clone(),
+               name: t.1.0.clone(),
                status: Status::Unloaded,
-               url: t.1 .1.clone(),
+               url: t.1.1.clone(),
                mh_id: t.0, // This is used as mod-host to communicate with loaded simulator
             })
             .collect(),

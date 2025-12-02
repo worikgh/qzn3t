@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Ok(0) =>
             // EOF
             {
-                break
+                break;
             }
             Err(e) => return Err(Box::new(e)),
             Ok(2..) => panic!("Cannot happen"),

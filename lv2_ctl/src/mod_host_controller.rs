@@ -1,3 +1,6 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use crate::lv2::Lv2;
 use crate::run_executable::rem_trail_0;
 use std::collections::HashSet;
@@ -48,7 +51,7 @@ impl ModHostController {
       let resp = match self.output_rx.recv() {
          Ok(t) => t,
          Err(err) => {
-            return Err(io::Error::new(io::ErrorKind::Other, err.to_string()))
+            return Err(io::Error::new(io::ErrorKind::Other, err.to_string()));
          }
       };
 

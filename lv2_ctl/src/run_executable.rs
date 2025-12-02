@@ -1,6 +1,9 @@
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use std::io::{Read, Write};
 use std::process::{ChildStdout, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::{thread, time};
 
 /// Remove the zero bytes from the end of a`resp`
@@ -17,16 +20,18 @@ fn read_child_stdout(
    mut child_stdout: ChildStdout,
    output_tx: Sender<Vec<u8>>,
 ) {
-   thread::spawn(move || loop {
-      let mut output_data = [0; 1024];
-      match child_stdout.read(&mut output_data) {
-         Ok(n) => {
-            if n > 0 {
-               output_tx.send(output_data.to_vec()).unwrap()
+   thread::spawn(move || {
+      loop {
+         let mut output_data = [0; 1024];
+         match child_stdout.read(&mut output_data) {
+            Ok(n) => {
+               if n > 0 {
+                  output_tx.send(output_data.to_vec()).unwrap()
+               }
             }
-         }
-         Err(err) => panic!("{err}: Failed reading ChileStdout"),
-      };
+            Err(err) => panic!("{err}: Failed reading ChileStdout"),
+         };
+      }
    });
 }
 

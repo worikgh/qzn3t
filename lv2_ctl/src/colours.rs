@@ -1,5 +1,8 @@
-use ratatui::style::palette::tailwind;
+// Copyright (c) 2025 Worik Turei Stanton
+// License: GPL-3.0
+
 use ratatui::style::Color;
+use ratatui::style::palette::tailwind;
 pub const HEADER_BG: Color = tailwind::BLUE.c950;
 pub const NORMAL_ROW_COLOR: Color = tailwind::SLATE.c950;
 pub const ALT_ROW_COLOR: Color = tailwind::SLATE.c900;

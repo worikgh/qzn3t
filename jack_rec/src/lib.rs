@@ -26,7 +26,9 @@ impl jack::ProcessHandler for OutProcess {
             let in_a_p: &[f32] = self.inports[i].as_slice(ps);
             for v in in_a_p {
                 if let Err(err) = self.senders[i].send(*v) {
-                    panic!("Error jack_rec: Cannot send data ({v}) through channel {i}. Error: {err} ");
+                    panic!(
+                        "Error jack_rec: Cannot send data ({v}) through channel {i}. Error: {err} "
+                    );
                 }
             }
         }

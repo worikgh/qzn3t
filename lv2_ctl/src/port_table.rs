@@ -6,11 +6,11 @@
 //use crate::lv2::ModHostController;
 use crate::port::Port;
 use ratatui::layout::Constraint;
-use ratatui::style::palette::tailwind;
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::style::Stylize;
+use ratatui::style::palette::tailwind;
 use ratatui::text::Text;
 use ratatui::widgets::Cell;
 use ratatui::widgets::HighlightSpacing;
@@ -64,10 +64,9 @@ pub fn port_table<'a>(ports: &[Port]) -> Table<'a> {
    });
 
    // Find the longest name for assigning space in row
-   let ln_name =
-      ports
-         .iter()
-         .fold(0, |a, b| if a < b.name.len() { b.name.len() } else { a });
+   let ln_name = ports
+      .iter()
+      .fold(0, |a, b| if a < b.name.len() { b.name.len() } else { a });
    let ln_name = ln_name as u16;
 
    let selected_style = Style::default()

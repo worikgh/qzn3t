@@ -26,12 +26,12 @@ use crate::port::PortType;
 use crate::port_table::port_table;
 use color_eyre::config::HookBuilder;
 use crossterm::{
+   ExecutableCommand,
    event::{self, Event, KeyCode},
    terminal::{
-      disable_raw_mode, enable_raw_mode, EnterAlternateScreen,
-      LeaveAlternateScreen,
+      EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+      enable_raw_mode,
    },
-   ExecutableCommand,
 };
 use ratatui::{prelude::*, widgets::*};
 use std::cmp::Ordering;
@@ -719,7 +719,9 @@ impl App<'_> {
             if let Some(port_table_row) = self.table_state.selected() {
                // Got index to a Port  Get its name
                let n = self.ports[port_table_row].name.as_str();
-               eprintln!("INFO handle_port_adj url: {url} idx: {port_table_row} name: {n}");
+               eprintln!(
+                  "INFO handle_port_adj url: {url} idx: {port_table_row} name: {n}"
+               );
 
                // Get a mutable reference
                // to the LV2 simulator
@@ -904,12 +906,13 @@ impl App<'_> {
                      F(2) => self.app_view_state = AppViewState::Command,
                      _ => {
                         eprintln!(
-			   "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
-			   key.code,
-			   key.modifiers,
-			   key.modifiers & crossterm::event::KeyModifiers::CONTROL
-			      == crossterm::event::KeyModifiers::CONTROL
-			);
+                           "INFO Unrecognised key code: {:?} Modifier: {:?} Control: {}",
+                           key.code,
+                           key.modifiers,
+                           key.modifiers
+                              & crossterm::event::KeyModifiers::CONTROL
+                              == crossterm::event::KeyModifiers::CONTROL
+                        );
                      }
                   }
                }

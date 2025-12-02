@@ -104,7 +104,7 @@ impl App {
 /// Hold the data for the programme.
 #[allow(dead_code)]
 pub struct AppData {
-    pub recorded_audio: AudioBuffers, 
+    pub recorded_audio: AudioBuffers,
     recorded_dub: Vec<f32>,
     pub audio_handle: Option<thread::JoinHandle<Result<AudioBuffers, RecorderError>>>,
     // TODO: Multi channel.  Need a collection of channels.
