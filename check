@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+# Report on all Rust projects beneath this directory
+# `101` means the project could not be built successfully
+# `0` means it can be
+find . -name Cargo.toml -type f -execdir sh -c 'cargo check >/dev/null 2>&1; echo "$? $(pwd)"' \;
