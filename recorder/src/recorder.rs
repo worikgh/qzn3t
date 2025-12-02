@@ -103,20 +103,31 @@ mod tests {
 
     #[test]
     fn invalid_input_pipe() {
+        // No client:port
         let mut args = Args::default();
-        args.input.push("abcdefg".to_string());
+        let pname = "abcdefg";
+        args.input.push(pname.to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
-        assert!(matches!(test, Err(RecorderError::InvalidPipeName(_))));
+        assert!(matches!(test, Err(RecorderError::InvalidPipeName(ref s)) if s == pname));
+
+        // Too many fields
+        let mut args = Args::default();
+        let pname = "abc:defg:1234:trwge";
+        args.input.push(pname.to_string());
+        let test = inner_main(args);
+        eprintln!("{test:?}");
+        assert!(matches!(test, Err(RecorderError::InvalidPipeName(ref s)) if s == pname));
     }
 
     #[test]
     fn invalid_pipe_type() {
         let mut args = Args::default();
-        args.input.push("system:playback_1".to_string());
+        let pname = "system:playback_1";
+        args.input.push(pname.to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
-        assert!(matches!(test, Err(RecorderError::NotOutputPipe(_))));
+        assert!(matches!(test, Err(RecorderError::NotOutputPipe(ref s)) if s == pname));
     }
 
     #[test]
