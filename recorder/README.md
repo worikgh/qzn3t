@@ -1,12 +1,8 @@
-# Composer
+# Qzn3t/Recorder
 
-Utility to record from Jack  to raw audio files
-
-Requires the Jack audio server
+Utility to record from Jack.  Outputs  raw audio files or FLAC.
 
 ## Testing
 
-The tests are in `tests/integration_tests.rs`.  A Jack server must be running.
-
-`jackd -d dummy` is sufficient
+The tests in `tests/integration_tests.rs` depend on having Jack server running.  `jackd -d dummy` is sufficient
 
