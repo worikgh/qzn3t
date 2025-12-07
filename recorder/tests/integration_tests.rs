@@ -256,7 +256,7 @@ fn record_two_channels() {
     let mut app_data = set_up_recorder_inputs(inputs);
 
     // Start the recorder.
-    if let Err(err) = app_data.handle_recording() {
+    if let Err(err) = app_data.handle_record() {
         panic!("Called handle_recording(): {err}");
     }
 
@@ -343,7 +343,7 @@ fn record_audio() {
     let mut app_data = set_up_recorder(vec![port_name.clone()]);
 
     // Record data from `port_name`
-    if let Err(err) = app_data.handle_recording() {
+    if let Err(err) = app_data.handle_record() {
         panic!("Called handle_recording(): {err}");
     }
 
@@ -393,7 +393,7 @@ fn display_audio() {
 
     // Set up the recorder to test and start recording
     let mut app_data = set_up_recorder(vec![port_name]);
-    if let Err(err) = app_data.handle_recording() {
+    if let Err(err) = app_data.handle_record() {
         panic!("Called handle_recording(): {err}");
     }
 

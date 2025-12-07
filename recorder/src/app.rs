@@ -80,7 +80,7 @@ impl App {
                     }
                 };
                 match command {
-                    Command::Record => config_app.handle_recording()?,
+                    Command::Record => config_app.handle_record()?,
                     Command::Stop => config_app.handle_audio_stop()?,
                     Command::ReviewRecord => config_app.handle_review_record()?,
                     Command::Dubing => config_app.handle_dubing()?,
@@ -199,7 +199,7 @@ impl AppData {
         result
     }
 
-    pub fn handle_recording(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn handle_record(&mut self) -> Result<(), Box<dyn Error>> {
         self.recorded_audio.reset();
 
         self.recorder_run.store(true, Ordering::SeqCst);
@@ -299,7 +299,7 @@ impl AppData {
         match k {
             Command::Record => {
                 println!("Recording.  C-c to stop");
-                self.handle_recording()?;
+                self.handle_record()?;
                 if let Some(h) = self.audio_handle.take() {
                     match h.join() {
                         Ok(Ok(data)) => {
