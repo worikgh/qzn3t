@@ -155,9 +155,9 @@ impl AppData {
                     }
                 };
 
+                // Signal that this is running to caller (parent)
+                active_2.store(true, Ordering::SeqCst);
                 loop {
-                    // Signal that this is running to caller (parent)
-                    active_2.store(true, Ordering::SeqCst);
                     for pk in audio_input_pipe.iter() {
                         let receiver = pk.1;
                         let buffer: &mut Vec<f32> = audio_data.get_mut(pk.0).unwrap();
