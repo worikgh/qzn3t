@@ -12,10 +12,11 @@ use std::path::PathBuf;
 pub struct Args {
     /// Input Jack pipe to record from with an optional name
     #[arg(short = 'i', long, action = clap::ArgAction::Append, long_help = "Input Jack pipe to record from with an optional name\n\n\
-		    Input Jack pipe to record in format: `<client>:<port>`. Can be given multiple\n\
-		    times: `-i <client_a>:<port_a> -i <client_b>:<port_b>`. The port can be\n\
-		    specified as `-i <client>:<port>:<name>` where <name> will be used to identify\n\
-		    the port. If the name is not specified the name is `<client>:<port>`")]
+		    The Jack pipes are specified as: `<client>:<port>`.  Multiple ports can be\n\
+		    specified for multi-channel recording:\n\
+		    `-i <client_a>:<port_a> -i <client_b>:<port_b>`. The port can be given a name\n\
+		    using format `-i <client>:<port>:<name>` If no name is specified then it is\n\
+		    `<client>:<port>`")]
     pub input: Vec<String>,
 
     /// Backing track for immediate overdubbing
@@ -23,15 +24,12 @@ pub struct Args {
     pub backing_track: Option<PathBuf>,
 
     /// Directory to write files to
-    ///
-    /// Directory to write files to.  If specified raw files will be written to the \n\
-    /// specified channel containing the raw audio for each input.
     #[arg(
         short = 'd',
         long,
         long_help = "Directory to write files to\n\n\
-Directory to write files to.  If specified raw files will be written to the \n\
-specified channel containing the raw audio for each input."
+		     If a directory is specified audio files for each input will be written to the\n\
+		     directory. (TODO: Implement writing these files as recording is underway)"
     )]
     pub directory: Option<String>,
 
