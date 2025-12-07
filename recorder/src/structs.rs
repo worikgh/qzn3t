@@ -8,7 +8,6 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug, Default)]
 #[command(version, about, long_about = None)]
-#[allow(dead_code)]
 pub struct Args {
     /// Input Jack pipe to record from with an optional name
     #[arg(short = 'i', long, action = clap::ArgAction::Append, long_help = "Input Jack pipe to record from with an optional name\n\n\
@@ -33,10 +32,6 @@ pub struct Args {
     )]
     pub directory: Option<String>,
 
-    /// Write audio as raw.  Defaults to using FLAC
-    #[arg(short = 'r', long, default_value_t = false)]
-    pub raw: bool,
-
     /// If this is not None run a command directly.  Only some
     /// commands make sense
     #[arg(short = 'k', long)]
@@ -44,7 +39,6 @@ pub struct Args {
 }
 
 #[derive(Debug, Clone, ValueEnum, PartialEq, Hash, Eq)]
-#[allow(dead_code)]
 pub enum Command {
     Stop,
     Record,
@@ -74,12 +68,4 @@ impl fmt::Display for Command {
             }
         )
     }
-}
-
-/// The audio format to use
-#[allow(dead_code)] // Not dead code.  Bug in linter
-#[derive(Debug)]
-pub enum AudioFormat {
-    Flac,
-    Raw,
 }

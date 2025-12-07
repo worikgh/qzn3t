@@ -4,8 +4,8 @@
 //! The main container for the programme
 use crate::errors::RecorderError;
 use crate::io::{AudioBuffers, Inputs};
-use crate::structs::{AudioFormat, Command};
-use crate::utils::{audio_to_flac, get_sample_rate};
+use crate::structs::Command;
+use crate::utils::get_sample_rate;
 use jack_rec;
 use std::collections::HashMap;
 use std::error::Error;
@@ -29,7 +29,6 @@ impl App {
         command_rx: mpsc::Receiver<Command>,
         inputs: Inputs,
         directory: Option<PathBuf>,
-        use_raw: bool,
     ) -> Result<AppData, Box<dyn Error>> {
         let recorder_run = Arc::new(AtomicBool::new(true));
         let ui_run = Arc::new(AtomicBool::new(true));
@@ -55,11 +54,6 @@ impl App {
             ui_run,
             inputs,
             save_dir: directory,
-            format: if use_raw {
-                AudioFormat::Raw
-            } else {
-                AudioFormat::Flac
-            },
         })
     }
 
@@ -113,7 +107,6 @@ pub struct AppData {
     pub recorder_run: Arc<AtomicBool>,
     pub ui_run: Arc<AtomicBool>,
     save_dir: Option<PathBuf>,
-    format: AudioFormat,
     inputs: Inputs,
 }
 impl AppData {
@@ -262,30 +255,24 @@ impl AppData {
         unimplemented!();
     }
 
-    /// Save the audio from the `recorded_audio` to a FLAC file
+    /// Save the audio from the `recorded_audio`
     pub fn handle_save(&mut self) -> Result<(), RecorderError> {
         assert!(self.save_dir.is_some());
         for (name, audio_data) in self.recorded_audio.iter() {
             eprintln!(
-                "DBG recorder: Save to file name {:?}/{}: {} samples.  AudioFormat: {:?}",
+                "DBG recorder: Save to file name {:?}/{}: {} samples",
                 self.save_dir,
                 name,
                 audio_data.len(),
-                self.format,
             );
-            let data = match self.format {
-                AudioFormat::Flac => audio_to_flac(audio_data)?,
-                AudioFormat::Raw => {
-                    // The data as received from Jack.
-                    unsafe {
-                        std::slice::from_raw_parts(
-                            audio_data.as_ptr() as *const u8,
-                            audio_data.len() * std::mem::size_of::<f32>(),
-                        )
-                    }
-                    .to_vec()
-                }
-            };
+            let data = unsafe {
+                std::slice::from_raw_parts(
+                    audio_data.as_ptr() as *const u8,
+                    audio_data.len() * std::mem::size_of::<f32>(),
+                )
+            }
+            .to_vec();
+
             // `self.save_dir` is not `None`
             let dest: PathBuf = self.save_dir.as_ref().unwrap().join(name);
             fs::write(dest, &data).map_err(|err| RecorderError::Generic(err.to_string()))?;

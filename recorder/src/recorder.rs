@@ -37,7 +37,6 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
                 } else {
                     None
                 },
-                args.raw,
             )?;
             let _out_port = send_audo_to_jack("output", audio_rx, app_data.recorder_run.clone())?;
             let ui_run = app_data.ui_run.clone();
@@ -59,7 +58,6 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
                 } else {
                     None
                 },
-                args.raw,
             )?;
             cfg.handle_kommand(k)?;
             Ok(())
