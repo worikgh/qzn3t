@@ -116,7 +116,7 @@ impl AppData {
         self.ui_run.store(false, Ordering::SeqCst);
     }
 
-    /// Spawn a thread to get audio data from a Jack portdata
+    /// Spawn a thread to get audio data from a Jack port
     fn get_audio_from_jack(
         &mut self,
     ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
