@@ -132,6 +132,7 @@ impl Inputs {
         }
     }
 }
+//---- Inputs end ----
 
 /// Recorded data.  Named buffers.
 #[derive(Clone, Debug)]
