@@ -13,6 +13,10 @@ pub enum RecorderError {
     // Command sent from UI to recorder is invalid
     BadCommand(Command),
 
+    // File IO error for BufferBackingFile.  Contents is the
+    // underlying error message from the std library
+    BufferBackingIO(String),
+
     // If a client cannot be created: Client/error
     CannotCreateClient(String, String),
 
@@ -55,7 +59,10 @@ impl fmt::Display for RecorderError {
             | RecorderError::NotOutputPipe(name) => {
                 write!(f, "{self:?} Name {name}")
             }
-            RecorderError::DeactivateClientFailed(error) => write!(f, "{self:?}: Error: {error}"),
+            RecorderError::DeactivateClientFailed(error)
+            | RecorderError::BufferBackingIO(error) => {
+                write!(f, "{self:?}: Error: {error}")
+            }
             RecorderError::CannotCreateClient(name, reason) => {
                 write!(f, "{self:?}: Name: {name}. Reason: {reason}")
             }
