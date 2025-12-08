@@ -157,10 +157,11 @@ impl AppData {
 
                 // Signal that this is running to caller (parent)
                 active_2.store(true, Ordering::SeqCst);
+
                 loop {
-                    for pk in audio_input_pipe.iter() {
-                        let receiver = pk.1;
-                        let buffer: &mut Vec<f32> = audio_data.get_mut(pk.0).unwrap();
+                    for (name, receiver) in audio_input_pipe.iter() {
+                        // let receiver = pk.1;
+                        let buffer: &mut Vec<f32> = audio_data.get_mut(name).unwrap();
                         let itr = receiver.try_iter();
                         for b in itr {
                             buffer.push(b);
