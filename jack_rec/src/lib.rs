@@ -37,7 +37,8 @@ impl jack::ProcessHandler for OutProcess {
             }
         }
         if !self.run_flag.load(Ordering::SeqCst) {
-            dbg!(&self.run_flag);
+            // Close all the pipes for sending data
+            self.senders.clear();
             jack::Control::Quit
         } else {
             jack::Control::Continue
