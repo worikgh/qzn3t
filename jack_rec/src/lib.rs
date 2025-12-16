@@ -16,6 +16,10 @@ impl jack::NotificationHandler for Notifications {
 
 pub struct OutProcess {
     run_flag: Arc<AtomicBool>,
+    // FIXME: The `inputs` and `senders` should be in a HashMap.  Key
+    // the ports, values the senders.  But since `jack::Port` is not
+    // hashable, make the name of the port the key and the value a
+    // 2-tupple of `jack::Port` and `mpsc::Sender`
     inports: Vec<jack::Port<jack::AudioIn>>,
     senders: Vec<mpsc::Sender<f32>>,
 }
@@ -93,9 +97,9 @@ pub fn run_port(
             Ok(()) => (),
             Err(err) => {
                 return Err(format!(
-                    "qzn3t/jack_rec: Failed to connect {source_port} -> {destination_port} {err}",
-                )
-                .into());
+		    "qzn3t/jack_rec: Failed to connect {source_port} -> {destination_port} {err}. This client: {}", active_client.as_client().name()
+		)
+		.into());
             }
         }
     }
