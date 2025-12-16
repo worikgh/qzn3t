@@ -3,24 +3,15 @@
 
 //! Structures and code to maintain the input and output buffers and
 //! processes
-/// The inputs.  Audio to record. Controls the Jack inputs.
+use crate::{app::App, errors::RecorderError, utils::get_sample_rate};
 use jack::{Client, PortFlags};
-use std::{
-    self,
-    collections::HashMap,
-    fs,
-    io::{Read, Write},
-    path::PathBuf,
-    thread,
-};
-
-use crate::errors::RecorderError;
+use std::fs::OpenOptions;
+use std::{self, collections::HashMap, fs, path::PathBuf, sync::mpsc, thread, time::Duration};
 
 // ---- Inputs Start ----
-/// The information required for a Jack pipe to record.
+/// Define the  Jack pipes to record from.
 #[derive(Debug, Clone)]
 pub struct Inputs {
-    ports: Vec<String>,
     names_ports: HashMap<String, String>,
 }
 
@@ -29,12 +20,11 @@ impl Inputs {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
-            ports: Vec::new(),
             names_ports: HashMap::new(),
         }
     }
 
-    /// Using the strings from the command line `-i` add input pipes.
+    /// Using the strings from the command line [`crate::structs::Args`] `-i` add input jack pipes.
     pub fn from_command_line(input_pipes: Vec<String>) -> Result<Self, RecorderError> {
         let mut inputs = Self::new();
         if input_pipes.is_empty() {
@@ -60,32 +50,34 @@ impl Inputs {
     }
 
     /// Add an input to the collection with a default name.  The port
-    /// must be of the type form "<client>:<port name>"
+    /// must be of the type form "`client`:`port name`"
     pub fn add(&mut self, port: &str) -> Result<(), RecorderError> {
         self.add_name(port, port)
     }
 
     /// Add an input to the collection with a defined name.  The port
-    /// must be of the type form "<client>:<port name>"
+    /// must be of the type form "`client`:`port name`"
     pub fn add_name(&mut self, port: &str, name: &str) -> Result<(), RecorderError> {
-        eprintln!("add_name {port} {name}");
         Self::validate_jack_input_pipe(port)?;
-        if self.ports.iter().any(|n| n == port) {
+        if self.names_ports.values().any(|n| n == port) {
             Err(RecorderError::DuplicateInput(port.to_string()))
         } else if self.names_ports.iter().any(|pn| pn.0 == name) {
             Err(RecorderError::DuplicateInputName(name.to_string()))
         } else {
-            self.ports.push(port.to_string());
+            // self.ports.push(port.to_string());
             self.names_ports.insert(name.to_string(), port.to_string());
             Ok(())
         }
     }
 
-    /// Get a copy of all the input names
+    /// Get a copy of all the ports
     pub fn ports(&self) -> Vec<String> {
-        self.ports.clone()
+        self.names_ports.values().cloned().collect()
     }
 
+    pub fn names(&self) -> Vec<String> {
+        self.names_ports.keys().map(|n| n.to_string()).collect()
+    }
     /// Get a copy of the named ports
     pub fn named_ports(&self) -> HashMap<String, String> {
         self.names_ports.clone()
@@ -163,6 +155,14 @@ impl AudioBuffers {
             b.1.truncate(0);
         }
     }
+
+    /// Get the names of all the buffers.
+    pub fn names(&self) -> Vec<String> {
+        self.buffers
+            .keys()
+            .map(|k| k.to_string())
+            .collect::<Vec<String>>()
+    }
 }
 
 /// Iterators
@@ -203,169 +203,247 @@ impl AudioBuffers {
     }
 }
 
-/* --------------------------------------------------------------- */
-/* Consuming iterator – implements `IntoIterator` for the struct.  */
-impl IntoIterator for AudioBuffers {
-    type Item = (String, Vec<f32>);
-    type IntoIter = std::collections::hash_map::IntoIter<String, Vec<f32>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.buffers.into_iter()
-    }
-}
-
-/* --------------------------------------------------------------- */
-/* Borrowed iterator – implements `IntoIterator` for `&OutputBuffers`. */
-impl<'a> IntoIterator for &'a AudioBuffers {
-    type Item = (&'a String, &'a Vec<f32>);
-    type IntoIter = std::collections::hash_map::Iter<'a, String, Vec<f32>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.buffers.iter()
-    }
-}
-
-/* --------------------------------------------------------------- */
-/* Mutable borrowed iterator – implements `IntoIterator` for `&mut OutputBuffers`. */
-impl<'a> IntoIterator for &'a mut AudioBuffers {
-    type Item = (&'a String, &'a mut Vec<f32>);
-    type IntoIter = std::collections::hash_map::IterMut<'a, String, Vec<f32>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.buffers.iter_mut()
-    }
-}
 // ---- AudioBuffers end ----
 
-// ---- BufferFileBacking start ----
-/// A backing file for recorded audio data.  There is one backing file
-/// for every audio buffer in AudioBuffers
-pub struct BufferBackingFile {
-    /// The path to the file.  The directory is either specified using
-    /// `-d` or `--directory`, or is in a temporary directory
-    name: PathBuf,
+// ---- FileManager start ----
+/// Manage the writing of the audio buffers into files.  Each audio
+/// channel to be recorded has a `mpsc::Sender<f32>` associated that
+/// sends the audio bytes.  Each audio channel is saved separately to
+/// a file named for the input it is from.
+pub struct FileManager {
+    /// Make the audio channel name to the file that holds its data
+    audio_files: HashMap<String, PathBuf>,
 
-    /// The amount of data saved already
-    saved_sz: u64,
+    /// Channels to receive audio data on
+    receivers: HashMap<String, mpsc::Receiver<f32>>,
+
+    /// Senders to send audio data on.  Created and stored here in the
+    /// constructor and returned to a caller with `get_senders(&self)`
+    senders: HashMap<String, mpsc::Sender<f32>>,
+
+    /// There is one thread per file to monitor.  This stores the
+    /// handles
+    handles: HashMap<String, thread::JoinHandle<Result<(), RecorderError>>>,
 }
 
 /// Public interface
-impl BufferBackingFile {
-    pub fn new(name: PathBuf) -> Self {
-        Self { name, saved_sz: 0 }
-    }
-
-    #[allow(clippy::type_complexity)]
-    /// Save a single audio buffer to disc.
-    fn save_thread(
-        data_to_save: &[f32],
-        path: &PathBuf,
-        saved_sz: u64,
-        name: &PathBuf,
-    ) -> Result<usize, RecorderError> {
-        let mut file = fs::OpenOptions::new()
-            .append(true)
-            .open(path)
-            .map_err(|err| RecorderError::BufferBackingIO(format!("{err}")))?;
-        let meta_data = file
-            .metadata()
-            .map_err(|err| RecorderError::BufferBackingIO(format!("{err}")))?;
-        if meta_data.len() == saved_sz {
-            return Err(RecorderError::BufferBackingIO(format!(
-                "Backing buffer for {name:?} is out of sync.  Expected {} bytes in backing file {path:?}, found {}",
-                saved_sz,
-                meta_data.len()
+impl FileManager {
+    /// Passed in the list of names of audio channels ad the path to
+    /// the directory where they will be saved
+    pub fn new(names: Vec<String>, dir: &PathBuf) -> Result<Self, RecorderError> {
+        // Check directory exists
+        if !dir.exists() {
+            return Err(RecorderError::FileManager(format!(
+                "FileManager::new: Directory does not exist: {dir:?}.",
             )));
         }
-        let save_len = data_to_save.len();
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                data_to_save.as_ptr() as *const u8,
-                std::mem::size_of_val(data_to_save),
-            )
-        };
-        if let Err(err) = file.write_all(bytes) {
-            return Err(RecorderError::BufferBackingIO(format!(
-                "Writing {name:?} IO error {err}"
-            )));
-        };
-        Ok(save_len)
-    }
-    pub fn update_buffer(
-        &mut self,
-        buf: &[f32],
-    ) -> Result<thread::JoinHandle<Result<usize, RecorderError>>, RecorderError> {
-        let saved_sz_uz: usize = self.saved_sz.try_into().unwrap();
-        assert!(buf.len() >= saved_sz_uz);
 
-        let name = self.name.clone();
-        let data_to_save = buf[saved_sz_uz..].to_vec();
-        let path = self.name.clone();
+        let mut result = Self {
+            audio_files: HashMap::new(),
+            receivers: HashMap::new(),
+            senders: HashMap::new(),
+            handles: HashMap::new(),
+        };
 
-        let saved_sz = self.saved_sz;
-        let handle = thread::spawn(move || -> Result<usize, RecorderError> {
-            Self::save_thread(&data_to_save, &path, saved_sz, &name)
-        });
-        Ok(handle)
+        for name in names.iter() {
+            // For each name create path to backing file (most not already
+            // exist), and a channel for communication
+
+            let path = dir.join(name);
+            // TODO: Create an option for not overwriting files,
+            // perhaps an "append" option?
+            result.audio_files.insert(name.to_string(), path);
+            let (tx, rx) = mpsc::channel::<f32>();
+            result.receivers.insert(name.to_string(), rx);
+            result.senders.insert(name.to_string(), tx);
+        }
+        Ok(result)
     }
 
-    /// Reads the entire buffer from a backing file
-    pub fn read_from_file(&self) -> Result<Vec<f32>, RecorderError> {
-        let path: &PathBuf = &self.name;
-        let mut file = fs::File::open(path).map_err(|err| {
-            RecorderError::BufferBackingIO(format!(
-                "Failed to open file at {:?} for reading.  Error: {err}",
-                path
-            ))
-        })?;
-
-        // How much to read?
-        let metadata = file.metadata().map_err(|err| {
-            RecorderError::BufferBackingIO(format!(
-                "Failed meta data for {:?}.  Error: {err}",
-                path
-            ))
-        })?;
-
-        // On a 64-bit system usize is 64-bits, pleanty.  On a 32-bit
-        // system the audio files are a bit less tha 90_000 seconds,
-        // max.  About a day
-        let file_size = metadata.len() as usize;
-
-        // Calculate how many f32s are in the file
-        // Each f32 is 4 bytes
-        let num_floats = file_size / std::mem::size_of::<f32>();
-
-        // Read all bytes from the file
-        let mut bytes = vec![0u8; file_size];
-        file.read_exact(&mut bytes).map_err(|err| {
-            RecorderError::BufferBackingIO(format!(
-                "Failed to read from file at {:?}.  Error: {err}",
-                path
-            ))
-        })?;
-
-        // Convert bytes to f32 values
-        // We need to ensure proper alignment and safety
-        let floats = unsafe {
-            // Safety: The bytes come from a file that was written
-            // with f32 values, and the exact number of bytes, that
-            // should contain f32 values, have been read.  The
-            // alignment is handled by creating a properly aligned
-            // vector first.
-            let mut result = Vec::with_capacity(num_floats);
-
-            let ptr = bytes.as_ptr() as *const f32;
-            for i in 0..num_floats {
-                result.push(*ptr.add(i));
+    /// Start the FileManager and return the senders.  Can only be called once
+    pub fn start(&mut self) -> Result<HashMap<String, mpsc::Sender<f32>>, RecorderError> {
+        let mut result: HashMap<String, mpsc::Sender<f32>> = HashMap::new();
+        for name in self.audio_files.keys() {
+            // This stops repeated calls
+            let receiver = match self.receivers.remove(name) {
+                Some(r) => r,
+                None => {
+                    return Err(RecorderError::FileManager(format!(
+                        "FileManager::new.  No receiver for {name}"
+                    )));
+                }
+            };
+            let handle = self.thread_fn(name, receiver)?;
+            self.handles.insert(name.to_string(), handle);
+            let sender = match self.senders.remove(name) {
+                Some(s) => s,
+                None => {
+                    return Err(RecorderError::FileManager(format!(
+                        "FileManager::start: No sender for {name}"
+                    )));
+                }
+            };
+            result.insert(name.to_string(), sender);
+        }
+        // Write the sample rate to a file.  Cannot be converted
+        // without this
+        let sample_rate = get_sample_rate();
+        let p = self.audio_files.values().next();
+        if p.is_none() {
+            return Err(RecorderError::NoAudioFiles);
+        }
+        let p: PathBuf = match p.unwrap().parent() {
+            Some(p) => p.into(),
+            None =>
+            // Audio files being placed in root.  Ok.  Not
+            // sensible, but not against the law....
+            {
+                "/".into()
             }
-
-            result
         };
-        Ok(floats)
+        assert!(p.is_dir());
+        let sample_rate_path = p.join(".sample_rate");
+        if let Err(err) = fs::write(&sample_rate_path, sample_rate.to_string()) {
+            Err(RecorderError::CannotCreateFile(
+                sample_rate_path,
+                format!("{err}"),
+            ))
+        } else {
+            Ok(result)
+        }
+    }
+
+    /// Function to check that the file manager is behaving.  Returns
+    /// Ok(true) if running smoothly.  Ok(false) if it has stopped
+    /// properly otherwise a vector of errors
+    pub fn check(&mut self) -> Result<bool, Vec<RecorderError>> {
+        if self.handles.iter().all(|(_, h)| !h.is_finished()) {
+            return Ok(true);
+        }
+
+        // Some handles are finished.  Store their names here.
+        let mut finished: Vec<String> = Vec::new();
+        {
+            for (name, h) in self.handles.iter() {
+                if h.is_finished() {
+                    finished.push(name.to_string());
+                }
+            }
+        }
+        // Store any errors
+        let mut errors: Vec<RecorderError> = Vec::new();
+
+        for name in finished.iter() {
+            let handle = self.handles.remove(name).unwrap();
+            match handle.join() {
+                Ok(Ok(())) => continue,
+                Ok(Err(err)) => errors.push(err),
+                Err(err) => errors.push(RecorderError::FileManager(format!(
+                    "FileManager::check  Recording thread for {name} panicked.  Error: {err:?}"
+                ))),
+            };
+        }
+
+        if !self.handles.is_empty() {
+            // Recorder has half stopped
+            errors.push(RecorderError::FileManager(
+                "FileManager::check only some internal threads have stopped".to_string(),
+            ));
+        }
+
+        if errors.is_empty() {
+            Ok(false)
+        } else {
+            Err(errors)
+        }
     }
 }
-// ---- BufferFileBacking end ----
+
+/// Private interface
+impl FileManager {
+    /// Manage one audio channel file output.  Take the audio data a
+    /// byte at a time, buffer it until either there is a pause in the
+    /// data or there is sufficient data (an arbitrary amount so data
+    /// gets written even if it is constant) and write the buffer to a
+    /// file.
+    fn thread_fn(
+        &self,
+        name: &str,
+        receiver: mpsc::Receiver<f32>,
+    ) -> Result<thread::JoinHandle<Result<(), RecorderError>>, RecorderError> {
+        let path = match self.audio_files.get(name) {
+            Some(p) => p.clone(),
+            None => {
+                return Err(RecorderError::FileManager(format!(
+                    "FileManager::thread_fn.  No path stored for {name}"
+                )));
+            }
+        };
+
+        // Copies of data the thread needs
+        let name = name.to_string();
+
+        let result = thread::spawn(move || -> Result<(), RecorderError> {
+            if path.exists() {
+                eprintln!("DBG recorder FileManager::thread_fn overwriting {path:?}");
+            }
+            let mut file = match OpenOptions::new()
+                .write(true)
+                .create(true) // Create if doesn't exist
+                .truncate(true) // This causes overwriting
+                .open(&path)
+            {
+                Ok(f) => f,
+                Err(err) => {
+                    return Err(RecorderError::FileManager(format!(
+                        "FileManager::new.  Cannot create file at {path:?}  Error: {err}"
+                    )));
+                }
+            };
+
+            // The most f32 to receive before they must be written
+            const MAX_C: usize = 4096;
+
+            let mut buffer: Vec<f32> = Vec::new();
+            let mut connected = true;
+            while connected {
+                buffer.clear();
+
+                loop {
+                    match receiver.try_recv() {
+                        Err(mpsc::TryRecvError::Empty) => break,
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            connected = false;
+                            break;
+                        }
+                        Ok(b) => {
+                            buffer.push(b);
+                        }
+                    }
+                    if buffer.len() > MAX_C {
+                        break;
+                    }
+                }
+                if buffer.is_empty() {
+                    continue;
+                }
+
+                // Write the buffer.  Either when there is a pause in
+                // data being sent or when MAX_C samples have been
+                // received
+                let bytes_written = App::write_f32_to_file(&mut file, &buffer)?;
+                assert_eq!(bytes_written, buffer.len() * std::mem::size_of::<f32>());
+
+                // Not too fast....
+                thread::sleep(Duration::from_millis(1));
+            }
+            eprintln!("FileManager main thread ending {name}");
+            Ok(())
+        });
+        Ok(result)
+    }
+}
+// ---- FileManager end ----
 
 #[cfg(test)]
 mod tests {
@@ -396,299 +474,16 @@ mod tests {
     #[test]
     fn add_port_with_name() {
         let port = "system:capture_1".to_string();
+        println!("port: {port}");
         let name = "Capture One";
+        println!("name: {name}");
         let portv = vec![format!("{port}:{name}")];
-        let inputs = Inputs::from_command_line(portv).unwrap();
+        println!("portv: {portv:?}");
+        let inputs = match Inputs::from_command_line(portv) {
+            Ok(i) => i,
+            Err(err) => panic!("Panicked! {err}"),
+        };
         assert_eq!(inputs.ports()[0], port);
         assert_eq!(inputs.names_ports.get(name), Some(&port));
-    }
-}
-
-#[cfg(test)]
-mod buffer_backing_file_tests {
-    use super::*;
-    use std::env::temp_dir;
-    use std::fs;
-    use std::io::Write;
-    use std::sync::{Arc, Mutex};
-
-    // Helper to create a temporary BufferBackingFile
-    fn create_temp_buffer() -> (BufferBackingFile, PathBuf) {
-        let temp_dir = temp_dir();
-        let file_path = temp_dir.join("test_buffer.bin");
-        (BufferBackingFile::new(file_path), temp_dir)
-    }
-
-    // Helper to write f32 data to a file
-    fn write_f32_to_file(path: &PathBuf, data: &[f32]) {
-        let mut file = fs::File::create(path).unwrap();
-        let bytes = unsafe {
-            std::slice::from_raw_parts(data.as_ptr() as *const u8, std::mem::size_of_val(data))
-        };
-        file.write_all(bytes).unwrap();
-    }
-
-    #[test]
-    fn test_update_buffer_saves_new_data() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // Initial data
-        let initial_data = vec![1.0f32, 2.0, 3.0, 4.0];
-        write_f32_to_file(&buffer.name, &initial_data);
-        buffer.saved_sz = (initial_data.len() * std::mem::size_of::<f32>()) as u64;
-
-        // New data to append
-        let buffer_data = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-
-        // Update buffer
-        let handle = buffer.update_buffer(&buffer_data).unwrap();
-        let result = handle.join().unwrap().unwrap();
-
-        // Verify the result
-        assert_eq!(result, 4); // Should have saved 4 new floats (indices 4-7)
-
-        // Read back and verify
-        let saved_data = buffer.read_from_file().unwrap();
-        assert_eq!(saved_data, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
-
-        // Verify saved_sz was updated correctly
-        assert_eq!(buffer.saved_sz, (8 * std::mem::size_of::<f32>()) as u64);
-
-        drop(temp_dir); // Clean up
-    }
-
-    #[test]
-    fn test_update_buffer_no_new_data() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // File already contains all data
-        let full_data = vec![1.0f32, 2.0, 3.0, 4.0];
-        write_f32_to_file(&buffer.name, &full_data);
-        buffer.saved_sz = (full_data.len() * std::mem::size_of::<f32>()) as u64;
-
-        // Buffer has same data, no new data to save
-        let handle = buffer.update_buffer(&full_data).unwrap();
-        let result = handle.join().unwrap().unwrap();
-
-        assert_eq!(result, 0); // No new data saved
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_update_buffer_empty_buffer() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // Empty file
-        buffer.saved_sz = 0;
-
-        // Update with empty buffer
-        let handle = buffer.update_buffer(&[]).unwrap();
-        let result = handle.join().unwrap().unwrap();
-
-        assert_eq!(result, 0);
-
-        // File should still be empty
-        let data = buffer.read_from_file().unwrap();
-        assert!(data.is_empty());
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_update_buffer_sequential_updates() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // Track expected state
-        let _expected_data = Arc::new(Mutex::new(Vec::<f32>::new()));
-
-        // First update
-        let data1 = vec![1.0f32, 2.0, 3.0];
-        buffer.saved_sz = 0;
-
-        let handle = buffer.update_buffer(&data1).unwrap();
-        let result1 = handle.join().unwrap().unwrap();
-        assert_eq!(result1, 3);
-        buffer.saved_sz = (3 * std::mem::size_of::<f32>()) as u64;
-
-        // Second update
-        let data2 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let handle = buffer.update_buffer(&data2).unwrap();
-        let result2 = handle.join().unwrap().unwrap();
-        assert_eq!(result2, 2); // Should save positions 3 and 4
-        buffer.saved_sz = (5 * std::mem::size_of::<f32>()) as u64;
-
-        // Verify final state
-        let final_data = buffer.read_from_file().unwrap();
-        assert_eq!(final_data, vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_update_buffer_detects_file_size_mismatch() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // File has different size than expected
-        let existing_data = vec![1.0f32, 2.0, 3.0];
-        write_f32_to_file(&buffer.name, &existing_data);
-
-        // But saved_sz thinks file is empty
-        buffer.saved_sz = 0;
-
-        // This should trigger an error in the spawned thread
-        let handle = buffer.update_buffer(&[1.0, 2.0, 3.0]).unwrap();
-        let result = handle.join().unwrap();
-
-        assert!(result.is_err());
-        if let Err(RecorderError::BufferBackingIO(err_msg)) = result {
-            assert!(err_msg.contains("out of sync"));
-            assert!(err_msg.contains("Expected 0"));
-        } else {
-            panic!("Expected BufferBackingIO error");
-        }
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_update_buffer_handles_io_errors() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // Create the file initially
-        write_f32_to_file(&buffer.name, &[1.0f32]);
-        buffer.saved_sz = std::mem::size_of::<f32>() as u64;
-
-        // Make file read-only to cause write error
-        let mut perms = fs::metadata(&buffer.name).unwrap().permissions();
-        perms.set_readonly(true);
-        fs::set_permissions(&buffer.name, perms).unwrap();
-
-        // Try to update - this should fail in the spawned thread
-        let handle = buffer.update_buffer(&[1.0, 2.0]).unwrap();
-        let result = handle.join().unwrap();
-
-        assert!(result.is_err());
-
-        // Restore permissions for cleanup
-        let mut perms = fs::metadata(&buffer.name).unwrap().permissions();
-        #[allow(clippy::permissions_set_readonly_false)]
-        perms.set_readonly(false);
-        fs::set_permissions(&buffer.name, perms).unwrap();
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_read_from_file_empty() {
-        let (buffer, temp_dir) = create_temp_buffer();
-
-        let data = buffer.read_from_file().unwrap();
-        assert!(data.is_empty());
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_read_from_file_with_data() {
-        let (buffer, temp_dir) = create_temp_buffer();
-
-        // Write some test data
-        let test_data = vec![1.5f32, -2.0, 3.24, 0.0, -42.0];
-        write_f32_to_file(&buffer.name, &test_data);
-
-        // Read it back
-        let read_data = buffer.read_from_file().unwrap();
-        assert_eq!(read_data, test_data);
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_read_from_file_large_buffer() {
-        let (buffer, temp_dir) = create_temp_buffer();
-
-        // Create large buffer (1000 floats)
-        let mut large_data = Vec::with_capacity(1000);
-        for i in 0..1000 {
-            large_data.push(i as f32 * 0.5);
-        }
-
-        write_f32_to_file(&buffer.name, &large_data);
-
-        let read_data = buffer.read_from_file().unwrap();
-        assert_eq!(read_data.len(), 1000);
-        assert_eq!(read_data, large_data);
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_read_from_file_nonexistent_file() {
-        let temp_dir = temp_dir();
-        let nonexistent_path = temp_dir.join("nonexistent.bin");
-        let buffer = BufferBackingFile::new(nonexistent_path);
-
-        let result = buffer.read_from_file();
-        assert!(result.is_err());
-
-        if let Err(RecorderError::BufferBackingIO(err_msg)) = result {
-            assert!(err_msg.contains("Failed to open"));
-        } else {
-            panic!("Expected BufferBackingIO error");
-        }
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_read_from_file_corrupted_size() {
-        let (buffer, temp_dir) = create_temp_buffer();
-
-        // Write partial f32 (3 bytes instead of 4)
-        let mut file = fs::File::create(&buffer.name).unwrap();
-        file.write_all(&[0x00, 0x00, 0x00]).unwrap();
-
-        // Should still read without panic, but might have issues
-        let _result = buffer.read_from_file();
-        // The current implementation assumes complete f32s, so this might panic
-        // or behave unexpectedly. This test documents the behavior.
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    fn test_integration_write_and_read() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // Phase 1: Write initial data
-        let phase1_data = vec![1.0f32, 2.0, 3.0];
-        write_f32_to_file(&buffer.name, &phase1_data);
-        buffer.saved_sz = (phase1_data.len() * std::mem::size_of::<f32>()) as u64;
-
-        // Phase 2: Update with more data
-        let phase2_buffer = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-        let handle = buffer.update_buffer(&phase2_buffer).unwrap();
-        handle.join().unwrap().unwrap();
-
-        // Phase 3: Read everything back
-        let all_data = buffer.read_from_file().unwrap();
-        assert_eq!(all_data, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
-
-        drop(temp_dir);
-    }
-
-    #[test]
-    #[should_panic(expected = "assertion failed")]
-    fn test_update_buffer_panics_on_buffer_too_small() {
-        let (mut buffer, temp_dir) = create_temp_buffer();
-
-        // saved_sz indicates we expect 4 floats already saved
-        buffer.saved_sz = (4 * std::mem::size_of::<f32>()) as u64;
-
-        // But buffer only has 3 floats - should panic
-        let _ = buffer.update_buffer(&[1.0f32, 2.0, 3.0]);
-
-        drop(temp_dir);
     }
 }

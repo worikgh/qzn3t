@@ -4,7 +4,7 @@
 //! Errors for recorder crate
 
 /// The errors for handling inputs
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, path::PathBuf};
 
 use crate::structs::Command;
 
@@ -20,6 +20,10 @@ pub enum RecorderError {
     // If a client cannot be created: Client/error
     CannotCreateClient(String, String),
 
+    // If files cannot be written to output directory.  Arguments are
+    // the path that could not be written and the stringified error
+    CannotCreateFile(PathBuf, String),
+
     // An error when deactivating a cleint
     DeactivateClientFailed(String),
 
@@ -32,13 +36,19 @@ pub enum RecorderError {
     // An input port was defined twice with the same name
     DuplicateInputName(String),
 
+    // Errors for the FileManager
+    FileManager(String),
+
     // For errors from other systems
     Generic(String),
 
     // No inputs supplied
     NoInputs,
 
-    // A pipe to act as input to recorder is not an output pipe
+    // No audio files
+    NoAudioFiles,
+
+    // A jack pipe to act as input to recorder is not an output channel
     NotOutputPipe(String),
 
     // The pipe name was invalid
@@ -50,25 +60,26 @@ pub enum RecorderError {
 impl fmt::Display for RecorderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecorderError::NoInputs => write!(f, "There are no input pipes supplied"),
+            RecorderError::NoInputs | RecorderError::NoAudioFiles => write!(f, "{self:?}"),
+
             RecorderError::DuplicateBufferName(name)
             | RecorderError::DuplicateInput(name)
             | RecorderError::DuplicateInputName(name)
+            | RecorderError::FileManager(name)
             | RecorderError::InvalidPipeName(name)
             | RecorderError::PipeNotFound(name)
-            | RecorderError::NotOutputPipe(name) => {
-                write!(f, "{self:?} Name {name}")
-            }
+            | RecorderError::NotOutputPipe(name) => write!(f, "{self:?} Name {name}"),
+
             RecorderError::DeactivateClientFailed(error)
-            | RecorderError::BufferBackingIO(error) => {
-                write!(f, "{self:?}: Error: {error}")
-            }
+            | RecorderError::BufferBackingIO(error) => write!(f, "{self:?}: Error: {error}"),
+
             RecorderError::CannotCreateClient(name, reason) => {
                 write!(f, "{self:?}: Name: {name}. Reason: {reason}")
             }
-
             RecorderError::Generic(err) => write!(f, "{self:?}: {err}"),
-
+            RecorderError::CannotCreateFile(path, error) => {
+                write!(f, "{self:?}: Path: {path:?} Error: {error}")
+            }
             RecorderError::BadCommand(command) => write!(f, "{self:?}: Command: {command}"),
         }
     }

@@ -5,7 +5,7 @@ use jack::{Client, ClientOptions};
 pub fn get_sample_rate() -> usize {
     let (client, _status) = match Client::new("SampleRateQuery", ClientOptions::default()) {
         Ok(cs) => cs,
-        Err(err) => panic!("Cannot cleate a client t get the ample rate: {err}"),
+        Err(err) => panic!("Cannot cleate a client to get the sample rate: {err}"),
     };
 
     // Get the sample rate from the client

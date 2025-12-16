@@ -1,7 +1,6 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use anyhow::Result; // TODO: Get rid of this
 use clap::Parser;
 use qzn3t_recorder::app::App;
 use qzn3t_recorder::app::AppData;
@@ -11,6 +10,7 @@ use qzn3t_recorder::send_audio_to_jack::send_audo_to_jack;
 use qzn3t_recorder::structs::Args;
 use qzn3t_recorder::structs::Command;
 use qzn3t_recorder::ui::ui_loop;
+use std::env::temp_dir;
 use std::sync::mpsc;
 
 fn inner_main(args: Args) -> Result<(), RecorderError> {
@@ -25,21 +25,19 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
     // The main programme runs in `App`
     let mut app = App;
 
+    // Directory recordings go to
+    let dir = if args.directory.is_some() {
+        args.directory.as_ref().unwrap().into()
+    } else {
+        temp_dir()
+    };
+
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     match args.kommand {
         None => {
-            let app_data: AppData = app.initialise(
-                audio_tx,
-                command_rx,
-                inputs,
-                if args.directory.is_some() {
-                    Some(args.directory.as_ref().unwrap().into())
-                } else {
-                    None
-                },
-            )?;
-            let _out_port = send_audo_to_jack("output", audio_rx, app_data.recorder_run.clone())?;
-            let ui_run = app_data.ui_run.clone();
+            let app_data: AppData = app.initialise(audio_tx, command_rx, inputs, &dir)?;
+            let _out_port = send_audo_to_jack("output", audio_rx, app_data.run_f.clone())?;
+            let ui_run = app_data.ui_run_f.clone();
             let t = app.run(app_data)?;
 
             // The audio output.  Stays valid so long as `_out_port` exists.
@@ -49,16 +47,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
             Ok(())
         }
         Some(k) => {
-            let mut cfg: AppData = app.initialise(
-                audio_tx,
-                command_rx,
-                inputs,
-                if args.directory.is_some() {
-                    Some(args.directory.as_ref().unwrap().into())
-                } else {
-                    None
-                },
-            )?;
+            let mut cfg: AppData = app.initialise(audio_tx, command_rx, inputs, &dir)?;
             cfg.handle_kommand(k)?;
             Ok(())
         }

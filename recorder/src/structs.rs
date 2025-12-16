@@ -28,7 +28,7 @@ pub struct Args {
         long,
         long_help = "Directory to write files to\n\n\
 		     If a directory is specified audio files for each input will be written to the\n\
-		     directory. (TODO: Implement writing these files as recording is underway)"
+		     directory. "
     )]
     pub directory: Option<String>,
 
@@ -46,7 +46,6 @@ pub enum Command {
     Dubing,
     DubReview,
     DubAccept,
-    Save,
     Continue, // Used if no menu item selected
     Quit,
 }
@@ -62,10 +61,16 @@ impl fmt::Display for Command {
                 Command::Stop => "Stop",
                 Command::ReviewRecord => "Review recording",
                 Command::Dubing => "Dub",
-                Command::Save => "Save",
                 Command::Quit => "Quit",
                 _ => "Unknown command {self:?}",
             }
         )
     }
+}
+
+/// State for saving audio files
+#[derive(PartialEq, Eq)]
+pub enum SaveState {
+    Saved,
+    Saving,
 }

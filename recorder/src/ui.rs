@@ -54,7 +54,6 @@ impl UI {
             Command::Record,
             Command::ReviewRecord,
             Command::Stop,
-            Command::Save,
             Command::Quit,
         ];
 
