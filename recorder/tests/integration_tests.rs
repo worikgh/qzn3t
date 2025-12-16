@@ -377,7 +377,8 @@ fn record_audio() {
     }
 }
 
-// If the programme `jack-scope` is available use it to display an original wave and a recorded wave, for visual confirmation
+// If the programme `jack-scope` is available use it to display an
+// original wave and a recorded wave, for visual confirmation
 // #[test]
 #[allow(dead_code)]
 fn display_audio() {
@@ -424,10 +425,11 @@ fn display_audio() {
     let (ac_1, play_audio_flag_1) =
         play_test_audio(client_name_1, vec![port_name], vec![&test_audio]);
     let port_name_1 = format!("{}:{port_name}", ac_1.as_client().name());
+    dbg!(&port_name_1, &app_data.recorded_audio.names());
     let (ac_2, play_audio_flag_2) = play_test_audio(
         client_name_2,
         vec![port_name],
-        vec![app_data.recorded_audio.get(&port_name_1).unwrap()],
+        vec![app_data.recorded_audio.get(&port_name_long).unwrap()],
     );
     let port_name_2 = format!("{}:{port_name}", ac_2.as_client().name());
 
@@ -510,7 +512,7 @@ fn display_audio() {
         panic!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
     }
     // Fail the test so the output is dislayed.
-    panic![];
+    //panic![];
 }
 
 /// Remove leading and trailing zeros frm an audio buffer
