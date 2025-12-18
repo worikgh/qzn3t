@@ -347,18 +347,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jack_rec"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap",
- "jack",
- "mio",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -517,6 +505,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "qzn3t-jack-rec"
+version = "0.1.1"
+dependencies = [
+ "chrono",
+ "clap",
+ "jack",
+ "mio",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "qzn3t-record"
 version = "0.1.1"
 dependencies = [
@@ -525,7 +525,7 @@ dependencies = [
  "crossterm",
  "ctrlc",
  "jack",
- "jack_rec",
+ "qzn3t-jack-rec",
 ]
 
 [[package]]

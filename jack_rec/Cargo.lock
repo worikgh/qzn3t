@@ -223,18 +223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jack_rec"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap",
- "jack",
- "mio",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -333,6 +321,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1885c039570dc00dcb4ff087a89e185fd56bae234ddc7f056a945bf36467248d"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "qzn3t-jack-rec"
+version = "0.1.1"
+dependencies = [
+ "chrono",
+ "clap",
+ "jack",
+ "mio",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -9,7 +9,7 @@ clap = { version = "4.0", features = ["derive"] }
 crossterm = "0.29.0"
 ctrlc = "3.4"
 jack = "0.13.3"
-jack_rec = {path = "../jack_rec/"}
+qzn3t-jack-rec = {path = "../jack_rec/"}
 
 [lib]
 name = "qzn3t_recorder"
