@@ -25,18 +25,18 @@ impl AudioSenderState {
     }
 }
 
-/// Create the audio output port and send raw audio data received on a
-/// channel to the sound hardware
+/// Create the audio output port and send raw audio data received on
+/// channel `data_channel` to the sound hardware
 pub fn send_audo_to_jack(
-    // The name of the port being created
-    port_name: &str,
-
     // Audio data received on this
     data_channel: mpsc::Receiver<f32>,
 
     // When this is set to false all data is ignored
     audio_run: Arc<AtomicBool>,
 ) -> Result<impl std::any::Any, RecorderError> {
+    let port_name = "output";
+
+    // Client to play audio from
     let (client, _status) = match Client::new(CLIENT_NAME, ClientOptions::NO_START_SERVER) {
         Ok(cs) => cs,
         Err(err) => {
@@ -84,6 +84,7 @@ pub fn send_audo_to_jack(
         jack::Control::Continue
     };
     let process_handler = ClosureProcessHandler::new(process_callback);
+    // The name of the port being created
     let full_port_name = format!("{CLIENT_NAME}:{port_name}");
     let active_client = match client.activate_async((), process_handler) {
         Ok(ac) => ac,

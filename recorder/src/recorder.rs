@@ -5,7 +5,7 @@ use clap::Parser;
 use qzn3t_recorder::app::App;
 use qzn3t_recorder::app::AppData;
 use qzn3t_recorder::errors::RecorderError;
-use qzn3t_recorder::io::Inputs;
+use qzn3t_recorder::io::JackPipes;
 use qzn3t_recorder::send_audio_to_jack::send_audo_to_jack;
 use qzn3t_recorder::structs::Args;
 use qzn3t_recorder::structs::Command;
@@ -14,7 +14,8 @@ use std::env::temp_dir;
 use std::sync::mpsc;
 
 fn inner_main(args: Args) -> Result<(), RecorderError> {
-    let inputs = Inputs::from_command_line(args.input)?;
+    let inputs = JackPipes::from_command_line(args.inputs)?;
+    let outputs = JackPipes::from_command_line(args.outputs)?;
 
     // Channel to send audio data to Jackd
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
@@ -35,8 +36,8 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
     // Start the application.  Runs in its own thread, the handle is in `app_handle`
     match args.kommand {
         None => {
-            let app_data: AppData = app.initialise(audio_tx, command_rx, inputs, &dir)?;
-            let _out_port = send_audo_to_jack("output", audio_rx, app_data.run_f.clone())?;
+            let app_data: AppData = app.initialise(audio_tx, command_rx, inputs, outputs, &dir)?;
+            let _out_port = send_audo_to_jack(audio_rx, app_data.run_f.clone())?;
             let ui_run = app_data.ui_run_f.clone();
             let t = app.run(app_data)?;
 
@@ -47,7 +48,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
             Ok(())
         }
         Some(k) => {
-            let mut cfg: AppData = app.initialise(audio_tx, command_rx, inputs, &dir)?;
+            let mut cfg: AppData = app.initialise(audio_tx, command_rx, inputs, outputs, &dir)?;
             cfg.handle_kommand(k)?;
             Ok(())
         }
@@ -77,7 +78,7 @@ mod tests {
         // No client:port
         let mut args = Args::default();
         let pname = "abcdefg";
-        args.input.push(pname.to_string());
+        args.inputs.push(pname.to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::InvalidPipeName(ref s)) if s == pname));
@@ -85,7 +86,7 @@ mod tests {
         // Too many fields
         let mut args = Args::default();
         let pname = "abc:defg:1234:trwge";
-        args.input.push(pname.to_string());
+        args.inputs.push(pname.to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::InvalidPipeName(ref s)) if s == pname));
@@ -95,7 +96,7 @@ mod tests {
     fn invalid_pipe_type() {
         let mut args = Args::default();
         let pname = "system:playback_1";
-        args.input.push(pname.to_string());
+        args.inputs.push(pname.to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::NotOutputPipe(ref s)) if s == pname));
@@ -104,7 +105,7 @@ mod tests {
     #[test]
     fn non_exist_pipe() {
         let mut args = Args::default();
-        args.input.push("asdfdg:1234".to_string());
+        args.inputs.push("asdfdg:1234".to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::PipeNotFound(_))));
@@ -113,8 +114,8 @@ mod tests {
     #[test]
     fn duplicate_pipe() {
         let mut args = Args::default();
-        args.input.push("system:capture_1".to_string());
-        args.input.push("system:capture_1".to_string());
+        args.inputs.push("system:capture_1".to_string());
+        args.inputs.push("system:capture_1".to_string());
         let test = inner_main(args);
         eprintln!("{test:?}");
         assert!(matches!(test, Err(RecorderError::DuplicateInput(_))));

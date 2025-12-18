@@ -16,7 +16,15 @@ pub struct Args {
 		    `-i <client_a>:<port_a> -i <client_b>:<port_b>`. The port can be given a name\n\
 		    using format `-i <client>:<port>:<name>` If no name is specified then it is\n\
 		    `<client>:<port>`")]
-    pub input: Vec<String>,
+    pub inputs: Vec<String>,
+
+    #[arg(short = 'o', long, action = clap::ArgAction::Append, long_help = "Output Jack pipe to playaudio to with an optional name\n\n\
+		    The Jack pipes are specified as: `<client>:<port>`.  Multiple ports can be\n\
+		    specified for multi-channel recording:\n\
+		    `-o <client_a>:<port_a> -o <client_b>:<port_b>`. The port can be given a name\n\
+		    using format `-o <client>:<port>:<name>` If no name is specified then it is\n\
+		    `<client>:<port>`")]
+    pub outputs: Vec<String>,
 
     /// Backing track for immediate overdubbing
     #[arg(short = 'b', long)]

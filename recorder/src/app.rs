@@ -3,7 +3,7 @@
 
 //! The main container for the programme
 use crate::errors::RecorderError;
-use crate::io::{AudioBuffers, FileManager, Inputs};
+use crate::io::{AudioBuffers, FileManager, JackPipes};
 use crate::structs::Command;
 use crate::utils::get_sample_rate;
 use jack_rec;
@@ -75,7 +75,8 @@ impl App {
         &mut self,
         audio_tx: mpsc::Sender<f32>,
         command_rx: mpsc::Receiver<Command>,
-        inputs: Inputs,
+        inputs: JackPipes,
+        outputs: JackPipes,
         directory: &PathBuf,
     ) -> Result<AppData, Box<dyn Error>> {
         // Flag to start and stop the recorder
@@ -102,6 +103,7 @@ impl App {
             run_f: run_f.clone(),
             ui_run_f,
             inputs,
+            outputs,
             save_dir: directory.clone(),
             file_manager,
         })
@@ -165,7 +167,8 @@ pub struct AppData {
     pub run_f: Arc<AtomicBool>,
     pub ui_run_f: Arc<AtomicBool>,
     save_dir: PathBuf,
-    inputs: Inputs,
+    inputs: JackPipes,
+    outputs: JackPipes,
     file_manager: FileManager,
 }
 
@@ -217,7 +220,7 @@ impl AppData {
                 }
 
                 let client = "qzn3t/recorder".to_string();
-                let ac = match jack_rec::run_port(client, inputs, buf_txs, run_f.clone()) {
+                let ac = match jack_rec::read_port(client, inputs, buf_txs, run_f.clone()) {
                     Ok(p) => p,
                     Err(err) => {
                         return Err(err.into());
@@ -493,7 +496,10 @@ impl AppData {
                 for (j, d) in i.1.iter().enumerate() {
                     if let Err(e) = tx[j].send(*d) {
                         // TODO: This should be an error
-                        eprintln!("recorder Error sending data in play_audio {e}");
+                        eprintln!(
+                            "recorder Error sending data in play_audio {e}
+"
+                        );
                         break;
                     }
                 }

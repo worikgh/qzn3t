@@ -4,7 +4,7 @@
 use jack::{AsyncClient, AudioOut, Client, Control, Port, ProcessHandler, ProcessScope};
 use qzn3t_recorder::{
     app::{App, AppData},
-    io::Inputs,
+    io::JackPipes,
     structs::Command,
     utils::get_sample_rate,
 };
@@ -249,7 +249,7 @@ fn record_two_channels() {
 
     // Set up the recorder
     // The inputs (Jack pipes to record) first
-    let mut inputs = Inputs::new();
+    let mut inputs = JackPipes::new();
     let port_tri = format!("{}:{port_tri}", ac.as_client().name());
     if let Err(err) = inputs.add_name(&port_tri, tri_name) {
         panic!("{err}");
@@ -514,7 +514,8 @@ fn trim_audio(audio_buffer: &[f32]) -> Vec<f32> {
 /// Set up a recorder for testing
 fn set_up_recorder(port_names: Vec<String>, port_labels: Vec<String>, dir: &PathBuf) -> AppData {
     assert_eq!(port_names.len(), port_labels.len());
-    let mut inputs = Inputs::new();
+    let mut inputs = JackPipes::new();
+    let outputs = JackPipes::new();
     for p in port_names.iter().zip(port_labels.iter()) {
         inputs.add_name(p.0, p.1).unwrap();
     }
@@ -522,7 +523,7 @@ fn set_up_recorder(port_names: Vec<String>, port_labels: Vec<String>, dir: &Path
     let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
     let mut app = App;
-    match app.initialise(_audio_tx, _command_rx, inputs, dir) {
+    match app.initialise(_audio_tx, _command_rx, inputs, outputs, dir) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     }

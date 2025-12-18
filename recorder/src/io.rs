@@ -9,14 +9,14 @@ use std::fs::OpenOptions;
 use std::{self, collections::HashMap, fs, path::PathBuf, sync::mpsc, thread, time::Duration};
 
 // ---- Inputs Start ----
-/// Define the  Jack pipes to record from.
+/// Define the  Jack pipes to use
 #[derive(Debug, Clone)]
-pub struct Inputs {
+pub struct JackPipes {
     names_ports: HashMap<String, String>,
 }
 
 /// Public interface
-impl Inputs {
+impl JackPipes {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         Self {
@@ -26,7 +26,7 @@ impl Inputs {
 
     /// Using the strings from the command line [`crate::structs::Args`] `-i` add input jack pipes.
     pub fn from_command_line(input_pipes: Vec<String>) -> Result<Self, RecorderError> {
-        let mut inputs = Self::new();
+        let mut result = Self::new();
         if input_pipes.is_empty() {
             return Err(RecorderError::NoInputs);
         }
@@ -36,17 +36,17 @@ impl Inputs {
             if parts.len() < 2 || parts.len() > 3 {
                 return Err(RecorderError::InvalidPipeName(i.to_string()));
             } else if parts.len() == 2 {
-                inputs.add(i)?;
+                result.add(i)?;
             } else {
                 let client = parts[0];
                 let port = parts[1];
                 let name = parts[2];
                 let client_port = format!("{client}:{port}");
-                inputs.add_name(&client_port, name)?;
+                result.add_name(&client_port, name)?;
             }
         }
 
-        Ok(inputs)
+        Ok(result)
     }
 
     /// Add an input to the collection with a default name.  The port
@@ -56,7 +56,7 @@ impl Inputs {
     }
 
     /// Add an input to the collection with a defined name.  The port
-    /// must be of the type form "`client`:`port name`"
+    /// must be of the type form "`client`:`port name`".
     pub fn add_name(&mut self, port: &str, name: &str) -> Result<(), RecorderError> {
         Self::validate_jack_input_pipe(port)?;
         if self.names_ports.values().any(|n| n == port) {
@@ -85,7 +85,7 @@ impl Inputs {
 }
 
 /// Private interface
-impl Inputs {
+impl JackPipes {
     /// An input to this programme is the name of a Jack 32-bit audio
     /// output pipe.  It is of the form: "<client>:<pipe name>"
     fn validate_jack_input_pipe(pipe: &str) -> Result<(), RecorderError> {
@@ -452,7 +452,7 @@ mod tests {
     #[test]
     fn list_capture_add_valid_port() {
         let port = "system:capture_1";
-        let mut inputs = Inputs::new();
+        let mut inputs = JackPipes::new();
         inputs.add(port).unwrap();
         dbg!(&inputs, port);
         assert!(inputs.ports().iter().any(|p| p.as_str() == port));
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn list_capture_add_invalid_port() {
         let port = "system_capture_1";
-        let mut inputs = Inputs::new();
+        let mut inputs = JackPipes::new();
         match inputs.add(port) {
             Err(RecorderError::InvalidPipeName(p)) | Err(RecorderError::PipeNotFound(p)) => {
                 assert_eq!(p, port)
@@ -479,7 +479,7 @@ mod tests {
         println!("name: {name}");
         let portv = vec![format!("{port}:{name}")];
         println!("portv: {portv:?}");
-        let inputs = match Inputs::from_command_line(portv) {
+        let inputs = match JackPipes::from_command_line(portv) {
             Ok(i) => i,
             Err(err) => panic!("Panicked! {err}"),
         };
