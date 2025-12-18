@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 name = "qzn3t-pitch-detection"
 readme = "README.md"
 repository = "https://github.com/worikgh/qzn3t/tree/mistress/pitch-detection"
-version = "0.4.3"
+version = "0.4.4"
 
 [dependencies]
 jack = "0.13.3"

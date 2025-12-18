@@ -20,7 +20,7 @@ use std::sync::{atomic::AtomicBool, atomic::Ordering, mpsc::Receiver, mpsc::Send
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-const SLEEP_MS: u64 = 300;
+const SLEEP_MS: u64 = 500;
 
 /// Handle Jackd notifications.
 pub struct JackNotifications;
@@ -163,7 +163,6 @@ pub fn pitch_detection_run(
             Detector::Yin => Box::new(YINDetector::new(buf_sz, padding)),
         };
 
-        // Buffer to hold samples.
         loop {
             let top_of_loop = Instant::now();
             if let Some(kill_switch) = &kill_switch {
