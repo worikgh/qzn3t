@@ -50,3 +50,4 @@ inc/
 Compose/compositions/
 
 pitch-detection/examples/
+*.raw
