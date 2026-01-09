@@ -14,8 +14,11 @@ use std::env::temp_dir;
 use std::sync::mpsc;
 
 fn inner_main(args: Args) -> Result<(), RecorderError> {
-    let inputs = JackPipes::from_command_line(args.inputs)?;
-    let outputs = JackPipes::from_command_line(args.outputs)?;
+    eprintln!("Args.inputs: {:?}", args.inputs);
+    let input_pipes = &args.inputs;
+    eprintln!("input_pipes 1: {:?}", input_pipes);
+    let inputs = JackPipes::from_command_line(input_pipes)?;
+    let outputs = JackPipes::from_command_line(&args.outputs)?;
 
     // Channel to send audio data to Jackd
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
@@ -57,6 +60,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
 
 fn main() {
     let args = Args::parse();
+    eprintln!("Args: {args:?}");
     if let Err(err) = inner_main(args) {
         panic!("Error in recorder: {err}");
     }

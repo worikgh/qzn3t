@@ -8,6 +8,58 @@ use std::sync::{Arc, mpsc};
 
 pub struct Notifications;
 impl jack::NotificationHandler for Notifications {
+    fn thread_init(&self, _: &jack::Client) {
+        eprintln!("DBG NotificationHandler thread_init");
+    }
+    unsafe fn shutdown(&mut self, _status: jack::ClientStatus, _reason: &str) {
+        eprintln!("DBG NotificationHandler shutdown {_status:?} {_reason}");
+    }
+    fn freewheel(&mut self, _: &jack::Client, _is_freewheel_enabled: bool) {
+        eprintln!("DBG NotificationHandler freewheel {_is_freewheel_enabled}");
+    }
+    fn client_registration(&mut self, _: &jack::Client, name: &str, is_registered: bool) {
+        eprintln!("DBG NotificationHandler client_registration: {name}/{is_registered}");
+    }
+    fn port_registration(
+        &mut self,
+        _: &jack::Client,
+        _port_id: jack::PortId,
+        _is_registered: bool,
+    ) {
+        eprintln!("DBG NotificationHandler port_registration: {_port_id}/{_is_registered}");
+    }
+    fn port_rename(
+        &mut self,
+        _: &jack::Client,
+        _port_id: jack::PortId,
+        _old_name: &str,
+        _new_name: &str,
+    ) -> jack::Control {
+        eprintln!("DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}");
+        jack::Control::Continue
+    }
+    fn ports_connected(
+        &mut self,
+        _: &jack::Client,
+        _port_id_a: jack::PortId,
+        _port_id_b: jack::PortId,
+        _are_connected: bool,
+    ) {
+        eprintln!(
+            "DBG NotificationHandler: ports_connected {_port_id_a}/{_port_id_b} {_are_connected}"
+        );
+    }
+
+    fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
+        eprintln!("DBG NotificationHandler graph_reorder");
+        jack::Control::Continue
+    }
+
+    fn xrun(&mut self, _: &jack::Client) -> jack::Control {
+        eprintln!("DBG NotificationHandler xrun");
+        jack::Control::Continue
+    }
+
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
         eprintln!("DBG jack_rec: sample rate changed to {srate}");
         jack::Control::Continue
@@ -17,9 +69,10 @@ impl jack::NotificationHandler for Notifications {
 /// Handler for audio output.  Receive multi-channel audio data on a
 /// set of `mpsc::Channel`s and send them to matching Jack ports
 pub struct ProcessAudioToJack {
-    run_flag: Arc<AtomicBool>,
+    run_f: Arc<AtomicBool>,
     ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
 }
+
 impl jack::ProcessHandler for ProcessAudioToJack {
     /// If there are audio data in the channels send it out on the
     /// associated port, if no audio available send 0f32
@@ -37,7 +90,8 @@ impl jack::ProcessHandler for ProcessAudioToJack {
                 };
             }
         }
-        if !self.run_flag.load(Ordering::SeqCst) {
+        if !self.run_f.load(Ordering::SeqCst) {
+            eprintln!("DBG jack_rec: run_f false in ProcessAudioToJack.process ");
             jack::Control::Quit
         } else {
             jack::Control::Continue
@@ -48,7 +102,7 @@ impl jack::ProcessHandler for ProcessAudioToJack {
 /// Handler for audio input.  Receive multi-channel audio data on a
 /// set of Jack ports and send them to matching `mpsc::Channel`s
 pub struct ProcessAudioFromJack {
-    run_flag: Arc<AtomicBool>,
+    run_f: Arc<AtomicBool>,
     // FIXME: The `inputs` and `senders` should be in a HashMap.  Key
     // the ports, values the senders.  But since `jack::Port` is not
     // hashable, make the name of the port the key and the value a
@@ -70,7 +124,8 @@ impl jack::ProcessHandler for ProcessAudioFromJack {
                 }
             }
         }
-        if !self.run_flag.load(Ordering::SeqCst) {
+        if !self.run_f.load(Ordering::SeqCst) {
+            eprintln!("DBG jack_rec: Quit process handler");
             // Close all the pipes for sending data
             self.senders.clear();
             jack::Control::Quit
@@ -94,7 +149,7 @@ pub fn read_port(
     client: String,
     jack_inputs: Vec<String>,
     senders: Vec<mpsc::Sender<f32>>,
-    run_flag: Arc<AtomicBool>,
+    run_f: Arc<AtomicBool>,
 ) -> Result<jack::AsyncClient<Notifications, ProcessAudioFromJack>, Box<dyn Error>> {
     let (client, _status) =
         match jack::Client::new(client.as_str(), jack::ClientOptions::NO_START_SERVER) {
@@ -124,7 +179,7 @@ pub fn read_port(
         .map(|p| p.name().as_ref().unwrap().to_string())
         .collect::<Vec<String>>();
     let in_process = ProcessAudioFromJack {
-        run_flag: run_flag.clone(),
+        run_f: run_f.clone(),
         inports,
         senders,
     };
@@ -210,7 +265,7 @@ pub fn write_port(
     }
 
     let out_process = ProcessAudioToJack {
-        run_flag,
+        run_f: run_flag,
         ports_receivers,
     };
     // Activate the client, which starts the processing.
@@ -237,5 +292,6 @@ pub fn write_port(
             }
         }
     }
+    eprintln!("DBG jack_rec: Actve client returned");
     Ok(active_client)
 }

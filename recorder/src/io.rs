@@ -25,9 +25,11 @@ impl JackPipes {
     }
 
     /// Using the strings from the command line [`crate::structs::Args`] `-i` add input jack pipes.
-    pub fn from_command_line(input_pipes: Vec<String>) -> Result<Self, RecorderError> {
+    pub fn from_command_line(input_pipes: &Vec<String>) -> Result<Self, RecorderError> {
         let mut result = Self::new();
+        eprintln!("input_pipes 2: {:?}", input_pipes);
         if input_pipes.is_empty() {
+            // No point running a recorder without inputs
             return Err(RecorderError::NoInputs);
         }
 
@@ -162,6 +164,15 @@ impl AudioBuffers {
             .keys()
             .map(|k| k.to_string())
             .collect::<Vec<String>>()
+    }
+
+    /// Get some stats:
+    pub fn stats(&self) -> String {
+        let mut result = "".to_string();
+        for (k, v) in self.buffers.iter() {
+            result = format!("{result}{k}: {}\n", v.len());
+        }
+        result
     }
 }
 
@@ -479,7 +490,7 @@ mod tests {
         println!("name: {name}");
         let portv = vec![format!("{port}:{name}")];
         println!("portv: {portv:?}");
-        let inputs = match JackPipes::from_command_line(portv) {
+        let inputs = match JackPipes::from_command_line(&portv) {
             Ok(i) => i,
             Err(err) => panic!("Panicked! {err}"),
         };

@@ -10,7 +10,7 @@ use jack_rec;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -88,6 +88,7 @@ impl App {
         // normal use, but tests are often run in parallel, so this is done for testing
         ONCE.call_once(|| {
             if let Err(err) = ctrlc::set_handler(move || {
+                eprintln!("DBG recorder: Ctl-c");
                 run_f_ctl_c.store(false, Ordering::Relaxed);
             }) {
                 panic!("Error qzn3t/recorder: setting Ctrl-C handler: {err}");
@@ -219,7 +220,8 @@ impl AppData {
                     buf_txs.push(buf_tx);
                 }
 
-                let client = "qzn3t/recorder".to_string();
+                let client = "Qzn3t/Recorder".to_string();
+
                 let ac = match jack_rec::read_port(client, inputs, buf_txs, run_f.clone()) {
                     Ok(p) => p,
                     Err(err) => {
@@ -230,7 +232,7 @@ impl AppData {
                 // Signal that this is running to caller (parent)
                 active_2.store(true, Ordering::SeqCst);
 
-                // Keep track of disconnected channelss and when they are
+                // Keep track of disconnected channels and when they are
                 // all disconnected exit the loop normally
                 let mut channels_connected: HashMap<String, bool> = HashMap::new();
                 for k in audio_input_channels.keys() {
@@ -247,13 +249,15 @@ impl AppData {
                     ) {
                         Ok(ctl) => match ctl {
                             InnerJackLoopCtl::Continue => (),
-                            InnerJackLoopCtl::Quit => break,
+                            InnerJackLoopCtl::Quit => {
+                                eprintln!("DBG record: Main loop QUIT");
+                                break;
+                            }
                         },
                         Err(err) => return Err(err),
                     }
                     thread::sleep(Duration::from_millis(10));
                 }
-
                 if let Err(err) = ac.deactivate() {
                     Err(RecorderError::DeactivateClientFailed(format!("{err}")))
                 } else {
@@ -291,6 +295,7 @@ impl AppData {
     ) -> Result<InnerJackLoopCtl, RecorderError> {
         {
             if channels_connected.iter().all(|(_, c)| !c) {
+                eprintln!("DBG recorder: All cahannels disconnected: Quit");
                 return Ok(InnerJackLoopCtl::Quit);
             }
 
@@ -304,7 +309,6 @@ impl AppData {
                         .fold("".to_string(), |a, (n, v)| format!("{a} {n}:{v}"))
                 );
             }
-
             for (name, receiver) in audio_input_channels.iter() {
                 if channels_connected.iter().all(|(_, c)| !c) {
                     break;
@@ -331,13 +335,13 @@ impl AppData {
                         }
                         Err(TryRecvError::Disconnected) => {
                             channels_connected.insert(name.clone(), false);
+                            eprintln!("DBG recorder: A channel disconnected");
                             break;
                         }
                         Err(TryRecvError::Empty) => break,
                     }
                 }
             }
-
             thread::sleep(Duration::from_millis(10));
         }
         Ok(InnerJackLoopCtl::Continue)
@@ -362,6 +366,7 @@ impl AppData {
     }
 
     pub fn handle_record(&mut self) -> Result<(), Box<dyn Error>> {
+        // Truncate all the audio buffers
         self.recorded_audio.reset();
 
         self.run_f.store(true, Ordering::SeqCst);
@@ -446,13 +451,21 @@ impl AppData {
 
     /// When a command is passed into the programme by `-k`
     pub fn handle_kommand(&mut self, k: Command) -> Result<(), Box<dyn Error>> {
-        match k {
+        let result = match k {
             Command::Record => {
-                println!("Recording.  C-c to stop");
+                eprintln!("<enter> to stop");
                 self.handle_record()?;
+                let mut input = String::new();
+                io::stdin()
+                    .read_line(&mut input)
+                    .expect("Failed to read line");
+                eprintln!("DBG Enter pressed");
+                self.run_f.store(false, Ordering::SeqCst);
                 if let Some(h) = self.audio_handle.take() {
+                    eprintln!("DBG recorder: Taken handle. Finished: {}", h.is_finished());
                     match h.join() {
                         Ok(Ok(data)) => {
+                            eprintln!("DBG recorder: Joined  Data: {}", data.stats());
                             self.recorded_audio = data;
                             self.handle_save()?;
                             Ok(())
@@ -468,7 +481,9 @@ impl AppData {
                 }
             }
             _ => panic!("Error recorder: -k {k:?} is not handled"),
-        }
+        };
+        eprintln!("DBG recorder: handle_command result: {result:?}");
+        result
     }
 
     /// Send `recorded_audio` to the backend to play.

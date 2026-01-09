@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 chrono = "0.4"
 clap = "4.5.47"
-jack = "0.13.3"
+jack = "0.13.4"
 mio = { version = "1.0.4", features = ["os-ext"] }
 
 # Output a JSON description of created files
