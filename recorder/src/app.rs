@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 static ONCE: Once = Once::new();
 
@@ -391,8 +391,12 @@ impl AppData {
         thread::sleep(Duration::from_millis(100));
 
         if let Some(handle) = self.audio_handle.take() {
-            assert!(handle.is_finished());
+            let start = Instant::now();
             let j = handle.join();
+            eprintln!(
+                "DBG recorder: Time to join recording channel: {}ms",
+                start.elapsed().as_millis()
+            );
             match j {
                 Ok(Ok(mut audio_data)) => {
                     for (n, b) in audio_data.iter_mut() {
