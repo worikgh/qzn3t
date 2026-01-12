@@ -7,7 +7,7 @@ edition = "2024"
 clap = { version = "4.0", features = ["derive"] }
 crossterm = "0.29.0"
 ctrlc = "3.4"
-jack = "0.13.3"
+jack = { git = "https://github.com/worikgh/rust-jack.git", branch = "mistress" }
 qzn3t-jack-rec = {path = "../jack_rec/"}
 
 [lib]
