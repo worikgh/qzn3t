@@ -26,7 +26,7 @@ impl jack::NotificationHandler for Notifications {
         _port_id: jack::PortId,
         _is_registered: bool,
     ) {
-        eprintln!("DBG NotificationHandler port_registration: {_port_id}/{_is_registered}");
+        // eprintln!("DBG NotificationHandler port_registration: {_port_id}/{_is_registered}");
     }
     fn port_rename(
         &mut self,
@@ -45,13 +45,13 @@ impl jack::NotificationHandler for Notifications {
         _port_id_b: jack::PortId,
         _are_connected: bool,
     ) {
-        eprintln!(
-            "DBG NotificationHandler: ports_connected {_port_id_a}/{_port_id_b} {_are_connected}"
-        );
+        // eprintln!(
+        //     "DBG NotificationHandler: ports_connected {_port_id_a}/{_port_id_b} {_are_connected}"
+        // );
     }
 
     fn graph_reorder(&mut self, _: &jack::Client) -> jack::Control {
-        eprintln!("DBG NotificationHandler graph_reorder");
+        // eprintln!("DBG NotificationHandler graph_reorder");
         jack::Control::Continue
     }
 
