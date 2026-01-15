@@ -223,10 +223,7 @@ pub fn write_port(
     // Create a client that reads data from `mpsc::Receiver<f32>`
     // channels and makes it available on a Jack port.
     let (client, _status) =
-        match jack::Client::new(client_name.as_str(), jack::ClientOptions::NO_START_SERVER) {
-            Ok(c) => c,
-            Err(err) => return Err(err.into()),
-        };
+        jack::Client::new(client_name.as_str(), jack::ClientOptions::NO_START_SERVER)?;
 
     // The audio transmission is implemented by connecting ports.
     // Collect the port names that will be used. The destination ports
