@@ -14,9 +14,7 @@ use std::env::temp_dir;
 use std::sync::mpsc;
 
 fn inner_main(args: Args) -> Result<(), RecorderError> {
-    eprintln!("Args.inputs: {:?}", args.inputs);
     let input_pipes = &args.inputs;
-    eprintln!("input_pipes 1: {:?}", input_pipes);
     let inputs = JackPipes::from_command_line(input_pipes)?;
     let outputs = JackPipes::from_command_line(&args.outputs)?;
 

@@ -9,16 +9,16 @@ use std::sync::{Arc, mpsc};
 pub struct Notifications;
 impl jack::NotificationHandler for Notifications {
     fn thread_init(&self, _: &jack::Client) {
-        eprintln!("DBG NotificationHandler thread_init");
+        // eprintln!("DBG NotificationHandler thread_init");
     }
     unsafe fn shutdown(&mut self, _status: jack::ClientStatus, _reason: &str) {
-        eprintln!("DBG NotificationHandler shutdown {_status:?} {_reason}");
+        // eprintln!("DBG NotificationHandler shutdown {_status:?} {_reason}");
     }
     fn freewheel(&mut self, _: &jack::Client, _is_freewheel_enabled: bool) {
-        eprintln!("DBG NotificationHandler freewheel {_is_freewheel_enabled}");
+        // eprintln!("DBG NotificationHandler freewheel {_is_freewheel_enabled}");
     }
-    fn client_registration(&mut self, _: &jack::Client, name: &str, is_registered: bool) {
-        eprintln!("DBG NotificationHandler client_registration: {name}/{is_registered}");
+    fn client_registration(&mut self, _: &jack::Client, _name: &str, _is_registered: bool) {
+        // eprintln!("DBG NotificationHandler client_registration: {_name}/{_is_registered}");
     }
     fn port_registration(
         &mut self,
@@ -35,7 +35,7 @@ impl jack::NotificationHandler for Notifications {
         _old_name: &str,
         _new_name: &str,
     ) -> jack::Control {
-        eprintln!("DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}");
+        // eprintln!("DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}");
         jack::Control::Continue
     }
     fn ports_connected(
