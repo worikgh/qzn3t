@@ -556,6 +556,5 @@ fn play_test_audio(
 
 /// The destination directory
 fn dst_dir() -> PathBuf {
-    PathBuf::from("/home/worik/Documents/2025/qzn3t/recorder/tests/data")
-    //temp_dir()
+    std::env::current_dir().unwrap().join("tests/data")
 }
