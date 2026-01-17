@@ -192,6 +192,7 @@ impl App {
 }
 
 /// Hold the data for the programme.
+#[allow(dead_code)]
 pub struct AppData {
     pub recorded_audio: AudioBuffers,
     pub audio_handle: Option<thread::JoinHandle<Result<AudioBuffers, RecorderError>>>,
