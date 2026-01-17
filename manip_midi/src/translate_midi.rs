@@ -184,7 +184,6 @@ impl Translator {
             self.working.push(byte);
         } else {
             // Data byte
-            eprintln!("DBG translate_midi: Data byte: {byte:x}");
             match self.status {
                 Some(status) => {
                     let byte = match self.translate(byte, &status)? {
@@ -195,7 +194,6 @@ impl Translator {
                             byte
                         }
                     };
-                    eprintln!("DBG translate_midi: Translated byte: {byte:x}");
                     self.working.push(byte);
                     self.write_working();
                     self.truncate();
@@ -262,7 +260,6 @@ fn inner_main() -> Result<(), Box<dyn Error>> {
         translator.write_working();
         translator.truncate();
     }
-    eprintln!("DBG translate_midi: main after main loop");
     Ok(())
 }
 /// Helper function for reading `u8` from `&str`.  Hex if prefixed

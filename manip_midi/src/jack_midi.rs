@@ -208,7 +208,6 @@ pub fn load_configuration(
     cfg_file_name: &str,
 ) -> Result<(HashMap<u8, Vec<(String, String)>>, u8), Box<dyn Error>> {
     let mut s = String::new();
-    eprintln!("DBG test jack_midi: Configuration file name: {cfg_file_name}");
     let mut file = match File::open(cfg_file_name) {
         Ok(f) => f,
         Err(err) => {

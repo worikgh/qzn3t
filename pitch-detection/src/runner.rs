@@ -29,7 +29,6 @@ impl jack::NotificationHandler for JackNotifications {
 
     /// It is worth noting xruns.
     fn xrun(&mut self, _: &Client) -> Control {
-        eprintln!("DBG detect_pitch:   xrun");
         Control::Continue
     }
 }
@@ -238,7 +237,7 @@ pub fn pitch_detection_run(
                 thread::sleep(Duration::from_millis(sleep as u64));
             } else if sleep < 0 {
                 eprintln!(
-                    "DBG pitch_detection/runner: Detection loop over ran: {}ms of {sleep_ms}ms",
+                    "Error pitch_detection/runner: Detection loop over ran: {}ms of {sleep_ms}ms",
                     -sleep
                 );
             }

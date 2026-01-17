@@ -64,7 +64,6 @@ impl App {
                 }
                 thread::sleep(poll);
             }
-            eprintln!("DBG recorder: Broken from main loop");
             Ok(())
         }); // Closure
         Ok(app_handle)
@@ -250,7 +249,6 @@ impl AppData {
                         Ok(ctl) => match ctl {
                             InnerJackLoopCtl::Continue => (),
                             InnerJackLoopCtl::Quit => {
-                                eprintln!("DBG record: Main loop QUIT");
                                 break;
                             }
                         },
@@ -303,7 +301,7 @@ impl AppData {
             // Channels should be disconnected all in the same moment
             if channels_connected.iter().any(|(_, c)| !c) {
                 eprintln!(
-                    "DBG: !!! Only some channels disconnected, should not happen: {}",
+                    "Error: !!! Only some channels disconnected, should not happen: {}",
                     channels_connected
                         .iter()
                         .fold("".to_string(), |a, (n, v)| format!("{a} {n}:{v}"))
@@ -335,7 +333,6 @@ impl AppData {
                         }
                         Err(TryRecvError::Disconnected) => {
                             channels_connected.insert(name.clone(), false);
-                            eprintln!("DBG recorder: A channel disconnected");
                             break;
                         }
                         Err(TryRecvError::Empty) => break,
@@ -463,10 +460,8 @@ impl AppData {
                 io::stdin()
                     .read_line(&mut input)
                     .expect("Failed to read line");
-                eprintln!("DBG Enter pressed");
                 self.run_f.store(false, Ordering::SeqCst);
                 if let Some(h) = self.audio_handle.take() {
-                    eprintln!("DBG recorder: Taken handle. Finished: {}", h.is_finished());
                     match h.join() {
                         Ok(Ok(data)) => {
                             eprintln!("DBG recorder: Joined  Data: {}", data.stats());
@@ -486,7 +481,6 @@ impl AppData {
             }
             _ => panic!("Error recorder: -k {k:?} is not handled"),
         };
-        eprintln!("DBG recorder: handle_command result: {result:?}");
         result
     }
 

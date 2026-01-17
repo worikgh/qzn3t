@@ -302,15 +302,6 @@ fn main() {
                             // Case to test
                             {
                                 *samples.lock().unwrap() = test_case.samples.clone();
-                                // let s = samples.lock().unwrap();
-                                // let sum = s.iter().fold(0.0_f32, |a, b| a + *b);
-                                // let len = s.len() as f32;
-                                // let mean = sum / len;
-                                // let max = s.iter().fold(0.0_f32, |a, &b| if a > b { a } else { b });
-                                // let min = s.iter().fold(0.0_f32, |a, &b| if a < b { a } else { b });
-                                // eprintln!(
-                                //     "DBG Test case samples: mean: {mean} max: {max} min: {min} length: {len}",
-                                // );
                             }
 
                             let index = test_case.index;

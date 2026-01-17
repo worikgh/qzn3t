@@ -143,7 +143,7 @@ fn log_midi_message(timestamp_ms: u64, message: &[u8]) {
     let seconds = timestamp_ms / 1000;
     let ms = timestamp_ms % 1000;
     eprintln!(
-        "DBG virtual_midi_port: {seconds}:{ms} {}: {}",
+        "LOG virtual_midi_port: {seconds}:{ms} {}: {}",
         message
             .iter()
             .map(|m| format!("{m:x}"))

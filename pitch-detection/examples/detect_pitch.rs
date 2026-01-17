@@ -40,7 +40,7 @@ fn main() {
         let ndr = match rx_ndr.recv() {
             Ok(ndr) => ndr,
             Err(err) => {
-                eprintln!("DBG detect_pitch: Main loop failed with error: {err}");
+                eprintln!("Error detect_pitch: Main loop failed with error: {err}");
                 break;
             }
         };

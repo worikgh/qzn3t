@@ -60,7 +60,6 @@ fn inner_main() -> Result<(), Box<dyn Error>> {
     let name = matches
         .get_one::<String>("port")
         .expect("Must pass port name");
-    eprintln!("DBG read_midi: name: {name}");
     let this_port: MidiInputPort = match get_midi_port(name, &midi_in) {
         Ok(p) => p,
         Err(err) => {

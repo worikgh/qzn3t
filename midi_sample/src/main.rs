@@ -206,9 +206,6 @@ fn main() {
         );
     }
     let sample_rate = client.sample_rate();
-    eprintln!(
-        "DBG midi_sample: Connected to Jackd  Sample rate: {sample_rate}",
-    );
 
     // Prepare the sample buffers.  This code is from the Symphonia
     // example
@@ -299,10 +296,6 @@ fn main() {
                             if this_sample_rate.is_none() {
                                 this_sample_rate = Some(spec.rate as usize);
                             }
-                            eprintln!(
-                                "DBG midi_sample: Path: {path} Sample rate: {}",
-                                spec.rate
-                            );
                             // Get the capacity of the decoded
                             // buffer. Note: This is capacity, not
                             // length!
@@ -340,9 +333,6 @@ fn main() {
         } else {
             path.as_str()
         };
-        eprintln!(
-            "DBG midi_sample: Note -> Sample file: {note:X} -> {disp_path}  Size: {sample_count}"
-        );
 
         // Store prepared sample
         let data = if &sample_rate != this_sample_rate.as_ref().unwrap() {
@@ -420,7 +410,6 @@ fn main() {
                     let velocity = message[2];
                     if velocity != 0 {
                         // NoteOn
-                        // eprintln!("DBG midi_sample: Message: {message:?}");
                         if let Some(sample) =
                             sample_data.iter().find(|s| s.note == message[1])
                         {

@@ -267,12 +267,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         .get_matches();
 
     if *matches.get_one::<bool>("list").unwrap() {
-        eprintln!("DBG pad: Input ports:");
         let ports = get_all_midi_input_ports()?;
         for port_name in ports {
             eprintln!("\t{port_name}");
         }
-        eprintln!("DBG pad: Output ports:");
         let ports = get_all_midi_output_ports()?;
         for port_name in ports {
             eprintln!("\t{port_name}");
@@ -282,9 +280,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let midi_input = matches.get_one::<String>("pad_midi_in").unwrap();
     let midi_output = matches.get_one::<String>("pad_midi_out").unwrap();
-
-    eprintln!("DBG pad: MIDI  input: {}", midi_input);
-    eprintln!("DBG pad: MIDI output: {}", midi_output);
 
     // Initialise the collection of `Section` from the file. (See `section.rs`)
     let sections: Vec<Section> = if let Some(cfg_file_name) = matches.get_one::<String>("config") {
@@ -359,8 +354,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let midi_out: MidiOutput = MidiOutput::new("PadCtlCtl")?;
     let port_name = "port";
     let mut midi_ctl_out_port: MidiOutputConnection = midi_out.create_virtual(port_name)?;
-    eprintln!("DBG pad: Virtual MIDI Output port 'PadCtlNote:{port_name}' is open");
-    eprintln!("DBG pad: Virtual MIDI Output port 'PadCtlCtl:{port_name}' is open");
 
     // Main loop.
     loop {

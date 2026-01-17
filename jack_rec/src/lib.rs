@@ -56,12 +56,11 @@ impl jack::NotificationHandler for Notifications {
     }
 
     fn xrun(&mut self, _: &jack::Client) -> jack::Control {
-        eprintln!("DBG NotificationHandler xrun");
+        eprintln!("Error NotificationHandler xrun");
         jack::Control::Continue
     }
 
     fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
-        eprintln!("DBG jack_rec: sample rate changed to {srate}");
         jack::Control::Continue
     }
 }
@@ -91,7 +90,6 @@ impl jack::ProcessHandler for ProcessAudioToJack {
             }
         }
         if !self.run_f.load(Ordering::SeqCst) {
-            eprintln!("DBG jack_rec: run_f false in ProcessAudioToJack.process ");
             jack::Control::Quit
         } else {
             jack::Control::Continue
@@ -125,7 +123,6 @@ impl jack::ProcessHandler for ProcessAudioFromJack {
             }
         }
         if !self.run_f.load(Ordering::SeqCst) {
-            eprintln!("DBG jack_rec: Quit process handler");
             // Close all the pipes for sending data
             self.senders.clear();
             jack::Control::Quit
@@ -289,6 +286,5 @@ pub fn write_port(
             }
         }
     }
-    eprintln!("DBG jack_rec: Actve client returned");
     Ok(active_client)
 }

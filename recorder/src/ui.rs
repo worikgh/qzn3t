@@ -164,7 +164,7 @@ impl UI {
                 Err(UIError::BadChoice(c))
             }
         } else {
-            eprintln!("DBG recorder: UI.get_command: {e:?}: This should not be reachable");
+            eprintln!("Error recorder: UI.get_command: {e:?}: This should not be reachable");
             Ok(Command::Continue)
         }
     }
@@ -240,7 +240,6 @@ pub fn ui_loop(
         if command == Command::Quit {
             break;
         }
-        eprintln!("DBG recorder: After send command: {command:?}");
     }
     let _ = UI::cleanup_screen();
     Ok(())

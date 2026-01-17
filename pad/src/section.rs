@@ -73,10 +73,6 @@ impl Section {
         for i in 0..(sections.len() - 1) {
             for j in (i + 1)..sections.len() {
                 if sections[i].intersect(&sections[j]) {
-                    eprintln!(
-                        "DBG pad: section intersection: Sections:\n\t{}\n\t{}",
-                        sections[i], sections[j]
-                    );
                     return false;
                 }
             }
