@@ -218,7 +218,7 @@ impl AppData {
     }
 
     /// Spawn a thread to get audio data from a Jack port.  Return the handle
-    fn get_audio_from_jack(
+    fn start_getting_audio(
         &mut self,
     ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
         // Copy of the switch to turn the recorder off
@@ -402,7 +402,7 @@ impl AppData {
 
         self.run_f.store(true, Ordering::SeqCst);
 
-        match self.get_audio_from_jack() {
+        match self.start_getting_audio() {
             Ok(handle) => {
                 self.audio_handle = Some(handle);
             }
