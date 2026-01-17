@@ -34,6 +34,10 @@ impl App {
             let poll = Duration::from_millis(10);
 
             loop {
+                // Keep real-time
+                let now = Instant::now();
+
+                // Get command from front end, if there is a command
                 let command = match config_app.command_rx.try_recv() {
                     Ok(s) => Some(s),
                     Err(TryRecvError::Empty) => None,
@@ -63,9 +67,30 @@ impl App {
                 // The FileManger must keep going otherwise there is
                 // nothing that can be done with the recording
                 if !config_app.check_file_manager()? {
-                    panic!("File manager has shut down");
+                    return Err(RecorderError::FileManager(
+                        "File manager has shut down - main loop".into(),
+                    ));
                 }
-                thread::sleep(poll);
+
+                // Keep to real-time constraints
+                let delay = now.elapsed();
+                if delay < poll {
+                    let sleep: u64 = match (poll.as_nanos() - delay.as_nanos()).try_into() {
+                        Ok(d) => d,
+                        Err(err) => {
+                            return Err(RecorderError::MainLoopTiming(format!(
+                                "When poll is {poll:?} and the main loop took {delay:?} - {} could not be converted to u64: {err:?}",
+                                poll.as_nanos() - delay.as_nanos()
+                            )));
+                        }
+                    };
+                    thread::sleep(Duration::from_nanos(sleep));
+                } else {
+                    eprintln!(
+                        "Error qzn3t/recorder: Main loop xrun: {}ns",
+                        delay.as_nanos() - poll.as_nanos()
+                    );
+                }
             }
             Ok(())
         }); // Closure

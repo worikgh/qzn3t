@@ -42,6 +42,9 @@ pub enum RecorderError {
     // For errors from other systems
     Generic(String),
 
+    // The main loop timing failed
+    MainLoopTiming(String),
+
     // No inputs supplied
     NoInputs,
 
@@ -81,6 +84,7 @@ impl fmt::Display for RecorderError {
                 write!(f, "{self:?}: Path: {path:?} Error: {error}")
             }
             RecorderError::BadCommand(command) => write!(f, "{self:?}: Command: {command}"),
+            RecorderError::MainLoopTiming(reason) => write!(f, "{self:?}: Reason: {reason}"),
         }
     }
 }
