@@ -1,7 +1,6 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-//! The main container for the programme
 use crate::errors::RecorderError;
 use crate::io::{AudioBuffers, FileManager, JackPipes};
 use crate::structs::Command;
@@ -21,10 +20,10 @@ use std::time::{Duration, Instant};
 
 static ONCE: Once = Once::new();
 
-/// Hold the code that runs the programme.
+/// Hold the code that runs the programme. The data is in [`AppData`]
 pub struct App;
 impl App {
-    /// Start a thread that waits for commands.  Return the handle
+    /// The user interface.  Starts a thread that waits for commands, and....  Return the handle
     pub fn run(
         &mut self,
         mut config_app: AppData,
@@ -45,6 +44,7 @@ impl App {
                     }
                 };
                 if let Some(command) = command {
+                    // There was a command.  Carry it out
                     match command {
                         Command::Record => config_app.handle_record()?,
                         Command::Stop => config_app.handle_audio_stop()?,
@@ -59,6 +59,9 @@ impl App {
                         }
                     }
                 }
+
+                // The FileManger must keep going otherwise there is
+                // nothing that can be done with the recording
                 if !config_app.check_file_manager()? {
                     panic!("File manager has shut down");
                 }
@@ -69,7 +72,7 @@ impl App {
         Ok(app_handle)
     }
 
-    /// Set up AppData
+    /// Create AppData
     pub fn initialise(
         &mut self,
         audio_tx: mpsc::Sender<f32>,
@@ -84,7 +87,8 @@ impl App {
         let run_f_ctl_c = run_f.clone();
 
         // Ctl-c handlers must only be set once.  Not a problem for
-        // normal use, but tests are often run in parallel, so this is done for testing
+        // normal use, but tests are often run in parallel, so this is
+        // done for testing
         ONCE.call_once(|| {
             if let Err(err) = ctrlc::set_handler(move || {
                 eprintln!("DBG recorder: Ctl-c");
@@ -109,7 +113,10 @@ impl App {
         })
     }
 
-    /// Read audio data from a file into a buffer
+    /// Read audio data from a file into a buffer TODO: This needs to
+    /// have a parameter for the number of audio channels in the file.
+    /// It should then return `AudioBuffers`.  Perhaps an optional
+    /// vector of names for the channels?
     pub fn read_f32_vec_from_file(file_path: &PathBuf) -> Result<Vec<f32>, RecorderError> {
         // Step 1: Read the file into a Vec<u8>
         let data = fs::read(file_path).map_err(|err| RecorderError::Generic(err.to_string()))?;
@@ -132,7 +139,8 @@ impl App {
 
     /// `file` is open for, and ready to, append Write the contents of
     /// `buffer` to `file` as binary data Return the number of bytes
-    /// written to the file
+    /// written to the file.  TODO: Pass a `AudioBuffers` structure,
+    /// and write one or more channel to the file.
     #[allow(clippy::manual_slice_size_calculation)]
     pub fn write_f32_to_file(file: &mut fs::File, buffer: &[f32]) -> Result<usize, RecorderError> {
         let sz_f32 = std::mem::size_of::<f32>();
