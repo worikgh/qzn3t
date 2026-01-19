@@ -4,6 +4,7 @@
 //! Mix audio signals together.  This is barely started.
 
 use crate::io::AudioBuffers;
+#[allow(dead_code)]
 pub struct AudioMixer {
     clip_threshold: f32,
     use_soft_clip: bool,
@@ -19,28 +20,30 @@ impl AudioMixer {
     }
 
     /// Mix two buffers into one.
-    pub fn mix_buffers(&self, audio_buffers: &AudioBuffers) -> Vec<f32> {
-        let max_len = audio_buffers.iter().fold(0, |a, b| a.max(b.1.len()));
-        let mut mixed = vec![0.0f32; max_len];
+    pub fn mix_buffers(&self, _audio_buffers: &AudioBuffers) -> Vec<f32> {
+        todo!();
+        // let max_len = audio_buffers.iter().fold(0, |a, b| a.max(b.1.len()));
+        // let mut mixed = vec![0.0f32; max_len];
 
-        // Sum all buffers
-        for (_, data) in audio_buffers.iter() {
-            for (i, sample) in data.iter().enumerate() {
-                mixed[i] += *sample;
-            }
-        }
+        // // Sum all buffers
+        // for (_, data) in audio_buffers.iter() {
+        //     for (i, sample) in data.iter().enumerate() {
+        //         mixed[i] += *sample;
+        //     }
+        // }
 
-        // Apply clipping protection
-        if self.use_soft_clip {
-            self.apply_soft_clip(&mut mixed);
-        } else {
-            self.apply_hard_clip(&mut mixed);
-        }
+        // // Apply clipping protection
+        // if self.use_soft_clip {
+        //     self.apply_soft_clip(&mut mixed);
+        // } else {
+        //     self.apply_hard_clip(&mut mixed);
+        // }
 
-        mixed
+        // mixed
     }
 
     /// Soft clipping of an audio signal using tanh
+    #[allow(dead_code)]
     fn apply_soft_clip(&self, buffer: &mut [f32]) {
         for sample in buffer {
             if sample.abs() > self.clip_threshold {
@@ -50,6 +53,7 @@ impl AudioMixer {
     }
 
     /// Hard clipping of an audio signal
+    #[allow(dead_code)]
     fn apply_hard_clip(&self, buffer: &mut [f32]) {
         for sample in buffer {
             *sample = sample.clamp(-1.0, 1.0);

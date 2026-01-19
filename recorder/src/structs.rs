@@ -13,17 +13,13 @@ pub struct Args {
     #[arg(short = 'i', long, action = clap::ArgAction::Append, long_help = "Input Jack pipe to record from with an optional name\n\n\
 		    The Jack pipes are specified as: `<client>:<port>`.  Multiple ports can be\n\
 		    specified for multi-channel recording:\n\
-		    `-i <client_a>:<port_a> -i <client_b>:<port_b>`. The port can be given a name\n\
-		    using format `-i <client>:<port>:<name>` If no name is specified then it is\n\
-		    `<client>:<port>`")]
+		    `-i <client_a>:<port_a> -i <client_b>:<port_b>`")]
     pub inputs: Vec<String>,
 
     #[arg(short = 'o', long, action = clap::ArgAction::Append, long_help = "Output Jack pipe to playaudio to with an optional name\n\n\
 		    The Jack pipes are specified as: `<client>:<port>`.  Multiple ports can be\n\
 		    specified for multi-channel recording:\n\
-		    `-o <client_a>:<port_a> -o <client_b>:<port_b>`. The port can be given a name\n\
-		    using format `-o <client>:<port>:<name>` If no name is specified then it is\n\
-		    `<client>:<port>`")]
+		    `-o <client_a>:<port_a> -o <client_b>:<port_b>`.")]
     pub outputs: Vec<String>,
 
     /// Backing track for immediate overdubbing
@@ -39,6 +35,15 @@ pub struct Args {
 		     directory. "
     )]
     pub directory: Option<String>,
+
+    /// Name for audio and metadata files
+    #[arg(
+        short = 'f',
+        long,
+        default_value = "qzn3t",
+        long_help = "File name touse for files"
+    )]
+    pub file_name: String,
 
     /// If this is not None run a command directly.  Only some
     /// commands make sense

@@ -60,7 +60,7 @@ impl jack::NotificationHandler for Notifications {
         jack::Control::Continue
     }
 
-    fn sample_rate(&mut self, _: &jack::Client, srate: jack::Frames) -> jack::Control {
+    fn sample_rate(&mut self, _: &jack::Client, _srate: jack::Frames) -> jack::Control {
         jack::Control::Continue
     }
 }
@@ -144,7 +144,7 @@ pub struct Description {
 /// sends them on the coresponding channel in `senders`.
 pub fn read_port(
     client: String,
-    jack_inputs: Vec<String>,
+    jack_inputs: Vec<&str>,
     senders: Vec<mpsc::Sender<f32>>,
     run_f: Arc<AtomicBool>,
 ) -> Result<jack::AsyncClient<Notifications, ProcessAudioFromJack>, Box<dyn Error>> {
@@ -190,7 +190,7 @@ pub fn read_port(
     };
     assert_eq!(jack_inputs.len(), inport_names.len());
     for i in 0..jack_inputs.len() {
-        let source_port = &jack_inputs[i];
+        let source_port = jack_inputs[i];
         let destination_port = &inport_names[i];
         match active_client
             .as_client()

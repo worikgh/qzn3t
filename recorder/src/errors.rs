@@ -10,6 +10,12 @@ use crate::structs::Command;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RecorderError {
+    // An invalid channel index to AudioBuffers
+    BadChannelIndex(u32),
+
+    // An invalid channel name to AudioBuffers
+    BadChannelName(String),
+
     // Command sent from UI to recorder is invalid
     BadCommand(Command),
 
@@ -33,6 +39,9 @@ pub enum RecorderError {
     // An input port was defined twice
     DuplicateInput(String),
 
+    // An output port was defined twice
+    DuplicateOutput(String),
+
     // An input port was defined twice with the same name
     DuplicateInputName(String),
 
@@ -54,6 +63,9 @@ pub enum RecorderError {
     // A jack pipe to act as input to recorder is not an output channel
     NotOutputPipe(String),
 
+    // A jack pipe to act as output from recorder is not an input channel
+    NotInputPipe(String),
+
     // The pipe name was invalid
     InvalidPipeName(String),
 
@@ -67,11 +79,13 @@ impl fmt::Display for RecorderError {
 
             RecorderError::DuplicateBufferName(name)
             | RecorderError::DuplicateInput(name)
+            | RecorderError::DuplicateOutput(name)
             | RecorderError::DuplicateInputName(name)
             | RecorderError::FileManager(name)
             | RecorderError::InvalidPipeName(name)
             | RecorderError::PipeNotFound(name)
             | RecorderError::NotOutputPipe(name) => write!(f, "{self:?} Name {name}"),
+            RecorderError::NotInputPipe(name) => write!(f, "{self:?} Name {name}"),
 
             RecorderError::DeactivateClientFailed(error)
             | RecorderError::BufferBackingIO(error) => write!(f, "{self:?}: Error: {error}"),
@@ -85,6 +99,8 @@ impl fmt::Display for RecorderError {
             }
             RecorderError::BadCommand(command) => write!(f, "{self:?}: Command: {command}"),
             RecorderError::MainLoopTiming(reason) => write!(f, "{self:?}: Reason: {reason}"),
+            RecorderError::BadChannelIndex(idx) => write!(f, "{self:?}: Index: {idx}"),
+            RecorderError::BadChannelName(name) => write!(f, "{self:?}: Name: {name}"),
         }
     }
 }

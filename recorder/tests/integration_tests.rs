@@ -5,12 +5,13 @@ use jack::{AsyncClient, AudioOut, Client, Control, Port, ProcessHandler, Process
 use qzn3t_recorder::{
     app::{App, AppData},
     io::JackPipes,
+    io::read_f32_vec_from_file,
     structs::Command,
     utils::get_sample_rate,
 };
 
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -197,7 +198,6 @@ fn make_jack_client_port(
             let mut activate_wait = 0;
             loop {
                 if active_flag.load(Ordering::SeqCst) {
-                    println!("DBG activate_wait: {activate_wait}");
                     return ac;
                 }
                 thread::sleep(Duration::from_millis(1));
@@ -228,17 +228,11 @@ fn record_two_channels() {
     let audio_buffer_tri = trim_audio(&audio_buffer_tri);
 
     // Directory recorded audio is sent to
-    let dir = dst_dir();
+    let output_path = dst_dir().join("two_channels");
 
     // Client to play the output:
     let port_sine = "sine-wave";
     let port_tri = "tri-wave";
-
-    let sine_name = "record_two_channels_sine.raw";
-    let tri_name = "record_two_channels_tri.raw";
-
-    let sine_path = dir.join(sine_name);
-    let tri_path = dir.join(tri_name);
 
     let client_name = "integration_test";
     let (ac, play_audio_f) = play_test_audio(
@@ -249,20 +243,16 @@ fn record_two_channels() {
 
     // Set up the recorder
     // The inputs (Jack pipes to record) first
-    let mut inputs = JackPipes::new();
+    let mut inputs = JackPipes::new(true);
     let port_tri = format!("{}:{port_tri}", ac.as_client().name());
-    if let Err(err) = inputs.add_name(&port_tri, tri_name) {
+    if let Err(err) = inputs.add(&port_tri) {
         panic!("{err}");
     }
     let port_sine_complete = format!("{}:{port_sine}", ac.as_client().name());
-    if let Err(err) = inputs.add_name(&port_sine_complete, sine_name) {
+    if let Err(err) = inputs.add(&port_sine_complete) {
         panic!("{err}");
     }
-    let mut recorder = set_up_recorder(
-        vec![port_sine_complete, port_tri],
-        vec![sine_name.to_string(), tri_name.to_string()],
-        &dir,
-    );
+    let mut recorder = set_up_recorder(vec![port_sine_complete, port_tri], &output_path);
 
     // Start the recorder.
     if let Err(err) = recorder.handle_record() {
@@ -296,10 +286,10 @@ fn record_two_channels() {
     }
 
     // Get two recorded buffers
-    let rec_tri = recorder.recorded_audio.get(tri_name).unwrap();
-    let rec_tri = trim_audio(rec_tri);
-    let rec_sine = recorder.recorded_audio.get(sine_name).unwrap();
-    let rec_sine = trim_audio(rec_sine);
+    let rec_sine = recorder.recorded_audio.get_buffer(0).unwrap();
+    let rec_sine = trim_audio(&rec_sine);
+    let rec_tri = recorder.recorded_audio.get_buffer(1).unwrap();
+    let rec_tri = trim_audio(&rec_tri);
 
     // Reset this on failed tests
     let mut result = true;
@@ -315,7 +305,10 @@ fn record_two_channels() {
     } else {
         for i in 0..audio_buffer_sine.len() {
             if (rec_sine[i] - audio_buffer_sine[i]).abs() > f32::EPSILON {
-                eprintln!("Fail: Sine differs at {i}");
+                eprintln!(
+                    "Fail: Sine differs at {i}, {:0.4}, {:0.4}",
+                    rec_sine[i], audio_buffer_sine[i]
+                );
                 result = false;
                 break;
             }
@@ -338,9 +331,27 @@ fn record_two_channels() {
         // check the recorded files are the same
 
         // Sine wave
-        match App::read_f32_vec_from_file(&sine_path) {
-            Ok(recovered_sine) => {
-                let recovered_sine = trim_audio(&recovered_sine);
+        let audio_path = output_path.with_extension("raw");
+        match read_f32_vec_from_file(&audio_path, 2) {
+            Ok(audio_buffer) => {
+                let recovered_sine = trim_audio(&audio_buffer.get_buffer(0).unwrap());
+                let recovered_tri = trim_audio(&audio_buffer.get_buffer(1).unwrap());
+                if recovered_tri.len() != rec_tri.len() {
+                    eprintln!(
+                        "Fail: recovered_tri.len()/{} != rec_tri.len()/{}",
+                        recovered_tri.len(),
+                        rec_tri.len()
+                    );
+                    result = false;
+                } else {
+                    for i in 0..rec_tri.len() {
+                        if (rec_tri[i] - recovered_tri[i]).abs() > f32::EPSILON {
+                            eprintln!("Fail: Recorded tri differs at {i}");
+                            result = false;
+                            break;
+                        }
+                    }
+                }
                 if recovered_sine.len() != rec_sine.len() {
                     eprintln!(
                         "Fail: recovered_sine.len()/{} != rec_sine.len()/{}",
@@ -359,33 +370,7 @@ fn record_two_channels() {
                 }
             }
             Err(err) => {
-                eprintln!("Fail: Cannot read data from {sine_path:?}.  Error: {err}");
-                result = false;
-            }
-        };
-
-        match App::read_f32_vec_from_file(&tri_path) {
-            Ok(recovered_tri) => {
-                let recovered_tri = trim_audio(&recovered_tri);
-                if recovered_tri.len() != rec_tri.len() {
-                    eprintln!(
-                        "Fail: recovered_tri.len()/{} != rec_tri.len()/{}",
-                        recovered_tri.len(),
-                        rec_tri.len()
-                    );
-                    result = false;
-                } else {
-                    for i in 0..rec_tri.len() {
-                        if (rec_tri[i] - recovered_tri[i]).abs() > f32::EPSILON {
-                            eprintln!("Fail: Recorded tri differs at {i}");
-                            result = false;
-                            break;
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!("Fail: Cannot read data from {tri_path:?}.  Error: {err}");
+                eprintln!("Fail: Cannot read data from {audio_path:?}.  Error: {err}");
                 result = false;
             }
         };
@@ -403,22 +388,21 @@ fn record_audio() {
     let audio_buffer = generate_test_audio(220, 0.25, duration_ms, WaveForm::Sine);
     let audio_buffer = trim_audio(&audio_buffer);
 
+    // The Jack client playing the test audio to be recorded
     let port_name = "record_audio";
-    let port_label = "test_record_audio.raw";
     let client_name = "integration_test";
     let (ac, play_audio_flag) = play_test_audio(client_name, vec![port_name], vec![&audio_buffer]);
+
+    // The port to record audio data from
     let port_name_complete = format!("{}:{port_name}", ac.as_client().name());
 
-    // Directory recordings go to
-    let dir = dst_dir();
-    let saved_path = dir.join(port_label);
+    // File path for recorded audio.  There will be two files with
+    // suffixes "raw" and "json" for audio data and metadata
+    // respectively
+    let output_path = dst_dir().join("record_audio");
 
     // Set up recorder
-    let mut recorder = set_up_recorder(
-        vec![port_name_complete.clone()],
-        vec![port_label.to_string()],
-        &dir,
-    );
+    let mut recorder = set_up_recorder(vec![port_name_complete.clone()], &output_path);
 
     // Record data from `port_name`
     if let Err(err) = recorder.handle_record() {
@@ -453,7 +437,7 @@ fn record_audio() {
     }
 
     // Get data out of the recorder
-    let new_buffer = trim_audio(recorder.recorded_audio.get(port_label).unwrap());
+    let new_buffer = trim_audio(&recorder.recorded_audio.get_buffer(0).unwrap());
 
     // The buffers should be the same length
     assert_eq!(audio_buffer.len(), new_buffer.len());
@@ -462,12 +446,11 @@ fn record_audio() {
     for i in 0..audio_buffer.len() {
         assert!((audio_buffer[i] - new_buffer[i]).abs() < f32::EPSILON);
     }
-
     // Check the saved data
     let mut result = true;
-    match App::read_f32_vec_from_file(&saved_path) {
+    match read_f32_vec_from_file(&output_path.with_extension("raw"), 1) {
         Ok(d) => {
-            let imported_data = trim_audio(&d);
+            let imported_data = trim_audio(&d.get_buffer(0).unwrap());
             if imported_data.len() != new_buffer.len() {
                 eprintln!(
                     "Fail: recovered_tri.len()/{} != rec_tri.len()/{}",
@@ -485,7 +468,7 @@ fn record_audio() {
                 }
             }
         }
-        Err(err) => panic!("Failed to read data from {saved_path:?}.  Error: {err}"),
+        Err(err) => panic!("Failed to read data from {output_path:?}.  Error: {err}"),
     };
     assert!(result);
 }
@@ -512,12 +495,11 @@ fn trim_audio(audio_buffer: &[f32]) -> Vec<f32> {
 }
 
 /// Set up a recorder for testing
-fn set_up_recorder(port_names: Vec<String>, port_labels: Vec<String>, dir: &PathBuf) -> AppData {
-    assert_eq!(port_names.len(), port_labels.len());
-    let mut inputs = JackPipes::new();
-    let outputs = JackPipes::new();
-    for p in port_names.iter().zip(port_labels.iter()) {
-        inputs.add_name(p.0, p.1).unwrap();
+fn set_up_recorder(port_names: Vec<String>, dir: &Path) -> AppData {
+    let mut inputs = JackPipes::new(true);
+    let outputs = JackPipes::new(false);
+    for p in port_names.iter() {
+        inputs.add(p).unwrap();
     }
     let (_audio_tx, _audio_rx) = mpsc::channel::<f32>();
     let (_command_tx, _command_rx) = mpsc::channel::<Command>();

@@ -3,48 +3,73 @@
 
 //! Structures and code to maintain the input and output buffers and
 //! processes
-use crate::{app::App, errors::RecorderError, utils::get_sample_rate};
+
+#[allow(unused_imports)]
+use crate::{errors::RecorderError, utils::get_sample_rate};
 use jack::{Client, PortFlags};
+use serde::Serialize;
 use std::fs::OpenOptions;
-use std::{self, collections::HashMap, fs, path::PathBuf, sync::mpsc, thread, time::Duration};
+#[allow(unused_imports)]
+use std::{
+    self,
+    collections::HashMap,
+    fs::{self, File},
+    io::Write,
+    path::{Path, PathBuf},
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
 
 // ---- Inputs Start ----
-/// Define the  Jack pipes to use
+/// Define the Jack pipes to use.  FIXME: This probably can be
+/// replaced with `Vec<String>`
 #[derive(Debug, Clone)]
 pub struct JackPipes {
-    names_ports: HashMap<String, String>,
+    // names_ports: HashMap<String, String>,
+    ports: Vec<String>,
+    input: bool, // True if inputs to recorder
 }
 
 /// Public interface
 impl JackPipes {
     #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
+    pub fn new(input: bool) -> Self {
         Self {
-            names_ports: HashMap::new(),
+            //names_ports: HashMap::new(),
+            ports: Vec::new(),
+            input,
         }
     }
 
-    /// Using the strings from the command line [`crate::structs::Args`] `-i` add input jack pipes.
-    pub fn from_command_line(input_pipes: &Vec<String>) -> Result<Self, RecorderError> {
-        let mut result = Self::new();
-        eprintln!("input_pipes 2: {:?}", input_pipes);
-        if input_pipes.is_empty() {
-            // No point running a recorder without inputs
-            return Err(RecorderError::NoInputs);
+    /// Using the strings from the command line
+    /// [`crate::structs::Args`] `-i` and `-o` add input or output
+    /// jack pipes.
+    pub fn from_command_line(pipes: &[String], input: bool) -> Result<Self, RecorderError> {
+        let mut result = Self::new(input);
+        if pipes.is_empty() {
+            return Ok(result);
         }
 
-        for i in input_pipes.iter() {
+        for i in pipes.iter() {
             let parts: Vec<&str> = i.split(':').collect();
             if parts.len() < 2 || parts.len() > 3 {
                 return Err(RecorderError::InvalidPipeName(i.to_string()));
             } else if parts.len() == 2 {
+                if result.ports().contains(i) {
+                    if input {
+                        return Err(RecorderError::DuplicateInput(i.to_string()));
+                    } else {
+                        return Err(RecorderError::DuplicateOutput(i.to_string()));
+                    }
+                }
                 result.add(i)?;
             } else {
                 let client = parts[0];
                 let port = parts[1];
-                let name = parts[2];
+                let _name = parts[2];
                 let client_port = format!("{client}:{port}");
-                result.add_name(&client_port, name)?;
+                result.add(&client_port)?;
             }
         }
 
@@ -52,45 +77,56 @@ impl JackPipes {
     }
 
     /// Add an input to the collection with a default name.  The port
-    /// must be of the type form "`client`:`port name`"
+    /// must be of the type form "`client`:`port name`".  The caller
+    /// must call this in the correct order so channels (0-based
+    /// channel number) and ports (Jack port fully qualified names)
+    /// match up correctly.
     pub fn add(&mut self, port: &str) -> Result<(), RecorderError> {
-        self.add_name(port, port)
+        Self::validate_jack_pipe(port, self.input)?;
+        self.ports.push(port.to_string());
+        Ok(())
     }
 
-    /// Add an input to the collection with a defined name.  The port
-    /// must be of the type form "`client`:`port name`".
-    pub fn add_name(&mut self, port: &str, name: &str) -> Result<(), RecorderError> {
-        Self::validate_jack_input_pipe(port)?;
-        if self.names_ports.values().any(|n| n == port) {
-            Err(RecorderError::DuplicateInput(port.to_string()))
-        } else if self.names_ports.iter().any(|pn| pn.0 == name) {
-            Err(RecorderError::DuplicateInputName(name.to_string()))
-        } else {
-            // self.ports.push(port.to_string());
-            self.names_ports.insert(name.to_string(), port.to_string());
-            Ok(())
-        }
-    }
+    // /// Add an input to the collection with a defined name.  The port
+    // /// must be of the type form "`client`:`port name`".
+    // pub fn add_name(&mut self, port: &str, name: &str) -> Result<(), RecorderError> {
+    //     Self::validate_jack_input_pipe(port)?;
+    //     if self.names_ports.values().any(|n| n == port) {
+    //         Err(RecorderError::DuplicateInput(port.to_string()))
+    //     } else if self.names_ports.iter().any(|pn| pn.0 == name) {
+    //         Err(RecorderError::DuplicateInputName(name.to_string()))
+    //     } else {
+    //         // self.ports.push(port.to_string());
+    //         let channel = self.names_ports.len() as u32;
+    //         self.names_ports.insert(name.to_string(), port.to_string());
+    //         self.channels_ports.insert(channel, port.to_string());
+    //         Ok(())
+    //     }
+    // }
 
     /// Get a copy of all the ports
     pub fn ports(&self) -> Vec<String> {
-        self.names_ports.values().cloned().collect()
+        self.ports.clone()
     }
 
-    pub fn names(&self) -> Vec<String> {
-        self.names_ports.keys().map(|n| n.to_string()).collect()
-    }
-    /// Get a copy of the named ports
-    pub fn named_ports(&self) -> HashMap<String, String> {
-        self.names_ports.clone()
-    }
+    // pub fn names(&self) -> Vec<String> {
+    //     self.names_ports.keys().map(|n| n.to_string()).collect()
+    // }
+    // /// Get a copy of the named ports
+    // pub fn names_ports(&self) -> HashMap<String, String> {
+    //     self.names_ports.clone()
+    // }
+    // /// Get a copy of the numbered (matching channel)  ports
+    // pub fn channels_ports(&self) -> HashMap<u32, String> {
+    //     self.ports.clone()
+    // }
 }
 
 /// Private interface
 impl JackPipes {
     /// An input to this programme is the name of a Jack 32-bit audio
     /// output pipe.  It is of the form: "<client>:<pipe name>"
-    fn validate_jack_input_pipe(pipe: &str) -> Result<(), RecorderError> {
+    fn validate_jack_pipe(pipe: &str, input: bool) -> Result<(), RecorderError> {
         // Check form of `pipe`
         if let Some(n) = pipe.find(":") {
             // There is a ":" character in `pipe`.  It must not be the first character
@@ -116,16 +152,23 @@ impl JackPipes {
         // List all audio ports
         let ports = client.ports(None, Some("32 bit float mono audio"), PortFlags::empty());
 
-        // Check if `pipe` exists and is an output pipe (input to this
-        // is an output from another)
+        // Check if `pipe` exists and is an correct type (`input` =>
+        // PortFlags::IS_OUTPUT.  Input to this is an output from
+        // another)
         if !ports.iter().any(|p| p == pipe) {
             Err(RecorderError::PipeNotFound(pipe.to_string()))
         } else if let Some(port) = client.port_by_name(pipe) {
             let flags = port.flags();
-            if flags.contains(PortFlags::IS_OUTPUT) {
+            if input {
+                if flags.contains(PortFlags::IS_OUTPUT) {
+                    Ok(())
+                } else {
+                    Err(RecorderError::NotOutputPipe(pipe.to_string()))
+                }
+            } else if flags.contains(PortFlags::IS_INPUT) {
                 Ok(())
             } else {
-                Err(RecorderError::NotOutputPipe(pipe.to_string()))
+                Err(RecorderError::NotInputPipe(pipe.to_string()))
             }
         } else {
             Err(RecorderError::PipeNotFound(pipe.to_string()))
@@ -135,32 +178,70 @@ impl JackPipes {
 //---- Inputs end ----
 
 // ---- AudioBuffers start ----
-/// Hold recorded audio data in named buffers.
+/// Hold recorded audio data buffers.  Allow access by name (useful
+/// for Jack pipes) and by index starting at zero.
+
+//---- AudioBuffers start ----
 #[derive(Clone, Debug)]
 pub struct AudioBuffers {
-    buffers: HashMap<String, Vec<f32>>,
+    buffers: Vec<Vec<f32>>,
+    buffer_names: HashMap<String, u32>,
 }
 
 /// Public interface
 impl AudioBuffers {
-    pub fn add_buffer(&mut self, name: &str, buffer: Vec<f32>) -> Result<(), RecorderError> {
-        match self.buffers.get_mut(name) {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        Self {
+            // TODO: Deprecate these names.  Callers should maintain
+            // the connection between names and channel indexes
+            buffer_names: HashMap::new(),
+            buffers: Vec::new(),
+        }
+    }
+
+    pub fn add_named_buffer(&mut self, name: &str, buffer: Vec<f32>) -> Result<(), RecorderError> {
+        match self.buffer_names.get_mut(name) {
             Some(_) => Err(RecorderError::DuplicateBufferName(name.into())),
             None => {
-                _ = self.buffers.insert(name.into(), buffer);
+                let idx = self.buffers.len() as u32;
+                _ = self.buffer_names.insert(name.into(), idx);
+                self.buffers.push(buffer);
                 Ok(())
             }
         }
     }
+
+    /// Add an audio buffer without a name.  Callers are responsible
+    /// for keeping track of the order of buffers
+    pub fn add_buffer(&mut self, buffer: Vec<f32>) -> Result<(), RecorderError> {
+        let idx = self.buffers.len();
+        let name = idx.to_string();
+        self.add_named_buffer(name.as_str(), buffer)
+    }
+
     pub fn reset(&mut self) {
-        for b in self.iter_mut() {
-            b.1.truncate(0);
+        for b in self.buffers.iter_mut() {
+            b.truncate(0);
+        }
+        self.buffer_names = HashMap::new();
+    }
+
+    /// Add a sample to an audio buffer.  `channel` is the 0-based
+    /// index for the channel.  Callers have to keep track of this
+    pub fn add_sample(&mut self, sample: f32, channel: u32) -> Result<(), RecorderError> {
+        let idx = channel as usize;
+        if idx >= self.buffers.len() {
+            Err(RecorderError::BadChannelIndex(channel))
+        } else {
+            self.buffers[idx].push(sample);
+            Ok(())
         }
     }
 
     /// Get the names of all the buffers.
     pub fn names(&self) -> Vec<String> {
-        self.buffers
+        self.buffer_names
             .keys()
             .map(|k| k.to_string())
             .collect::<Vec<String>>()
@@ -169,292 +250,400 @@ impl AudioBuffers {
     /// Get some stats:
     pub fn stats(&self) -> String {
         let mut result = "".to_string();
-        for (k, v) in self.buffers.iter() {
-            result = format!("{result}{k}: {}\n", v.len());
+        for (k, v) in self.buffers.iter().enumerate() {
+            let length = v.len();
+            result = format!("{result}Buffer: {k}\tLength: {}\n", length);
         }
         result
     }
-}
 
-/// Iterators
-impl AudioBuffers {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        Self {
-            buffers: HashMap::new(),
+    /// The number of channels
+    pub fn channels(&self) -> u32 {
+        self.buffers.len() as u32
+    }
+
+    /// Clone an audio buffer and return it
+    pub fn get_buffer(&self, channel: u32) -> Result<Vec<f32>, RecorderError> {
+        if channel < self.channels() {
+            let result = self.buffers[channel as usize].clone();
+            Ok(result)
+        } else {
+            Err(RecorderError::BadChannelIndex(channel))
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<f32>)> {
-        self.buffers.iter()
+    /// Get a &mut to an audio buffer
+    pub fn get_buffer_mut(&mut self, channel: u32) -> Result<&mut Vec<f32>, RecorderError> {
+        match self.buffers.get_mut(channel as usize) {
+            Some(b) => Ok(b),
+            None => Err(RecorderError::BadChannelIndex(channel)),
+        }
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Vec<f32>)> {
-        self.buffers.iter_mut()
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
-        self.buffers.keys()
-    }
-
-    pub fn values(&self) -> impl Iterator<Item = &Vec<f32>> {
-        self.buffers.values()
-    }
-
-    pub fn insert(&mut self, name: String, data: Vec<f32>) {
-        self.buffers.insert(name, data);
-    }
-
-    pub fn get(&self, name: &str) -> Option<&Vec<f32>> {
-        self.buffers.get(name)
-    }
-
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut Vec<f32>> {
-        self.buffers.get_mut(name)
+    pub fn get_named_buffer(&self, name: &str) -> Result<Vec<f32>, RecorderError> {
+        match self.buffer_names.get(name) {
+            Some(c) => self.get_buffer(*c),
+            None => Err(RecorderError::BadChannelName(name.to_string())),
+        }
     }
 }
+
+// /// Iterators
+// impl AudioBuffers {
+
+//     pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<f32>)> {
+//	self.buffers.iter()
+//     }
+
+//     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Vec<f32>)> {
+//	self.buffer_names.iter_mut()
+//     }
+
+//     pub fn keys(&self) -> impl Iterator<Item = &String> {
+//	self.buffer_names.keys()
+//     }
+
+//     pub fn values(&self) -> impl Iterator<Item = &Vec<f32>> {
+//	self.buffer_names.values()
+//     }
+
+//     pub fn insert(&mut self, name: String, data: Vec<f32>) {
+//	self.buffer_names.insert(name, data);
+//     }
+
+//     pub fn get(&self, name: &str) -> Option<&Vec<f32>> {
+//	self.buffer_names.get(name)
+//     }
+
+//     pub fn get_mut(&mut self, name: &str) -> Option<&mut Vec<f32>> {
+//	self.buffer_names.get_mut(name)
+//     }
+// }
 
 // ---- AudioBuffers end ----
 
 // ---- FileManager start ----
-/// Manage the writing of the audio buffers into files.  Each audio
-/// channel to be recorded has a `mpsc::Sender<f32>` associated that
-/// sends the audio bytes.  Each audio channel is saved separately to
-/// a file named for the input it is from.
+/// Manage audio data for a session. A "session" is the lifetime of
+/// the main recording thread.  Write the audio to a file.  Audio channels
+/// are interleaved in the file.  For each session create two files:
+///
+/// 1. With a ".raw" suffix.  The interleaved audio binary data,
+///
+/// 2. With a ".json" suffix describing the sanple rate and the number
+///    of channels.
+#[allow(dead_code)]
 pub struct FileManager {
-    /// Make the audio channel name to the file that holds its data
-    audio_files: HashMap<String, PathBuf>,
+    /// Maps audio channel names to their output file paths
+    pub file_path: PathBuf,
 
-    /// Channels to receive audio data on
-    receivers: HashMap<String, mpsc::Receiver<f32>>,
+    ///  Receivers for incoming audio data (moved to threads on start)
+    receivers: Vec<mpsc::Receiver<f32>>,
 
-    /// Senders to send audio data on.  Created and stored here in the
-    /// constructor and returned to a caller with `get_senders(&self)`
-    senders: HashMap<String, mpsc::Sender<f32>>,
+    /// Senders for audio data (returned to caller on start)
+    senders: Vec<mpsc::Sender<f32>>,
 
-    /// There is one thread per file to monitor.  This stores the
-    /// handles
-    handles: HashMap<String, thread::JoinHandle<Result<(), RecorderError>>>,
+    /// Thread handle for recording thread
+    handle: Option<thread::JoinHandle<Result<(), RecorderError>>>,
+
+    /// The number of channels
+    pub channels: u32,
+
+    /// Flag to stop ths being started twice
+    started: bool,
 }
 
-/// Public interface
 impl FileManager {
-    /// Passed in the list of names of audio channels ad the path to
-    /// the directory where they will be saved
-    pub fn new(names: Vec<String>, dir: &PathBuf) -> Result<Self, RecorderError> {
-        // Check directory exists
-        if !dir.exists() {
-            return Err(RecorderError::FileManager(format!(
-                "FileManager::new: Directory does not exist: {dir:?}.",
-            )));
-        }
-
-        let mut result = Self {
-            audio_files: HashMap::new(),
-            receivers: HashMap::new(),
-            senders: HashMap::new(),
-            handles: HashMap::new(),
-        };
-
-        for name in names.iter() {
-            // For each name create path to backing file (most not already
-            // exist), and a channel for communication
-
-            let path = dir.join(name);
-            // TODO: Create an option for not overwriting files,
-            // perhaps an "append" option?
-            result.audio_files.insert(name.to_string(), path);
+    /// Creates a new FileManager for the given audio channel names.
+    ///
+    /// # Arguments
+    /// * `channels` - The number of audio channels
+    /// * `file_path` The path to the file being managed
+    ///
+    /// # Errors
+    /// Returns an error if the directory doesn't exist.
+    pub fn new(channels: u32, file_path: &Path) -> Result<Self, RecorderError> {
+        let mut senders = Vec::new();
+        let mut receivers = Vec::new();
+        for _ in 0..channels {
             let (tx, rx) = mpsc::channel::<f32>();
-            result.receivers.insert(name.to_string(), rx);
-            result.senders.insert(name.to_string(), tx);
+            receivers.push(rx);
+            senders.push(tx);
         }
-        Ok(result)
+
+        let file_path: PathBuf = file_path.into();
+        Ok(Self {
+            file_path,
+            receivers,
+            senders,
+            handle: None,
+            channels,
+            started: false,
+        })
     }
 
-    /// Start the FileManager and return the senders.  Can only be called once
-    pub fn start(&mut self) -> Result<HashMap<String, mpsc::Sender<f32>>, RecorderError> {
-        let mut result: HashMap<String, mpsc::Sender<f32>> = HashMap::new();
-        for name in self.audio_files.keys() {
-            // This stops repeated calls
-            let receiver = match self.receivers.remove(name) {
-                Some(r) => r,
-                None => {
-                    return Err(RecorderError::FileManager(format!(
-                        "FileManager::new.  No receiver for {name}"
-                    )));
-                }
-            };
-            let handle = self.thread_fn(name, receiver)?;
-            self.handles.insert(name.to_string(), handle);
-            let sender = match self.senders.remove(name) {
-                Some(s) => s,
-                None => {
-                    return Err(RecorderError::FileManager(format!(
-                        "FileManager::start: No sender for {name}"
-                    )));
-                }
-            };
-            result.insert(name.to_string(), sender);
-        }
-        // Write the sample rate to a file.  Cannot be converted
-        // without this
-        let sample_rate = get_sample_rate();
-        let p = self.audio_files.values().next();
-        if p.is_none() {
-            return Err(RecorderError::NoAudioFiles);
-        }
-        let p: PathBuf = match p.unwrap().parent() {
-            Some(p) => p.into(),
-            None =>
-            // Audio files being placed in root.  Ok.  Not
-            // sensible, but not against the law....
-            {
-                "/".into()
-            }
-        };
-        assert!(p.is_dir());
-        let sample_rate_path = p.join(".sample_rate");
-        if let Err(err) = fs::write(&sample_rate_path, sample_rate.to_string()) {
-            Err(RecorderError::CannotCreateFile(
-                sample_rate_path,
-                format!("{err}"),
-            ))
-        } else {
-            Ok(result)
-        }
-    }
-
-    /// Function to check that the file manager is behaving.  Returns
-    /// Ok(true) if running smoothly.  Ok(false) if it has stopped
-    /// properly otherwise a vector of errors
-    pub fn check(&mut self) -> Result<bool, Vec<RecorderError>> {
-        if self.handles.iter().all(|(_, h)| !h.is_finished()) {
-            return Ok(true);
-        }
-
-        // Some handles are finished.  Store their names here.
-        let mut finished: Vec<String> = Vec::new();
-        {
-            for (name, h) in self.handles.iter() {
-                if h.is_finished() {
-                    finished.push(name.to_string());
-                }
-            }
-        }
-        // Store any errors
-        let mut errors: Vec<RecorderError> = Vec::new();
-
-        for name in finished.iter() {
-            let handle = self.handles.remove(name).unwrap();
-            match handle.join() {
-                Ok(Ok(())) => continue,
-                Ok(Err(err)) => errors.push(err),
-                Err(err) => errors.push(RecorderError::FileManager(format!(
-                    "FileManager::check  Recording thread for {name} panicked.  Error: {err:?}"
-                ))),
-            };
-        }
-
-        if !self.handles.is_empty() {
-            // Recorder has half stopped
-            errors.push(RecorderError::FileManager(
-                "FileManager::check only some internal threads have stopped".to_string(),
+    /// Starts the FileManager thread
+    ///
+    /// Can only be called once. Subsequent calls will fail since receivers
+    /// are moved to threads.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Already started (receivers/senders already moved)
+    /// - Unable to create output file
+    /// - Thread creation fails
+    pub fn start(&mut self) -> Result<(), RecorderError> {
+        if self.started {
+            return Err(RecorderError::FileManager(
+                "FileManager already started".to_string(),
             ));
         }
 
-        if errors.is_empty() {
-            Ok(false)
-        } else {
-            Err(errors)
+        // Take the receivers for passing to a thread
+        let receivers: Vec<mpsc::Receiver<f32>> = self.receivers.drain(0..).collect();
+
+        // Start a thread for maintaining the data
+        let handle = self.spawn_writer_thread(receivers)?;
+        self.handle = Some(handle);
+
+        Ok(())
+    }
+
+    // Checks the health of all recording threads.
+
+    /// # Returns
+    /// - `Ok(true)` - Thread running normally
+    /// - `Ok(false)` -  Thread stopped cleanly or not started
+    pub fn check(&mut self) -> Result<bool, Vec<RecorderError>> {
+        // Fast path: all threads still running
+        match self.handle.as_ref() {
+            Some(h) => Ok(h.is_finished()),
+            None => Ok(false),
         }
+    }
+
+    /// Take ownership of the `mpsc::Sender<f32>`s for sending data
+    /// here
+    pub fn drain_senders(&mut self) -> Vec<mpsc::Sender<f32>> {
+        self.senders.drain(0..).collect()
     }
 }
 
-/// Private interface
+/// The structure that is written beside raw data files to provide
+/// metadata required to convert the raw audio into other audio
+/// formats
+#[derive(Serialize, Debug)]
+struct Metadata {
+    channels: u32,
+    sample_rate: usize,
+}
+
+/// Private implementation details
+#[allow(dead_code)]
 impl FileManager {
-    /// Manage one audio channel file output.  Take the audio data a
-    /// byte at a time, buffer it until either there is a pause in the
-    /// data or there is sufficient data (an arbitrary amount so data
-    /// gets written even if it is constant) and write the buffer to a
-    /// file.
-    fn thread_fn(
+    /// Maximum number of samples to buffer before forcing a write
+    const MAX_BUFFER_SIZE: usize = 4096;
+    const SLEEP_DURATION_MS: u64 = 1;
+
+    /// Spawns a thread to handle writing audio data to a file.
+    fn spawn_writer_thread(
         &self,
-        name: &str,
-        receiver: mpsc::Receiver<f32>,
+        receivers: Vec<mpsc::Receiver<f32>>,
     ) -> Result<thread::JoinHandle<Result<(), RecorderError>>, RecorderError> {
-        let path = match self.audio_files.get(name) {
-            Some(p) => p.clone(),
-            None => {
-                return Err(RecorderError::FileManager(format!(
-                    "FileManager::thread_fn.  No path stored for {name}"
-                )));
-            }
+        // The files to write: A data and a metadata file
+        let (audio_path, metadata_path) = Self::make_paths(&self.file_path)?;
+
+        // The metadata that is required to convert the raw audio to other formats.
+        let channels: u32 = self.channels;
+        let sample_rate: usize = get_sample_rate();
+        let metadata = Metadata {
+            channels,
+            sample_rate,
+        };
+        let json = serde_json::to_string_pretty(&metadata).map_err(|err| {
+            RecorderError::Generic(format!(
+                "Failed to convert metadata to JSON. Metadata is: {metadata:?} Error: {err}"
+            ))
+        })?;
+        fs::write(&metadata_path, json).map_err(|err| {
+            RecorderError::Generic(format!(
+                "Failed to write metadata to {metadata_path:?}.  Error: {err}"
+            ))
+        })?;
+
+        // The audio data file
+        let mut file = match OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true) // Creates file if it doesn't exist
+            .truncate(false) // Don't clear file contents
+            .open(audio_path)
+        {
+            // let mut file: File = match File::create(&audio_path). {
+            Ok(f) => f,
+            Err(err) => panic!("{:?}: {err}", self.file_path),
         };
 
-        // Copies of data the thread needs
-        let name = name.to_string();
+        Ok(thread::spawn(move || -> Result<(), RecorderError> {
+            let mut c = 0;
 
-        let result = thread::spawn(move || -> Result<(), RecorderError> {
-            if path.exists() {
-                eprintln!("DBG recorder FileManager::thread_fn overwriting {path:?}");
-            }
-            let mut file = match OpenOptions::new()
-                .write(true)
-                .create(true) // Create if doesn't exist
-                .truncate(true) // This causes overwriting
-                .open(&path)
-            {
-                Ok(f) => f,
-                Err(err) => {
-                    return Err(RecorderError::FileManager(format!(
-                        "FileManager::new.  Cannot create file at {path:?}  Error: {err}"
-                    )));
+            // Buffer a sample from each channel before writing
+            let mut buffer: Vec<f32> = Vec::with_capacity(channels as usize);
+            while let Ok(s) = receivers[c].recv() {
+                // Does this very naive buffering effect performance?
+                // Would it be better to do in 100ms (?) chunks?
+                buffer.push(s);
+                c += 1;
+                if c == channels as usize {
+                    Self::write_samples(&mut file, &buffer)?;
+                    c = 0;
+                    buffer.clear();
                 }
-            };
+            }
+            Ok(())
+        }))
+    }
 
-            // The most f32 to receive before they must be written
-            const MAX_C: usize = 4096;
+    fn make_paths(in_path: &Path) -> Result<(PathBuf, PathBuf), RecorderError> {
+        let audio_path: PathBuf = in_path.with_extension("raw");
+        let metadata_path: PathBuf = in_path.with_extension("json");
+        Ok((audio_path, metadata_path))
+    }
 
-            let mut buffer: Vec<f32> = Vec::new();
-            let mut connected = true;
-            while connected {
-                buffer.clear();
+    /// Creates or truncates the output file.
+    fn create_output_file(path: &Path) -> Result<File, RecorderError> {
+        if path.exists() {
+            eprintln!("Overwriting existing file: {:?}", path);
+        }
 
-                loop {
-                    match receiver.try_recv() {
-                        Err(mpsc::TryRecvError::Empty) => break,
-                        Err(mpsc::TryRecvError::Disconnected) => {
-                            connected = false;
-                            break;
-                        }
-                        Ok(b) => {
-                            buffer.push(b);
-                        }
-                    }
-                    if buffer.len() > MAX_C {
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)
+            .map_err(|err| {
+                RecorderError::FileManager(format!("Cannot create file at {:?}: {}", path, err))
+            })
+    }
+
+    /// Collects samples from the receiver into the buffer.
+    ///
+    /// Returns `true` if the channel is still connected, `false` if disconnected.
+    fn collect_samples(
+        receiver: &mpsc::Receiver<f32>,
+        buffer: &mut Vec<f32>,
+    ) -> Result<bool, RecorderError> {
+        loop {
+            match receiver.try_recv() {
+                Ok(sample) => {
+                    buffer.push(sample);
+                    if buffer.len() >= Self::MAX_BUFFER_SIZE {
                         break;
                     }
                 }
-                if buffer.is_empty() {
-                    continue;
-                }
-
-                // Write the buffer.  Either when there is a pause in
-                // data being sent or when MAX_C samples have been
-                // received
-                let bytes_written = App::write_f32_to_file(&mut file, &buffer)?;
-                assert_eq!(bytes_written, buffer.len() * std::mem::size_of::<f32>());
-
-                // Not too fast....
-                thread::sleep(Duration::from_millis(1));
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => return Ok(false),
             }
-            eprintln!("FileManager main thread ending {name}");
-            Ok(())
-        });
-        Ok(result)
+        }
+        Ok(true)
+    }
+
+    /// Writes the buffer to file as raw f32 bytes.
+    fn write_buffer(file: &mut File, buffer: &[f32]) -> Result<(), RecorderError> {
+        // Convert f32 slice to byte slice
+        let bytes = unsafe {
+            std::slice::from_raw_parts(buffer.as_ptr() as *const u8, std::mem::size_of_val(buffer))
+        };
+
+        file.write_all(bytes).map_err(|err| {
+            RecorderError::FileManager(format!("Failed to write audio data: {}", err))
+        })
+    }
+
+    /// Write data to a file.  `file` is pen for appending and the
+    /// file pointer is in the correct place.  `samples` are the data
+    /// to write. `file` is left ready for more data to be written to
+    /// it.  This function does no checking of the data. It just
+    /// writes it straight to the file
+    fn write_samples(file: &mut File, samples: &[f32]) -> Result<(), RecorderError> {
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                samples.as_ptr() as *const u8,
+                std::mem::size_of_val(samples),
+            )
+        };
+        match file.write_all(bytes) {
+            Ok(_) => Ok(()),
+            Err(err) => Err(RecorderError::FileManager(format!(
+                "Failed writing samples to file: {err}"
+            ))),
+        }
+    }
+
+    /// Writes the sample rate to a metadata file.
+    fn write_sample_rate_file(&self) -> Result<(), RecorderError> {
+        todo!();
+        // let sample_rate = get_sample_rate();
+
+        // let dir = self
+        //     .audio_files
+        //     .values()
+        //     .next()
+        //     .and_then(|p| p.parent())
+        //     .ok_or(RecorderError::NoAudioFiles)?;
+
+        // let sample_rate_path = dir.join(".sample_rate");
+
+        // fs::write(&sample_rate_path, sample_rate.to_string())
+        //     .map_err(|err| RecorderError::CannotCreateFile(sample_rate_path, err.to_string()))
     }
 }
 // ---- FileManager end ----
+
+/// Read audio data from a file into audio buffers
+pub fn read_f32_vec_from_file(
+    file_path: &PathBuf,
+    channels: u32,
+) -> Result<AudioBuffers, RecorderError> {
+    // Read the file into a Vec<u8>
+    let data: Vec<u8> =
+        fs::read(file_path).map_err(|err| RecorderError::Generic(err.to_string()))?;
+
+    // Convert Vec<u8> to Vec<f32>
+    if !data.len().is_multiple_of(std::mem::size_of::<f32>()) {
+        return Err(RecorderError::Generic(
+            "File size is not a multiple of f32 size".to_string(),
+        ));
+    }
+    if !data.len().is_multiple_of(channels as usize) {
+        return Err(RecorderError::Generic(format!(
+            "File size is not a multiple of channels: {channels}"
+        )));
+    }
+
+    // Create a Vec<f32> from the Vec<u8>
+    let float_vec: Vec<f32> = data
+        .chunks_exact(std::mem::size_of::<f32>())
+        .map(|chunk| f32::from_ne_bytes(chunk.try_into().unwrap()))
+        .collect();
+    // let float_count = data.len() / std::mem::size_of::<f32>();
+    // let float_vec: Vec<f32> =
+    //     unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, float_count).to_vec() };
+
+    // The channels are multiplexd together, demultiplex them
+    let mut result: AudioBuffers = AudioBuffers::new();
+    for _ in 0..channels {
+        result.add_buffer(Vec::new())?;
+    }
+    let mut c = 0;
+    for s in float_vec.iter() {
+        result.add_sample(*s, c)?;
+        c = (c + 1) % channels;
+    }
+    // Because all the channles have the same number of samples, when
+    // the above loop ends `c` must be 0
+    assert_eq!(c, 0);
+    Ok(result)
+}
 
 #[cfg(test)]
 mod tests {
@@ -463,38 +652,154 @@ mod tests {
     #[test]
     fn list_capture_add_valid_port() {
         let port = "system:capture_1";
-        let mut inputs = JackPipes::new();
+        let mut inputs = JackPipes::new(true);
         inputs.add(port).unwrap();
-        dbg!(&inputs, port);
         assert!(inputs.ports().iter().any(|p| p.as_str() == port));
     }
-
     #[test]
     fn list_capture_add_invalid_port() {
         let port = "system_capture_1";
-        let mut inputs = JackPipes::new();
-        match inputs.add(port) {
-            Err(RecorderError::InvalidPipeName(p)) | Err(RecorderError::PipeNotFound(p)) => {
-                assert_eq!(p, port)
-            }
-            Err(err) => panic!("Got error: {err}"),
-            Ok(_) => panic!("Should not be able to add {port}"),
-        };
+        let mut inputs = JackPipes::new(true);
+        let test = inputs.add(port);
+        assert!(test.is_err());
+    }
+}
+
+#[cfg(test)]
+mod read_audio_file_tests {
+    /// Thank you Claude code
+    /// These tests cover:
+    /// - Single channel reading
+    /// - Multi-channel (4) reading
+    /// - Empty files
+    /// - File not found errors
+    /// - Invalid file sizes (not multiple of f32 size)
+    /// - Incomplete frames (should panic per the assertion)
+    /// - Special float values (negative, zero, MAX, MIN)
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    /// Helper function to create a temporary file with f32 data
+    fn create_temp_f32_file(data: &[f32]) -> NamedTempFile {
+        let mut file = NamedTempFile::new().unwrap();
+        let bytes: Vec<u8> = data.iter().flat_map(|&f| f.to_ne_bytes()).collect();
+        file.write_all(&bytes).unwrap();
+        file.flush().unwrap();
+        file
     }
 
     #[test]
-    fn add_port_with_name() {
-        let port = "system:capture_1".to_string();
-        println!("port: {port}");
-        let name = "Capture One";
-        println!("name: {name}");
-        let portv = vec![format!("{port}:{name}")];
-        println!("portv: {portv:?}");
-        let inputs = match JackPipes::from_command_line(&portv) {
-            Ok(i) => i,
-            Err(err) => panic!("Panicked! {err}"),
-        };
-        assert_eq!(inputs.ports()[0], port);
-        assert_eq!(inputs.names_ports.get(name), Some(&port));
+    fn test_read_single_channel() {
+        let samples = vec![1.0f32, 2.0, 3.0, 4.0];
+        let temp_file = create_temp_f32_file(&samples);
+        let path = temp_file.path().to_path_buf();
+
+        let result = read_f32_vec_from_file(&path, 1).unwrap();
+
+        assert_eq!(result.channels(), 1);
+
+        // Verify the samples are correctly read
+        let mut test_buffer = AudioBuffers::new();
+        test_buffer.add_buffer(samples.clone()).unwrap();
+
+        assert_eq!(result.stats(), test_buffer.stats());
+    }
+
+    #[test]
+    fn read_four_channels() {
+        // 12 samples = 3 frames of 4 channels
+        let samples = vec![
+            1.0f32, 2.0, 3.0, 4.0, // Frame 1
+            5.0, 6.0, 7.0, 8.0, // Frame 2
+            9.0, 10.0, 11.0, 12.0, // Frame 3
+        ];
+        let temp_file = create_temp_f32_file(&samples);
+        let path = temp_file.path().to_path_buf();
+
+        let result = read_f32_vec_from_file(&path, 4).unwrap();
+
+        assert_eq!(result.channels(), 4);
+
+        let mut expected = AudioBuffers::new();
+        eprintln!("expected.channels() {}", expected.channels());
+        expected.add_buffer(vec![1.0, 5.0, 9.0]).unwrap();
+        expected.add_buffer(vec![2.0, 6.0, 10.0]).unwrap();
+        expected.add_buffer(vec![3.0, 7.0, 11.0]).unwrap();
+        expected.add_buffer(vec![4.0, 8.0, 12.0]).unwrap();
+
+        assert_eq!(result.stats(), expected.stats());
+    }
+
+    #[test]
+    fn test_empty_file() {
+        let samples: Vec<f32> = vec![];
+        let temp_file = create_temp_f32_file(&samples);
+        let path = temp_file.path().to_path_buf();
+
+        let result = read_f32_vec_from_file(&path, 2).unwrap();
+
+        assert_eq!(result.channels(), 2);
+    }
+
+    #[test]
+    fn test_file_not_found() {
+        let path = PathBuf::from("/nonexistent/file.raw");
+
+        let result = read_f32_vec_from_file(&path, 1);
+
+        assert!(result.is_err());
+        match result {
+            Err(RecorderError::Generic(_)) => {}
+            _ => panic!("Expected Generic error"),
+        }
+    }
+
+    #[test]
+    fn test_invalid_file_size() {
+        // Create a file with 3 bytes (not a multiple of 4)
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(&[1u8, 2, 3]).unwrap();
+        file.flush().unwrap();
+        let path = file.path().to_path_buf();
+
+        let result = read_f32_vec_from_file(&path, 1);
+
+        assert!(result.is_err());
+        match result {
+            Err(RecorderError::Generic(msg)) => {
+                assert!(msg.contains("not a multiple of f32 size"));
+            }
+            _ => panic!("Expected Generic error about file size"),
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn incomplete_frame_panics() {
+        // 5 samples with 2 channels = incomplete last frame
+        let samples = vec![1.0f32, 2.0, 3.0, 4.0, 5.0];
+        let temp_file = create_temp_f32_file(&samples);
+        let path = temp_file.path().to_path_buf();
+
+        // This should panic
+        read_f32_vec_from_file(&path, 2).unwrap();
+    }
+
+    #[test]
+    fn test_negative_and_special_values() {
+        let samples = vec![-1.0f32, 0.0, f32::MAX, f32::MIN];
+        let temp_file = create_temp_f32_file(&samples);
+        let path = temp_file.path().to_path_buf();
+
+        let result = read_f32_vec_from_file(&path, 2).unwrap();
+
+        assert_eq!(result.channels(), 2);
+
+        let mut expected = AudioBuffers::new();
+        expected.add_buffer(vec![-1.0, f32::MAX]).unwrap();
+        expected.add_buffer(vec![0.0, f32::MIN]).unwrap();
+
+        assert_eq!(result.stats(), expected.stats());
     }
 }
