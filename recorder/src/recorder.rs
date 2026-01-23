@@ -16,7 +16,9 @@ use std::sync::mpsc;
 fn inner_main(args: Args) -> Result<(), RecorderError> {
     let inputs = JackPipes::from_command_line(&args.inputs, true)?;
     let outputs = JackPipes::from_command_line(&args.outputs, false)?;
-    // Channel to send audio data to Jackd
+
+    // Channels to send audio data to Jackd for output
+    // FIXME: This should be a collection.
     let (audio_tx, audio_rx) = mpsc::channel::<f32>();
 
     // The app is controlled through a channel with the front end UI
@@ -38,8 +40,11 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
             let file_path = dir.join(args.file_name.as_str());
 
             let app_data: AppData =
-                app.initialise(audio_tx, command_rx, inputs, outputs, &file_path)?;
-            let _out_port = send_audo_to_jack(audio_rx, app_data.run_f.clone())?;
+                app.initialise(vec![audio_tx], command_rx, inputs, outputs, &file_path)?;
+
+            let data_channels = vec![(audio_rx, "system:playback_1".to_string())];
+            let _out_port = send_audo_to_jack(data_channels, app_data.run_f.clone())?;
+
             let ui_run = app_data.ui_run_f.clone();
             let t = app.run(app_data)?;
 
@@ -52,7 +57,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
         Some(k) => {
             let file_path = dir.join(args.file_name.as_str());
             let mut cfg: AppData =
-                app.initialise(audio_tx, command_rx, inputs, outputs, &file_path)?;
+                app.initialise(vec![audio_tx], command_rx, inputs, outputs, &file_path)?;
             cfg.handle_kommand(k)?;
             Ok(())
         }

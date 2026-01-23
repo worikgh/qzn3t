@@ -9,7 +9,7 @@ use jack_rec;
 use std::error::Error;
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::TryRecvError;
@@ -99,7 +99,7 @@ impl App {
     /// Create AppData
     pub fn initialise(
         &mut self,
-        audio_tx: mpsc::Sender<f32>,
+        audio_txs: Vec<mpsc::Sender<f32>>,
         command_rx: mpsc::Receiver<Command>,
         inputs: JackPipes,
         outputs: JackPipes,
@@ -125,55 +125,29 @@ impl App {
         Ok(AppData {
             recorded_audio: AudioBuffers::new(),
             audio_handle: None,
-            audio_tx: vec![audio_tx],
+            audio_txs,
             command_rx,
             run_f: run_f.clone(),
             ui_run_f,
             inputs,
-            outputs,
-            file_name: file_path.into(),
+            _output: outputs,
             file_manager,
         })
     }
 
-    // /// Read audio data from a file into a buffer TODO: This needs to
-    // /// have a parameter for the number of audio channels in the file.
-    // /// It should then return `AudioBuffers`.  Perhaps an optional
-    // /// vector of names for the channels?
-    // pub fn read_f32_vec_from_file(file_path: &PathBuf) -> Result<Vec<f32>, RecorderError> {
-    //     // Step 1: Read the file into a Vec<u8>
-    //     let data = fs::read(file_path).map_err(|err| RecorderError::Generic(err.to_string()))?;
-
-    //     // Step 2: Convert Vec<u8> to Vec<f32>
-    //     if data.len() % std::mem::size_of::<f32>() != 0 {
-    //         return Err(RecorderError::Generic(
-    //             "File size is not a multiple of f32 size".to_string(),
-    //         ));
-    //     }
-
-    //     // Create a Vec<f32> from the Vec<u8>
-    //     let float_count = data.len() / std::mem::size_of::<f32>();
-    //     let float_vec: Vec<f32> = unsafe {
-    //         std::slice::from_raw_parts(data.as_ptr() as *const f32, float_count).to_vec()
-    //     };
-
-    //     Ok(float_vec)
-    // }
-
+    /// Read audio data from a file into a buffer TODO: This needs to
+    /// have a parameter for the number of audio channels in the file.
+    /// It should then return `AudioBuffers`.  Perhaps an optional
+    /// vector of names for the channels?
     /// `file` is open for, and ready to, append Write the contents of
     /// `buffer` to `file` as binary data Return the number of bytes
     /// written to the file.  TODO: Pass a `AudioBuffers` structure,
     /// and write one or more channel to the file.
-    #[allow(clippy::manual_slice_size_calculation)]
     pub fn write_f32_to_file(file: &mut fs::File, buffer: &[f32]) -> Result<usize, RecorderError> {
-        let sz_f32 = std::mem::size_of::<f32>();
         let bytes = unsafe {
-            std::slice::from_raw_parts(
-                buffer.as_ptr() as *const u8,
-                buffer.len() * std::mem::size_of::<f32>(),
-            )
+            std::slice::from_raw_parts(buffer.as_ptr() as *const u8, std::mem::size_of_val(buffer))
         };
-        assert_eq!(buffer.len() * sz_f32, bytes.len());
+        assert_eq!(std::mem::size_of_val(buffer), bytes.len());
         if let Err(err) = file.write_all(bytes) {
             return Err(RecorderError::FileManager(format!(
                 "FileManager::thread_fn: Write error for file {:?}.   Error: {err} ",
@@ -190,17 +164,15 @@ impl App {
 }
 
 /// Hold the data for the programme.
-#[allow(dead_code)]
 pub struct AppData {
     pub recorded_audio: AudioBuffers,
     pub audio_handle: Option<thread::JoinHandle<Result<AudioBuffers, RecorderError>>>,
-    audio_tx: Vec<mpsc::Sender<f32>>,
+    audio_txs: Vec<mpsc::Sender<f32>>,
     command_rx: mpsc::Receiver<Command>,
     pub run_f: Arc<AtomicBool>,
     pub ui_run_f: Arc<AtomicBool>,
-    file_name: PathBuf,
     inputs: JackPipes,
-    outputs: JackPipes,
+    _output: JackPipes,
     file_manager: FileManager,
 }
 
@@ -336,8 +308,8 @@ impl AppData {
     /// Called from the inner loop of `[get_audio_from_jack]`.  Loops
     /// over all channels reads any data from the channel, adds the
     /// data to the audio buffer and sends it to the file manager to
-    /// be saved.  FIXME Deprecate `channels_connected` that is used
-    /// to decide when to quit.  Need a better way
+    /// be saved.  `channels_connected` is used to decide when to
+    /// quit.
     fn inner_audio_jack_loop(
         channels_connected: &mut [bool],
         audio_input_channels: &[mpsc::Receiver<f32>],
@@ -431,16 +403,13 @@ impl AppData {
         // This ends the main loop
         self.run_f.store(false, Ordering::Relaxed);
 
-        // Allow all the thrads to stop
+        // Allow all the threads to stop
         thread::sleep(Duration::from_millis(100));
 
         if let Some(handle) = self.audio_handle.take() {
             let j = handle.join();
             match j {
                 Ok(Ok(audio_buffers)) => {
-                    // for (n, b) in audio_data.iter_mut() {
-                    //     self.recorded_audio.add_buffer(n, b.to_vec())?;
-                    // }
                     self.recorded_audio = audio_buffers;
                     Ok(())
                 }
@@ -510,7 +479,7 @@ impl AppData {
     /// Send `recorded_audio` to the backend to play.  Consumes the
     /// passed data. FIXME: Only does one channel.
     fn play_audio(&self, audio: Vec<f32>) -> Result<(), Box<dyn Error>> {
-        let tx = self.audio_tx.clone();
+        let txs = self.audio_txs.clone();
 
         // Flag to shut down playback from the UI
         let audio_run = self.run_f.clone();
@@ -530,7 +499,7 @@ impl AppData {
                 if !audio_run.load(Ordering::Relaxed) {
                     break;
                 }
-                if let Err(e) = tx[0].send(*i) {
+                if let Err(e) = txs[0].send(*i) {
                     // TODO: This should be an error
                     eprintln!("recorder Error sending data in play_audio {e}");
                     break;

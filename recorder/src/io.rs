@@ -3,13 +3,10 @@
 
 //! Structures and code to maintain the input and output buffers and
 //! processes
-
-#[allow(unused_imports)]
 use crate::{errors::RecorderError, utils::get_sample_rate};
 use jack::{Client, PortFlags};
 use serde::Serialize;
 use std::fs::OpenOptions;
-#[allow(unused_imports)]
 use std::{
     self,
     collections::HashMap,
@@ -18,7 +15,6 @@ use std::{
     path::{Path, PathBuf},
     sync::mpsc,
     thread,
-    time::Duration,
 };
 
 // ---- Inputs Start ----
@@ -26,7 +22,6 @@ use std::{
 /// replaced with `Vec<String>`
 #[derive(Debug, Clone)]
 pub struct JackPipes {
-    // names_ports: HashMap<String, String>,
     ports: Vec<String>,
     input: bool, // True if inputs to recorder
 }
@@ -36,7 +31,6 @@ impl JackPipes {
     #[allow(clippy::new_without_default)]
     pub fn new(input: bool) -> Self {
         Self {
-            //names_ports: HashMap::new(),
             ports: Vec::new(),
             input,
         }
@@ -53,9 +47,9 @@ impl JackPipes {
 
         for i in pipes.iter() {
             let parts: Vec<&str> = i.split(':').collect();
-            if parts.len() < 2 || parts.len() > 3 {
+            if parts.len() != 2 {
                 return Err(RecorderError::InvalidPipeName(i.to_string()));
-            } else if parts.len() == 2 {
+            } else {
                 if result.ports().contains(i) {
                     if input {
                         return Err(RecorderError::DuplicateInput(i.to_string()));
@@ -64,12 +58,6 @@ impl JackPipes {
                     }
                 }
                 result.add(i)?;
-            } else {
-                let client = parts[0];
-                let port = parts[1];
-                let _name = parts[2];
-                let client_port = format!("{client}:{port}");
-                result.add(&client_port)?;
             }
         }
 
@@ -269,7 +257,6 @@ impl AudioBuffers {
 ///
 /// 2. With a ".json" suffix describing the sanple rate and the number
 ///    of channels.
-#[allow(dead_code)]
 pub struct FileManager {
     /// Maps audio channel names to their output file paths
     pub file_path: PathBuf,
@@ -376,12 +363,7 @@ struct Metadata {
 }
 
 /// Private implementation details
-#[allow(dead_code)]
 impl FileManager {
-    /// Maximum number of samples to buffer before forcing a write
-    const MAX_BUFFER_SIZE: usize = 4096;
-    const SLEEP_DURATION_MS: u64 = 1;
-
     /// Spawns a thread to handle writing audio data to a file.
     fn spawn_writer_thread(
         &self,
@@ -413,7 +395,7 @@ impl FileManager {
             .read(true)
             .write(true)
             .create(true) // Creates file if it doesn't exist
-            .truncate(false) // Don't clear file contents
+            .truncate(true) // Don't clear file contents
             .open(audio_path)
         {
             // let mut file: File = match File::create(&audio_path). {

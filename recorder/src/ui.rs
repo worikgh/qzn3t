@@ -5,7 +5,6 @@
 use crate::errors::RecorderError;
 use crate::structs::Command;
 
-#[allow(dead_code, unused_imports)]
 use crossterm::{
     ExecutableCommand, cursor,
     event::{self, Event, KeyCode},

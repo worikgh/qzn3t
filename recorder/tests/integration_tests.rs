@@ -1,11 +1,14 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use jack::{AsyncClient, AudioOut, Client, Control, Port, ProcessHandler, ProcessScope};
+use jack::{
+    AsyncClient, AudioIn, AudioOut, Client, Control, NotificationHandler, Port, ProcessHandler,
+    ProcessScope,
+};
 use qzn3t_recorder::{
     app::{App, AppData},
-    io::JackPipes,
-    io::read_f32_vec_from_file,
+    io::{JackPipes, read_f32_vec_from_file},
+    send_audio_to_jack::send_audo_to_jack,
     structs::Command,
     utils::get_sample_rate,
 };
@@ -13,7 +16,7 @@ use qzn3t_recorder::{
 use std::{
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -22,12 +25,14 @@ use std::{
 };
 
 #[derive(Debug)]
-#[allow(dead_code)]
 enum WaveForm {
     Sine,
     Triangle,
     Square,
 }
+
+/// The length of the test audio buffers in ms
+const AUDIO_DURATION: u32 = 1_000;
 
 /// Generate a buffer of mono audio samples.
 ///
@@ -96,8 +101,6 @@ struct TestAudioOutProcess {
 
 impl ProcessHandler for TestAudioOutProcess {
     fn process(&mut self, _c: &Client, ps: &ProcessScope) -> Control {
-        // FIXME: Create a struct to hold the audio buffers and the
-        // output ports together
         assert_eq!(self.audio_buffers.len(), self.outputs.len());
         let olen = self.outputs.len();
 
@@ -162,8 +165,6 @@ fn make_jack_client_port(
     audio_buffers: Vec<Vec<f32>>,
     play_audio_f: Arc<AtomicBool>,
 ) -> AsyncClient<Notifications, TestAudioOutProcess> {
-    // FIXME: Create a struct to hold theport names and the audio
-    // buffers
     assert_eq!(port_names.len(), audio_buffers.len());
 
     // Do not return the active client until it has started
@@ -174,7 +175,6 @@ fn make_jack_client_port(
             Ok(cs) => cs,
             Err(err) => panic!("Failed creating test client {client_name}: {err}"),
         };
-
     // The names of the ports to output data on
     let outputs: Vec<jack::Port<jack::AudioOut>> = port_names
         .iter()
@@ -214,17 +214,147 @@ fn make_jack_client_port(
 // Tests todo:
 // `get_audio_from_jack` when the pipe is disconnected.  Test the error
 
+/// Test playing back audio.  Generate three channels of audio: a
+/// square, sine and triangle wave one second long.  Create a Jack
+/// client with three inputs to act as the sink.  Generally in normal
+/// use this would be system:playback_1, system:playback_2 and
+/// system:playback_3.  But in this case the audio needs to be
+/// captured and compared with the original.
+struct TestPlayNotificationHandler;
+impl NotificationHandler for TestPlayNotificationHandler {}
+struct TestPlayProcessHandler {
+    ports: Vec<Port<AudioIn>>,
+    /// A buffer for each port
+    buffers: Vec<Arc<Mutex<Vec<f32>>>>,
+}
+impl ProcessHandler for TestPlayProcessHandler {
+    fn process(&mut self, _: &Client, ps: &ProcessScope) -> Control {
+        for (idx, p) in self.ports.iter().enumerate() {
+            let t = p.as_slice(ps);
+            self.buffers[idx].lock().unwrap().extend_from_slice(t);
+        }
+        Control::Continue
+    }
+}
+#[test]
+fn play_three_channels() {
+    // The audio buffers
+    let audio_buffer_sine = generate_test_audio(220, 0.25, AUDIO_DURATION, WaveForm::Sine);
+    let audio_buffer_sine = trim_audio(&audio_buffer_sine);
+    let audio_buffer_triangle = generate_test_audio(220, 0.25, AUDIO_DURATION, WaveForm::Triangle);
+    let audio_buffer_triangle = trim_audio(&audio_buffer_triangle);
+    let audio_buffer_square = generate_test_audio(220, 0.25, AUDIO_DURATION, WaveForm::Square);
+    let audio_buffer_square = trim_audio(&audio_buffer_square);
+
+    // The three channels to send the data to playback with
+    let (sine_tx, sine_rx) = mpsc::channel::<f32>();
+    let (triangle_tx, triangle_rx) = mpsc::channel::<f32>();
+    let (square_tx, square_rx) = mpsc::channel::<f32>();
+
+    // When this is true data on channels is send to the output.  When
+    // it is false the data is ignored (audio off, but still a sink
+    // for audio data)
+    let run_flag = Arc::new(AtomicBool::new(true));
+
+    // Create a Jack client to sink the audio.  Three ports, that each
+    // fill a buffer that is accessible from here to test (and reset)
+    let audio_buffer_sink_sine: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+    let audio_buffer_sink_triangle: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+    let audio_buffer_sink_square: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
+    let (_client, _) = Client::new("audio_sink", jack::ClientOptions::NO_START_SERVER)
+        .expect("Cannot make Jack sink");
+
+    // Give the client three ports one for each channel
+    let ports = vec![
+        _client
+            .register_port("playback_1", AudioIn::default())
+            .expect("Creating port"),
+        _client
+            .register_port("playback_2", AudioIn::default())
+            .expect("Creating port"),
+        _client
+            .register_port("playback_3", AudioIn::default())
+            .expect("Creating port"),
+    ];
+    let port_names = ports
+        .iter()
+        .map(|p| p.name().unwrap().clone())
+        .collect::<Vec<String>>();
+    let notification_handler = TestPlayNotificationHandler;
+    let buffers = [
+        audio_buffer_sink_sine.clone(),
+        audio_buffer_sink_triangle.clone(),
+        audio_buffer_sink_square.clone(),
+    ]
+    .to_vec();
+    let process_handler = TestPlayProcessHandler { buffers, ports };
+    let _ac = _client
+        .activate_async(notification_handler, process_handler)
+        .unwrap();
+    // The process that will be tested
+    let _ac = send_audo_to_jack(
+        vec![
+            (sine_rx, port_names[0].clone()),
+            (triangle_rx, port_names[1].clone()),
+            (square_rx, port_names[2].clone()),
+        ],
+        run_flag.clone(),
+    )
+    .map_err(|err| panic!("send_audio_to_jack failed: {err}"))
+    .unwrap();
+    for item in &audio_buffer_sine {
+        sine_tx
+            .send(*item)
+            .map_err(|err| panic!("Failed to send sine: {err}"));
+    }
+    for item in &audio_buffer_triangle {
+        triangle_tx
+            .send(*item)
+            .map_err(|err| panic!("Failed to send triangle: {err}"));
+    }
+    for item in &audio_buffer_square {
+        square_tx
+            .send(*item)
+            .map_err(|err| panic!("Failed to send square: {err}"));
+    }
+    run_flag.store(true, Ordering::Relaxed);
+    // Let audio playback run.  A real-time process that takes time
+    thread::sleep(Duration::from_millis(AUDIO_DURATION as u64));
+
+    // Capture copies of the sinks, and trim leading and trailing zeros
+    let audio_buffer_sink_square = trim_audio(&audio_buffer_sink_square.lock().unwrap());
+    let audio_buffer_sink_triangle = trim_audio(&audio_buffer_sink_triangle.lock().unwrap());
+    let audio_buffer_sink_sine = trim_audio(&audio_buffer_sink_sine.lock().unwrap());
+    // Test that the sinks are the same as the original buffers
+    assert_eq!(audio_buffer_sink_square.len(), audio_buffer_square.len());
+    assert_eq!(audio_buffer_sink_sine.len(), audio_buffer_sine.len());
+    assert_eq!(
+        audio_buffer_sink_triangle.len(),
+        audio_buffer_triangle.len()
+    );
+    for (idx, sample) in audio_buffer_sink_square.iter().enumerate() {
+        assert!((sample - audio_buffer_square[idx]).abs() < f32::EPSILON);
+    }
+    for (idx, sample) in audio_buffer_sink_sine.iter().enumerate() {
+        assert!((sample - audio_buffer_sine[idx]).abs() < f32::EPSILON);
+    }
+    for (idx, sample) in audio_buffer_sink_triangle.iter().enumerate() {
+        assert!((sample - audio_buffer_triangle[idx]).abs() < f32::EPSILON);
+    }
+}
+
 /// Generate two audio tracks: sine and triangle waves.  Record both
 /// simultaneously and save them both to disc files.
 #[test]
 fn record_two_channels() {
     // The test audio
-    let audio_duration_ms = 2_000;
 
-    let audio_buffer_sine = generate_test_audio(220, 0.25, audio_duration_ms, WaveForm::Sine);
+    let audio_duration_ms = AUDIO_DURATION;
+
+    let audio_buffer_sine = generate_test_audio(220, 0.25, AUDIO_DURATION, WaveForm::Sine);
     let audio_buffer_sine = trim_audio(&audio_buffer_sine);
 
-    let audio_buffer_tri = generate_test_audio(220, 0.25, audio_duration_ms, WaveForm::Triangle);
+    let audio_buffer_tri = generate_test_audio(220, 0.25, AUDIO_DURATION, WaveForm::Triangle);
     let audio_buffer_tri = trim_audio(&audio_buffer_tri);
 
     // Directory recorded audio is sent to
@@ -280,11 +410,9 @@ fn record_two_channels() {
         }
         thread::sleep(Duration::from_millis(100));
     }
-
     if let Err(err) = recorder.handle_audio_stop() {
         panic!("Could not stop audio: {err}");
     }
-
     // Get two recorded buffers
     let rec_sine = recorder.recorded_audio.get_buffer(0).unwrap();
     let rec_sine = trim_audio(&rec_sine);
@@ -334,7 +462,8 @@ fn record_two_channels() {
         let audio_path = output_path.with_extension("raw");
         match read_f32_vec_from_file(&audio_path, 2) {
             Ok(audio_buffer) => {
-                let recovered_sine = trim_audio(&audio_buffer.get_buffer(0).unwrap());
+                let recovered_sine = audio_buffer.get_buffer(0).unwrap();
+                let recovered_sine = trim_audio(&recovered_sine);
                 let recovered_tri = trim_audio(&audio_buffer.get_buffer(1).unwrap());
                 if recovered_tri.len() != rec_tri.len() {
                     eprintln!(
@@ -382,7 +511,7 @@ fn record_two_channels() {
 /// Record one channel of audio.
 /// Save it to disc.
 fn record_audio() {
-    let duration_ms = 2_000;
+    let duration_ms = AUDIO_DURATION;
 
     // The test audio
     let audio_buffer = generate_test_audio(220, 0.25, duration_ms, WaveForm::Sine);
@@ -438,7 +567,6 @@ fn record_audio() {
 
     // Get data out of the recorder
     let new_buffer = trim_audio(&recorder.recorded_audio.get_buffer(0).unwrap());
-
     // The buffers should be the same length
     assert_eq!(audio_buffer.len(), new_buffer.len());
 
@@ -505,7 +633,7 @@ fn set_up_recorder(port_names: Vec<String>, dir: &Path) -> AppData {
     let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
     let mut app = App;
-    match app.initialise(_audio_tx, _command_rx, inputs, outputs, dir) {
+    match app.initialise(vec![_audio_tx], _command_rx, inputs, outputs, dir) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     }
