@@ -475,24 +475,6 @@ impl AppData {
         unimplemented!();
     }
 
-    // /// Save the audio from the `recorded_audio`
-    // pub fn handle_save(&mut self) -> Result<(), RecorderError> {
-    //     for (name, audio_data) in self.recorded_audio.iter() {
-    //         let data = unsafe {
-    //             std::slice::from_raw_parts(
-    //                 audio_data.as_ptr() as *const u8,
-    //                 audio_data.len() * std::mem::size_of::<f32>(),
-    //             )
-    //         }
-    //         .to_vec();
-
-    //         // `self.save_dir` is not `None`
-    //         let dest: PathBuf = self.file_name.join(name);
-    //         fs::write(dest, &data).map_err(|err| RecorderError::Generic(err.to_string()))?;
-    //     }
-    //     Ok(())
-    // }
-
     /// When a command is passed into the programme by `-k`
     pub fn handle_kommand(&mut self, k: Command) -> Result<(), Box<dyn Error>> {
         match k {

@@ -87,39 +87,10 @@ impl JackPipes {
         Ok(())
     }
 
-    // /// Add an input to the collection with a defined name.  The port
-    // /// must be of the type form "`client`:`port name`".
-    // pub fn add_name(&mut self, port: &str, name: &str) -> Result<(), RecorderError> {
-    //     Self::validate_jack_input_pipe(port)?;
-    //     if self.names_ports.values().any(|n| n == port) {
-    //         Err(RecorderError::DuplicateInput(port.to_string()))
-    //     } else if self.names_ports.iter().any(|pn| pn.0 == name) {
-    //         Err(RecorderError::DuplicateInputName(name.to_string()))
-    //     } else {
-    //         // self.ports.push(port.to_string());
-    //         let channel = self.names_ports.len() as u32;
-    //         self.names_ports.insert(name.to_string(), port.to_string());
-    //         self.channels_ports.insert(channel, port.to_string());
-    //         Ok(())
-    //     }
-    // }
-
     /// Get a copy of all the ports
     pub fn ports(&self) -> Vec<String> {
         self.ports.clone()
     }
-
-    // pub fn names(&self) -> Vec<String> {
-    //     self.names_ports.keys().map(|n| n.to_string()).collect()
-    // }
-    // /// Get a copy of the named ports
-    // pub fn names_ports(&self) -> HashMap<String, String> {
-    //     self.names_ports.clone()
-    // }
-    // /// Get a copy of the numbered (matching channel)  ports
-    // pub fn channels_ports(&self) -> HashMap<u32, String> {
-    //     self.ports.clone()
-    // }
 }
 
 /// Private interface
@@ -287,39 +258,6 @@ impl AudioBuffers {
         }
     }
 }
-
-// /// Iterators
-// impl AudioBuffers {
-
-//     pub fn iter(&self) -> impl Iterator<Item = (&String, &Vec<f32>)> {
-//	self.buffers.iter()
-//     }
-
-//     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut Vec<f32>)> {
-//	self.buffer_names.iter_mut()
-//     }
-
-//     pub fn keys(&self) -> impl Iterator<Item = &String> {
-//	self.buffer_names.keys()
-//     }
-
-//     pub fn values(&self) -> impl Iterator<Item = &Vec<f32>> {
-//	self.buffer_names.values()
-//     }
-
-//     pub fn insert(&mut self, name: String, data: Vec<f32>) {
-//	self.buffer_names.insert(name, data);
-//     }
-
-//     pub fn get(&self, name: &str) -> Option<&Vec<f32>> {
-//	self.buffer_names.get(name)
-//     }
-
-//     pub fn get_mut(&mut self, name: &str) -> Option<&mut Vec<f32>> {
-//	self.buffer_names.get_mut(name)
-//     }
-// }
-
 // ---- AudioBuffers end ----
 
 // ---- FileManager start ----
@@ -509,56 +447,6 @@ impl FileManager {
         Ok((audio_path, metadata_path))
     }
 
-    /// Creates or truncates the output file.
-    fn create_output_file(path: &Path) -> Result<File, RecorderError> {
-        if path.exists() {
-            eprintln!("Overwriting existing file: {:?}", path);
-        }
-
-        OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)
-            .map_err(|err| {
-                RecorderError::FileManager(format!("Cannot create file at {:?}: {}", path, err))
-            })
-    }
-
-    /// Collects samples from the receiver into the buffer.
-    ///
-    /// Returns `true` if the channel is still connected, `false` if disconnected.
-    fn collect_samples(
-        receiver: &mpsc::Receiver<f32>,
-        buffer: &mut Vec<f32>,
-    ) -> Result<bool, RecorderError> {
-        loop {
-            match receiver.try_recv() {
-                Ok(sample) => {
-                    buffer.push(sample);
-                    if buffer.len() >= Self::MAX_BUFFER_SIZE {
-                        break;
-                    }
-                }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => return Ok(false),
-            }
-        }
-        Ok(true)
-    }
-
-    /// Writes the buffer to file as raw f32 bytes.
-    fn write_buffer(file: &mut File, buffer: &[f32]) -> Result<(), RecorderError> {
-        // Convert f32 slice to byte slice
-        let bytes = unsafe {
-            std::slice::from_raw_parts(buffer.as_ptr() as *const u8, std::mem::size_of_val(buffer))
-        };
-
-        file.write_all(bytes).map_err(|err| {
-            RecorderError::FileManager(format!("Failed to write audio data: {}", err))
-        })
-    }
-
     /// Write data to a file.  `file` is pen for appending and the
     /// file pointer is in the correct place.  `samples` are the data
     /// to write. `file` is left ready for more data to be written to
@@ -577,24 +465,6 @@ impl FileManager {
                 "Failed writing samples to file: {err}"
             ))),
         }
-    }
-
-    /// Writes the sample rate to a metadata file.
-    fn write_sample_rate_file(&self) -> Result<(), RecorderError> {
-        todo!();
-        // let sample_rate = get_sample_rate();
-
-        // let dir = self
-        //     .audio_files
-        //     .values()
-        //     .next()
-        //     .and_then(|p| p.parent())
-        //     .ok_or(RecorderError::NoAudioFiles)?;
-
-        // let sample_rate_path = dir.join(".sample_rate");
-
-        // fs::write(&sample_rate_path, sample_rate.to_string())
-        //     .map_err(|err| RecorderError::CannotCreateFile(sample_rate_path, err.to_string()))
     }
 }
 // ---- FileManager end ----
@@ -625,9 +495,6 @@ pub fn read_f32_vec_from_file(
         .chunks_exact(std::mem::size_of::<f32>())
         .map(|chunk| f32::from_ne_bytes(chunk.try_into().unwrap()))
         .collect();
-    // let float_count = data.len() / std::mem::size_of::<f32>();
-    // let float_vec: Vec<f32> =
-    //     unsafe { std::slice::from_raw_parts(data.as_ptr() as *const f32, float_count).to_vec() };
 
     // The channels are multiplexd together, demultiplex them
     let mut result: AudioBuffers = AudioBuffers::new();

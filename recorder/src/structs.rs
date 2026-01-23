@@ -80,10 +80,3 @@ impl fmt::Display for Command {
         )
     }
 }
-
-/// State for saving audio files
-#[derive(PartialEq, Eq)]
-pub enum SaveState {
-    Saved,
-    Saving,
-}
