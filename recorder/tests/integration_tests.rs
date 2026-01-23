@@ -38,7 +38,6 @@ const AUDIO_DURATION: u32 = 1_000;
 ///
 /// * `frequency` – Frequency of the tone in Hz.
 /// * `volume`    – Linear gain (0.0‑1.0).
-/// * `sample_rate` – Samples per second (e.g. 44_100).
 /// * `duration_ms` – Length of the buffer in milliseconds.
 /// * `wave_form` – Desired waveform.
 fn generate_test_audio(
@@ -96,7 +95,7 @@ struct TestAudioOutProcess {
     outputs: Vec<Port<AudioOut>>,
     position: usize,
     play_audio_f: Arc<AtomicBool>,
-    active: Arc<AtomicBool>, // Set this on the first `process` invocation
+    active: Arc<AtomicBool>, 
 }
 
 impl ProcessHandler for TestAudioOutProcess {
@@ -158,7 +157,7 @@ impl jack::NotificationHandler for Notifications {}
 /// Create a source for testing.  Creates a client `client_name` with
 /// output ports from `port_names` and when the flag `play_audio_f` is
 /// set it sends the contents of `audio_buffer` to the pipe.  When the
-/// file is played `play_audio_f` is reset
+///  audio is played `play_audio_f` is reset
 fn make_jack_client_port(
     client_name: &str,
     port_names: Vec<&str>,
@@ -215,16 +214,16 @@ fn make_jack_client_port(
 // `get_audio_from_jack` when the pipe is disconnected.  Test the error
 
 /// Test playing back audio.  Generate three channels of audio: a
-/// square, sine and triangle wave one second long.  Create a Jack
+/// square, sine and triangle wave.  Create a Jack
 /// client with three inputs to act as the sink.  Generally in normal
 /// use this would be system:playback_1, system:playback_2 and
-/// system:playback_3.  But in this case the audio needs to be
+/// system:playback_3 (or whateverpipes lead to sound hardware)  But in this case the audio needs to be
 /// captured and compared with the original.
 struct TestPlayNotificationHandler;
 impl NotificationHandler for TestPlayNotificationHandler {}
 struct TestPlayProcessHandler {
     ports: Vec<Port<AudioIn>>,
-    /// A buffer for each port
+    /// A buffer for each port, shared with caller for verifying test
     buffers: Vec<Arc<Mutex<Vec<f32>>>>,
 }
 impl ProcessHandler for TestPlayProcessHandler {

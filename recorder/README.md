@@ -1,6 +1,6 @@
 # Qzn3t/Recorder
 
-Utility to record from Jack.  Outputs  raw audio files or FLAC.
+Utility to record from Jack.  Outputs  raw audio files 
 
 ## Testing
 

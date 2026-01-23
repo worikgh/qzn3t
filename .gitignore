@@ -48,6 +48,7 @@ inc/
 
 # Local artefacts
 Compose/compositions/
+recorder/tests/data
 
 pitch-detection/examples/
 *.raw
