@@ -225,6 +225,17 @@ impl AudioBuffers {
         self.buffers.len() as u32
     }
 
+    /// Get a reference to a buffer
+    pub fn get_buffer_idx(&self, idx: usize) -> Result<&[f32], RecorderError> {
+        if idx < self.buffers.len() {
+            Ok(&self.buffers[idx])
+        } else {
+            Err(RecorderError::Generic(format!(
+                "Trying to get buffer with index {idx}.  Limit is: {}",
+                self.buffers.len()
+            )))
+        }
+    }
     /// Clone an audio buffer and return it
     pub fn get_buffer(&self, channel: u32) -> Result<Vec<f32>, RecorderError> {
         if channel < self.channels() {
