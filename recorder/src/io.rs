@@ -36,6 +36,10 @@ impl JackPipes {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.ports.len()
+    }
+
     /// Using the strings from the command line
     /// [`crate::structs::Args`] `-i` and `-o` add input or output
     /// jack pipes.
