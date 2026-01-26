@@ -453,7 +453,7 @@ impl AppData {
         unimplemented!();
     }
 
-    /// When a command is passed into the programme by `-k`
+    /// When a command is passed into the programme by `-k`.  This will block until the command is complete
     pub fn handle_kommand(&mut self, k: Command) -> Result<(), Box<dyn Error>> {
         match k {
             Command::Record => {
