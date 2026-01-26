@@ -2,7 +2,8 @@
 // License: GPL-3.0
 
 use crate::errors::RecorderError;
-use crate::io::{AudioBuffers, FileManager, JackPipes};
+use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
+use crate::send_audio_to_jack;
 use crate::structs::Command;
 use crate::utils::get_sample_rate;
 use jack_rec;
@@ -404,6 +405,45 @@ impl AppData {
     /// There must be at least as many auido outputs specified (`-o` on command line) as there are audio channels
     pub fn handle_play(&mut self) -> Result<(), Box<dyn Error>> {
         let (audio_path, metadata_path) = self.file_manager.make_paths()?;
+
+        // Get number of channels from metadata
+        let channels = read_file_metadata(metadata_path)?.channels;
+
+        if channels != self._output.len() as u32 {
+            return Err(RecorderError::Generic(format!(
+                "Cannot handle play: {channels} audio channels and {} outputs.",
+                self._output.len()
+            ))
+            .into());
+        }
+        // Get the audio data
+        let audio_buffers = read_f32_vec_from_file(&audio_path, channels)?;
+
+        // Need a `mpsc` channel for each audio channel to send to
+        // Jack, and pair them with the audio ports
+        let mut senders = vec![];
+        let mut data_channel_port_names = Vec::with_capacity(channels as usize);
+        for i in 0..channels as usize {
+            let (tx, rx) = mpsc::channel::<f32>();
+            senders.push(tx);
+            let port_name = self._output.ports()[i].clone();
+            data_channel_port_names.push((rx, port_name));
+        }
+        let audio_run = Arc::new(AtomicBool::new(false));
+        for c in 0..channels as usize {
+            let buffer = audio_buffers.get_buffer_idx(c)?;
+            let sender = &senders[c];
+            for s in buffer.iter() {
+                if let Err(err) = sender.send(*s) {
+                    return Err(RecorderError::Generic(format!(
+                        "Cannot send sample {s} to jack.  {err}"
+                    ))
+                    .into());
+                }
+            }
+        }
+        send_audio_to_jack::send_audo_to_jack(data_channel_port_names, audio_run.clone())?;
+        audio_run.store(true, Ordering::Relaxed);
         Ok(())
     }
 
