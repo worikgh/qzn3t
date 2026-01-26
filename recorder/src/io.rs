@@ -351,6 +351,13 @@ impl FileManager {
     pub fn drain_senders(&mut self) -> Vec<mpsc::Sender<f32>> {
         self.senders.drain(0..).collect()
     }
+
+    pub fn make_paths(&self) -> Result<(PathBuf, PathBuf), RecorderError> {
+        let in_path = &self.file_path;
+        let audio_path: PathBuf = in_path.with_extension("raw");
+        let metadata_path: PathBuf = in_path.with_extension("json");
+        Ok((audio_path, metadata_path))
+    }
 }
 
 /// The structure that is written beside raw data files to provide
@@ -370,7 +377,7 @@ impl FileManager {
         receivers: Vec<mpsc::Receiver<f32>>,
     ) -> Result<thread::JoinHandle<Result<(), RecorderError>>, RecorderError> {
         // The files to write: A data and a metadata file
-        let (audio_path, metadata_path) = Self::make_paths(&self.file_path)?;
+        let (audio_path, metadata_path) = self.make_paths()?;
 
         // The metadata that is required to convert the raw audio to other formats.
         let channels: u32 = self.channels;
@@ -421,12 +428,6 @@ impl FileManager {
             }
             Ok(())
         }))
-    }
-
-    fn make_paths(in_path: &Path) -> Result<(PathBuf, PathBuf), RecorderError> {
-        let audio_path: PathBuf = in_path.with_extension("raw");
-        let metadata_path: PathBuf = in_path.with_extension("json");
-        Ok((audio_path, metadata_path))
     }
 
     /// Write data to a file.  `file` is pen for appending and the
