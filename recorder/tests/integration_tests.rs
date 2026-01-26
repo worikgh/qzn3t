@@ -2,11 +2,12 @@
 // License: GPL-3.0
 
 use jack::{
-    AsyncClient, AudioIn, AudioOut, Client, Control, NotificationHandler, Port, ProcessHandler,
-    ProcessScope,
+    AsyncClient, AudioIn, AudioOut, Client, Control, NotificationHandler, Port, PortFlags,
+    ProcessHandler, ProcessScope,
 };
 use qzn3t_recorder::{
     app::{App, AppData},
+    errors::RecorderError,
     io::{JackPipes, read_f32_vec_from_file},
     send_audio_to_jack::send_audo_to_jack,
     structs::Command,
@@ -153,6 +154,38 @@ impl ProcessHandler for TestAudioOutProcess {
 }
 pub struct Notifications;
 impl jack::NotificationHandler for Notifications {}
+
+/// Create a Jack client to sink audio to test playing.  A port and
+/// a buffer for each audio channel.  The client simulates playing
+/// audio by writing it to the buffer.  The buffers are shared with
+/// an Arc<Mutex<_>> so they can then be examined to check the
+/// audio made it
+fn make_test_play_client(
+    name: &str,
+    port_names: Vec<String>,
+    buffers: Vec<Arc<Mutex<Vec<f32>>>>,
+) -> Result<AsyncClient<TestPlayNotificationHandler, TestPlayProcessHandler>, RecorderError> {
+    dbg![];
+    let (_client, _) =
+        Client::new(name, jack::ClientOptions::NO_START_SERVER).expect("Cannot make Jack sink");
+
+    let mut ports = vec![];
+    dbg![];
+    for p in port_names.iter() {
+        let port = _client
+            .register_port(p, AudioIn::default())
+            .expect("Creating port");
+        ports.push(port);
+    }
+
+    let notification_handler = TestPlayNotificationHandler;
+    let process_handler = TestPlayProcessHandler { buffers, ports };
+    let ac = _client
+        .activate_async(notification_handler, process_handler)
+        .unwrap();
+    dbg![];
+    Ok(ac)
+}
 
 /// Create a source for testing.  Creates a client `client_name` with
 /// output ports from `port_names` and when the flag `play_audio_f` is
