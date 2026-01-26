@@ -5,7 +5,7 @@
 //! processes
 use crate::{errors::RecorderError, utils::get_sample_rate};
 use jack::{Client, PortFlags};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::{
     self,
@@ -382,10 +382,10 @@ impl FileManager {
 /// The structure that is written beside raw data files to provide
 /// metadata required to convert the raw audio into other audio
 /// formats
-#[derive(Serialize, Debug)]
-struct Metadata {
-    channels: u32,
-    sample_rate: usize,
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Metadata {
+    pub channels: u32,
+    pub sample_rate: usize,
 }
 
 /// Private implementation details
@@ -514,6 +514,17 @@ pub fn read_f32_vec_from_file(
     Ok(result)
 }
 
+pub fn read_file_metadata(path: PathBuf) -> Result<Metadata, RecorderError> {
+    let json = fs::read_to_string(&path).map_err(|err| {
+        RecorderError::Generic(format!("Cannot read metadata from {path:?}. {err}"))
+    })?;
+    let result: Metadata = serde_json::from_str(json.as_str()).map_err(|err| {
+        RecorderError::Generic(format!(
+            "Cannot decode from {path:?} metadata: {json}. {err}"
+        ))
+    })?;
+    Ok(result)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
