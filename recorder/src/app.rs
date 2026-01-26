@@ -399,7 +399,11 @@ impl AppData {
         Ok(())
     }
 
+    /// Get the audio from the FileManager and output it through the outputs.
+    /// The file manager must know about a raw audio file and the JSON metadata
+    /// There must be at least as many auido outputs specified (`-o` on command line) as there are audio channels
     pub fn handle_play(&mut self) -> Result<(), Box<dyn Error>> {
+        let (audio_path, metadata_path) = self.file_manager.make_paths()?;
         Ok(())
     }
 

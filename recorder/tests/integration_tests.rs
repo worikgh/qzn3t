@@ -95,7 +95,7 @@ struct TestAudioOutProcess {
     outputs: Vec<Port<AudioOut>>,
     position: usize,
     play_audio_f: Arc<AtomicBool>,
-    active: Arc<AtomicBool>, 
+    active: Arc<AtomicBool>,
 }
 
 impl ProcessHandler for TestAudioOutProcess {
@@ -343,9 +343,11 @@ fn play_three_channels() {
 }
 
 /// Generate two audio tracks: sine and triangle waves.  Record both
-/// simultaneously and save them both to disc files.
+/// simultaneously and save them both to disc files.  Use the
+/// generated audio file to test the command line interface for
+/// playing back files
 #[test]
-fn record_two_channels() {
+fn record_two_channels_and_play_back() {
     // The test audio
 
     let audio_duration_ms = AUDIO_DURATION;
@@ -502,6 +504,27 @@ fn record_two_channels() {
                 result = false;
             }
         };
+    }
+    {
+        let path = output_path;
+        dbg!(&path);
+        let inputs = JackPipes::new(true);
+        let mut outputs = JackPipes::new(false);
+
+        // FIXME make a test client for this
+        for p in ["system:playback_1", "system:playback_2"] {
+            outputs.add(p).unwrap();
+        }
+        let (_audio_tx, _audio_rx) = mpsc::channel::<f32>();
+        let (_command_tx, _command_rx) = mpsc::channel::<Command>();
+
+        let mut app = App;
+        let mut app_data =
+            match app.initialise(vec![_audio_tx], _command_rx, inputs, outputs, &path) {
+                Ok(a) => a,
+                Err(err) => panic!("Cannot initalise AppData: {err}"),
+            };
+        app_data.handle_kommand(Command::Play).unwrap();
     }
     assert!(result);
 }
