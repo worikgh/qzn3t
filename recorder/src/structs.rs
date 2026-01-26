@@ -53,14 +53,15 @@ pub struct Args {
 
 #[derive(Debug, Clone, ValueEnum, PartialEq, Hash, Eq)]
 pub enum Command {
-    Stop,
+    Continue, // Used if no menu item selected
+    DubAccept,
+    DubReview,
+    Dubing,
+    Quit,
+    Play,
     Record,
     ReviewRecord,
-    Dubing,
-    DubReview,
-    DubAccept,
-    Continue, // Used if no menu item selected
-    Quit,
+    Stop,
 }
 
 impl Command {}

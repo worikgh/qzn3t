@@ -49,17 +49,18 @@ impl App {
                 if let Some(command) = command {
                     // There was a command.  Carry it out
                     match command {
-                        Command::Record => config_app.handle_record()?,
-                        Command::Stop => config_app.handle_audio_stop()?,
-                        Command::ReviewRecord => config_app.handle_review_record()?,
-                        Command::Dubing => config_app.handle_dubing()?,
-                        Command::DubReview => config_app.handle_dub_review()?,
-                        Command::DubAccept => config_app.handle_dub_accept()?,
                         Command::Continue => (),
+                        Command::DubAccept => config_app.handle_dub_accept()?,
+                        Command::DubReview => config_app.handle_dub_review()?,
+                        Command::Dubing => config_app.handle_dubing()?,
+                        Command::Play => config_app.handle_play()?,
                         Command::Quit => {
                             config_app.quit();
                             break;
                         }
+                        Command::Record => config_app.handle_record()?,
+                        Command::ReviewRecord => config_app.handle_review_record()?,
+                        Command::Stop => config_app.handle_audio_stop()?,
                     }
                 }
 
@@ -398,6 +399,10 @@ impl AppData {
         Ok(())
     }
 
+    pub fn handle_play(&mut self) -> Result<(), Box<dyn Error>> {
+        Ok(())
+    }
+
     /// The command: stop
     pub fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
         // This ends the main loop
@@ -472,6 +477,7 @@ impl AppData {
                     Err("Error qzn3t/recorder: Failed to take record_handle".into())
                 }
             }
+            Command::Play => self.handle_play(),
             _ => panic!("Error recorder: -k {k:?} is not handled"),
         }
     }
