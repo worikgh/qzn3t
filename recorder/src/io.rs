@@ -40,6 +40,10 @@ impl JackPipes {
         self.ports.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.ports.is_empty()
+    }
+
     /// Using the strings from the command line
     /// [`crate::structs::Args`] `-i` and `-o` add input or output
     /// jack pipes.
