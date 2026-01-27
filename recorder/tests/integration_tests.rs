@@ -582,7 +582,6 @@ fn record_two_channels_and_play_back() {
         {
             let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
             if ab_1.len() != bf_1.len() {
-                dbg!(ab_1.len(), bf_1.len());
                 result = false;
             } else {
                 for idx in 0..ab_1.len() {
