@@ -54,7 +54,10 @@ impl App {
                         Command::DubAccept => config_app.handle_dub_accept()?,
                         Command::DubReview => config_app.handle_dub_review()?,
                         Command::Dubing => config_app.handle_dubing()?,
-                        Command::Play => config_app.handle_play()?,
+                        Command::Play => {
+                            // Do not block when called from UI
+                            config_app.handle_play()?;
+                        }
                         Command::Quit => {
                             config_app.quit();
                             break;
@@ -307,6 +310,60 @@ impl AppData {
         result
     }
 
+    fn start_sending_audio(
+        &mut self,
+    ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
+        let (audio_path, metadata_path) = self.file_manager.make_paths()?;
+
+        // Get number of channels from metadata
+        let channels = read_file_metadata(metadata_path)?.channels;
+
+        if channels != self._output.len() as u32 {
+            return Err(RecorderError::Generic(format!(
+                "Cannot handle play: {channels} audio channels and {} outputs.",
+                self._output.len()
+            )));
+        }
+        // Get the audio data
+        let audio_buffers = read_f32_vec_from_file(&audio_path, channels)?;
+
+        let audio_run = Arc::new(AtomicBool::new(false));
+        let mut data_channel_port_names = Vec::with_capacity(channels as usize);
+
+        // Need a `mpsc` channel for each audio channel to send to
+        // Jack, and pair them with the audio ports
+        let mut senders = vec![];
+        for i in 0..channels as usize {
+            let (tx, rx) = mpsc::channel::<f32>();
+            senders.push(tx);
+            let port_name = self._output.ports()[i].clone();
+            data_channel_port_names.push((rx, port_name));
+        }
+
+        let handle = thread::spawn(move || -> Result<AudioBuffers, RecorderError> {
+            let _a =
+                send_audio_to_jack::send_audo_to_jack(data_channel_port_names, audio_run.clone())?;
+            audio_run.store(true, Ordering::Relaxed);
+            for c in 0..channels as usize {
+                let buffer = audio_buffers.get_buffer_idx(c)?;
+                let sender = &senders[c];
+                for s in buffer.iter() {
+                    if let Err(err) = sender.send(*s) {
+                        return Err(RecorderError::Generic(format!(
+                            "Cannot send sample {s} to jack.  {err}"
+                        )));
+                    }
+                }
+            }
+            senders.clear();
+            while audio_run.load(Ordering::Relaxed) {
+                thread::sleep(Duration::from_millis(100));
+            }
+            Ok(audio_buffers)
+        });
+        Ok(handle)
+    }
+
     /// Called from the inner loop of `[get_audio_from_jack]`.  Loops
     /// over all channels reads any data from the channel, adds the
     /// data to the audio buffer and sends it to the file manager to
@@ -400,50 +457,17 @@ impl AppData {
         Ok(())
     }
 
-    /// Get the audio from the FileManager and output it through the outputs.
-    /// The file manager must know about a raw audio file and the JSON metadata
-    /// There must be at least as many auido outputs specified (`-o` on command line) as there are audio channels
+    /// Get the audio from the FileManager and output it through the
+    /// outputs.  The file manager must know about a raw audio file
+    /// and the JSON metadata There must be at least as many audio
+    /// outputs specified (`-o` on command line) as there are audio
+    /// channels.  Return the flag that is reset when playing is over
+    /// so the caller can block
     pub fn handle_play(&mut self) -> Result<(), Box<dyn Error>> {
-        let (audio_path, metadata_path) = self.file_manager.make_paths()?;
-
-        // Get number of channels from metadata
-        let channels = read_file_metadata(metadata_path)?.channels;
-
-        if channels != self._output.len() as u32 {
-            return Err(RecorderError::Generic(format!(
-                "Cannot handle play: {channels} audio channels and {} outputs.",
-                self._output.len()
-            ))
-            .into());
-        }
-        // Get the audio data
-        let audio_buffers = read_f32_vec_from_file(&audio_path, channels)?;
-
-        // Need a `mpsc` channel for each audio channel to send to
-        // Jack, and pair them with the audio ports
-        let mut senders = vec![];
-        let mut data_channel_port_names = Vec::with_capacity(channels as usize);
-        for i in 0..channels as usize {
-            let (tx, rx) = mpsc::channel::<f32>();
-            senders.push(tx);
-            let port_name = self._output.ports()[i].clone();
-            data_channel_port_names.push((rx, port_name));
-        }
-        let audio_run = Arc::new(AtomicBool::new(false));
-        for c in 0..channels as usize {
-            let buffer = audio_buffers.get_buffer_idx(c)?;
-            let sender = &senders[c];
-            for s in buffer.iter() {
-                if let Err(err) = sender.send(*s) {
-                    return Err(RecorderError::Generic(format!(
-                        "Cannot send sample {s} to jack.  {err}"
-                    ))
-                    .into());
-                }
-            }
-        }
-        send_audio_to_jack::send_audo_to_jack(data_channel_port_names, audio_run.clone())?;
-        audio_run.store(true, Ordering::Relaxed);
+        self.audio_handle = match self.start_sending_audio() {
+            Ok(h) => Some(h),
+            Err(err) => return Err(err.into()),
+        };
         Ok(())
     }
 
@@ -521,7 +545,26 @@ impl AppData {
                     Err("Error qzn3t/recorder: Failed to take record_handle".into())
                 }
             }
-            Command::Play => self.handle_play(),
+            Command::Play => {
+                self.handle_play()?;
+                let h = self.audio_handle.take();
+                match h {
+                    Some(h) => {
+                        while !h.is_finished() {
+                            thread::sleep(Duration::from_millis(1000));
+                        }
+                        if let Err(err) = h.join() {
+                            Err(
+                                format!("Error qzn3t/recorder: Failed sending audio: {err:?}")
+                                    .into(),
+                            )
+                        } else {
+                            Ok(())
+                        }
+                    }
+                    None => panic!("This cannot happen!!"),
+                }
+            }
             _ => panic!("Error recorder: -k {k:?} is not handled"),
         }
     }

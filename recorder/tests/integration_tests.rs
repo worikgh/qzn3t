@@ -165,12 +165,10 @@ fn make_test_play_client(
     port_names: Vec<String>,
     buffers: Vec<Arc<Mutex<Vec<f32>>>>,
 ) -> Result<AsyncClient<TestPlayNotificationHandler, TestPlayProcessHandler>, RecorderError> {
-    dbg![];
     let (_client, _) =
         Client::new(name, jack::ClientOptions::NO_START_SERVER).expect("Cannot make Jack sink");
 
     let mut ports = vec![];
-    dbg![];
     for p in port_names.iter() {
         let port = _client
             .register_port(p, AudioIn::default())
@@ -183,7 +181,6 @@ fn make_test_play_client(
     let ac = _client
         .activate_async(notification_handler, process_handler)
         .unwrap();
-    dbg![];
     Ok(ac)
 }
 
@@ -293,36 +290,23 @@ fn play_three_channels() {
     let audio_buffer_sink_sine: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
     let audio_buffer_sink_triangle: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
     let audio_buffer_sink_square: Arc<Mutex<Vec<f32>>> = Arc::new(Mutex::new(Vec::new()));
-    let (_client, _) = Client::new("audio_sink", jack::ClientOptions::NO_START_SERVER)
-        .expect("Cannot make Jack sink");
-
-    // Give the client three ports one for each channel
-    let ports = vec![
-        _client
-            .register_port("playback_1", AudioIn::default())
-            .expect("Creating port"),
-        _client
-            .register_port("playback_2", AudioIn::default())
-            .expect("Creating port"),
-        _client
-            .register_port("playback_3", AudioIn::default())
-            .expect("Creating port"),
-    ];
-    let port_names = ports
-        .iter()
-        .map(|p| p.name().unwrap().clone())
-        .collect::<Vec<String>>();
-    let notification_handler = TestPlayNotificationHandler;
-    let buffers = [
+    let buffers = vec![
         audio_buffer_sink_sine.clone(),
         audio_buffer_sink_triangle.clone(),
         audio_buffer_sink_square.clone(),
-    ]
-    .to_vec();
-    let process_handler = TestPlayProcessHandler { buffers, ports };
-    let _ac = _client
-        .activate_async(notification_handler, process_handler)
-        .unwrap();
+    ];
+    let port_names = vec![
+        "playback_1".to_string(),
+        "playback_2".to_string(),
+        "playback_3".to_string(),
+    ];
+
+    let client_name = "test_play_client";
+    let _ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+    let port_names = _ac
+        .as_client()
+        .ports(Some(client_name), None, PortFlags::IS_INPUT);
+
     // The process that will be tested
     let _ac = send_audo_to_jack(
         vec![
@@ -538,26 +522,81 @@ fn record_two_channels_and_play_back() {
             }
         };
     }
-    {
-        let path = output_path;
-        dbg!(&path);
-        let inputs = JackPipes::new(true);
-        let mut outputs = JackPipes::new(false);
+    if result {
+        // Test playing back the audio files from the previous test
 
-        // FIXME make a test client for this
-        for p in ["system:playback_1", "system:playback_2"] {
+        let buffers = vec![
+            Arc::new(Mutex::new(Vec::<f32>::new())),
+            Arc::new(Mutex::new(Vec::new())),
+        ];
+        let buffers_new = buffers
+            .iter()
+            .cloned()
+            .collect::<Vec<Arc<Mutex<Vec<f32>>>>>();
+        let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
+
+        let client_name = "test_play_client";
+        let _ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+        let port_names = _ac
+            .as_client()
+            .ports(Some(client_name), None, PortFlags::IS_INPUT);
+
+        let mut outputs = JackPipes::new(false);
+        for p in port_names.iter() {
             outputs.add(p).unwrap();
         }
         let (_audio_tx, _audio_rx) = mpsc::channel::<f32>();
         let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
         let mut app = App;
-        let mut app_data =
-            match app.initialise(vec![_audio_tx], _command_rx, inputs, outputs, &path) {
-                Ok(a) => a,
-                Err(err) => panic!("Cannot initalise AppData: {err}"),
-            };
+        let mut app_data = match app.initialise(
+            vec![_audio_tx],
+            _command_rx,
+            JackPipes::new(true),
+            outputs,
+            &output_path,
+        ) {
+            Ok(a) => a,
+            Err(err) => panic!("Cannot initalise AppData: {err}"),
+        };
         app_data.handle_kommand(Command::Play).unwrap();
+
+        // Check the buffers are the same
+        let audio_buffers = read_f32_vec_from_file(&output_path.with_extension("raw"), 2).unwrap();
+        let ab_0 = trim_audio(audio_buffers.get_buffer_idx(0).unwrap());
+        {
+            // let bf_0: std::sync::MutexGuard<'_, Vec<f32>> =
+            let bf_0 = trim_audio(&buffers_new[0].lock().unwrap());
+            if ab_0.len() != bf_0.len() {
+                result = false;
+            } else {
+                for idx in 0..ab_0.len() {
+                    let a = ab_0[idx];
+                    let b = bf_0[idx];
+                    if (a - b).abs() >= f32::EPSILON {
+                        result = false;
+                        eprintln!("channel 0: Failed match @ {idx}: Saved: {a}  Buffered: {b}");
+                        break;
+                    }
+                }
+            }
+        }
+        let ab_1 = trim_audio(audio_buffers.get_buffer_idx(1).unwrap());
+        {
+            let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
+            if ab_1.len() != bf_1.len() {
+                dbg!(ab_1.len(), bf_1.len());
+                result = false;
+            } else {
+                for idx in 0..ab_1.len() {
+                    let a = ab_1[idx];
+                    let b = bf_1[idx];
+                    if (a - b).abs() >= f32::EPSILON {
+                        eprintln!("channel 1: Failed match @ {idx}: Saved: {a}  Buffered: {b}");
+                    }
+                }
+            }
+        }
     }
     assert!(result);
 }

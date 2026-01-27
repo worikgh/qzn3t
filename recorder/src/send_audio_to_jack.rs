@@ -16,12 +16,12 @@ use std::sync::mpsc::TryRecvError;
 const CLIENT_NAME: &str = "qzn3t-recorder";
 
 pub struct AudioSenderState {
-    audio_rx: Vec<mpsc::Receiver<f32>>,
+    audio_rxs: Vec<mpsc::Receiver<f32>>,
 }
 
 impl AudioSenderState {
     pub fn empty_rx(&mut self) {
-        for rx in self.audio_rx.iter() {
+        for rx in self.audio_rxs.iter() {
             while rx.try_recv().is_ok() {}
         }
     }
@@ -40,7 +40,8 @@ pub fn send_audo_to_jack(
     audio_run: Arc<AtomicBool>,
 ) -> Result<impl std::any::Any, RecorderError> {
     // Own the inputs.  `mpsc::Receiver<_>`s cannot be shared, so consume them here
-    let audio_rx: Vec<mpsc::Receiver<f32>> = data_channels_ports
+
+    let audio_rxs: Vec<mpsc::Receiver<f32>> = data_channels_ports
         .iter_mut()
         .map(|(dc, _)| {
             let replacement: mpsc::Receiver<f32> = mpsc::channel().1;
@@ -88,7 +89,7 @@ pub fn send_audo_to_jack(
     assert_eq!(out_port_names.len(), sinks.len());
 
     // The call back handler for Jackd
-    let mut state = AudioSenderState { audio_rx };
+    let mut state = AudioSenderState { audio_rxs };
     let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let run_flag = audio_run.load(Ordering::Relaxed);
 
@@ -96,14 +97,12 @@ pub fn send_audo_to_jack(
             let out = out.as_mut_slice(ps);
             if run_flag {
                 for sample in out.iter_mut() {
-                    match state.audio_rx[idx].try_recv() {
+                    match state.audio_rxs[idx].try_recv() {
                         Ok(s) => *sample = s,
                         Err(TryRecvError::Empty) => *sample = 0.0,
                         Err(TryRecvError::Disconnected) => {
                             *sample = 0.0;
-                            eprintln!(
-                                "Error recorder: Disconnected from audio channel in create_out_port"
-                            );
+                            audio_run.store(false, Ordering::Relaxed);
                             return jack::Control::Quit;
                         }
                     }
