@@ -529,10 +529,7 @@ fn record_two_channels_and_play_back() {
             Arc::new(Mutex::new(Vec::<f32>::new())),
             Arc::new(Mutex::new(Vec::new())),
         ];
-        let buffers_new = buffers
-            .iter()
-            .cloned()
-            .collect::<Vec<Arc<Mutex<Vec<f32>>>>>();
+        let buffers_new = buffers.to_vec();
         let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
 
         let client_name = "test_play_client";
