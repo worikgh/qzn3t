@@ -37,7 +37,7 @@ pub fn send_audo_to_jack(
     mut data_channels_ports: Vec<(mpsc::Receiver<f32>, String)>,
 
     // When this is set to false all data is ignored
-    audio_run: Arc<AtomicBool>,
+    run_f: Arc<AtomicBool>,
 ) -> Result<impl std::any::Any, RecorderError> {
     // Own the inputs.  `mpsc::Receiver<_>`s cannot be shared, so consume them here
 
@@ -91,7 +91,7 @@ pub fn send_audo_to_jack(
     // The call back handler for Jackd
     let mut state = AudioSenderState { audio_rxs };
     let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        let run_flag = audio_run.load(Ordering::Relaxed);
+        let run_flag = run_f.load(Ordering::Relaxed);
 
         for (idx, out) in out_ports.iter_mut().enumerate() {
             let out = out.as_mut_slice(ps);
@@ -102,7 +102,7 @@ pub fn send_audo_to_jack(
                         Err(TryRecvError::Empty) => *sample = 0.0,
                         Err(TryRecvError::Disconnected) => {
                             *sample = 0.0;
-                            audio_run.store(false, Ordering::Relaxed);
+                            run_f.store(false, Ordering::Relaxed);
                             return jack::Control::Quit;
                         }
                     }

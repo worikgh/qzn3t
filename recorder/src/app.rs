@@ -327,7 +327,7 @@ impl AppData {
         // Get the audio data
         let audio_buffers = read_f32_vec_from_file(&audio_path, channels)?;
 
-        let audio_run = Arc::new(AtomicBool::new(false));
+        let run_f = self.run_f.clone();
         let mut data_channel_port_names = Vec::with_capacity(channels as usize);
 
         // Need a `mpsc` channel for each audio channel to send to
@@ -341,9 +341,8 @@ impl AppData {
         }
 
         let handle = thread::spawn(move || -> Result<AudioBuffers, RecorderError> {
-            let _a =
-                send_audio_to_jack::send_audo_to_jack(data_channel_port_names, audio_run.clone())?;
-            audio_run.store(true, Ordering::Relaxed);
+            let _a = send_audio_to_jack::send_audo_to_jack(data_channel_port_names, run_f.clone())?;
+            run_f.store(true, Ordering::Relaxed);
             for c in 0..channels as usize {
                 let buffer = audio_buffers.get_buffer_idx(c)?;
                 let sender = &senders[c];
@@ -356,7 +355,7 @@ impl AppData {
                 }
             }
             senders.clear();
-            while audio_run.load(Ordering::Relaxed) {
+            while run_f.load(Ordering::Relaxed) {
                 thread::sleep(Duration::from_millis(100));
             }
             Ok(audio_buffers)
@@ -444,8 +443,6 @@ impl AppData {
         // Truncate all the audio buffers
         self.recorded_audio.reset();
 
-        self.run_f.store(true, Ordering::SeqCst);
-
         match self.start_getting_audio() {
             Ok(handle) => {
                 self.audio_handle = Some(handle);
@@ -522,6 +519,7 @@ impl AppData {
         match k {
             Command::Record => {
                 println!("<enter> to stop");
+                self.run_f.store(true, Ordering::SeqCst);
                 self.handle_record()?;
                 let mut input = String::new();
                 io::stdin()
