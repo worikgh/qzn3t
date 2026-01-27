@@ -521,7 +521,7 @@ impl AppData {
     pub fn handle_kommand(&mut self, k: Command) -> Result<(), Box<dyn Error>> {
         match k {
             Command::Record => {
-                eprintln!("<enter> to stop");
+                println!("<enter> to stop");
                 self.handle_record()?;
                 let mut input = String::new();
                 io::stdin()
