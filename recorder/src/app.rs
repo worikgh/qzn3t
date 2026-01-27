@@ -544,8 +544,34 @@ impl AppData {
                 }
             }
             Command::Play => {
+                // This is set when the audio buffers loaded and audio
+                // is ready to play
+                self.run_f.store(false, Ordering::SeqCst);
                 self.handle_play()?;
                 let h = self.audio_handle.take();
+
+                // Wait for recording to get started
+                while !self.run_f.load(Ordering::Relaxed) {
+                    // FIME: Add a time out to this incase of failure,
+                    // to stop a hang
+                    thread::sleep(Duration::from_millis(10));
+                }
+
+                // A busy loop to detect early quit by user (<enter>
+                // or EOF from keyboard).  The thread is used because
+                // Rust does not have non-blocking IO on std library.
+                // Grrr...
+                println!("Press <enter> to stop playback");
+                let run_flag = self.run_f.clone();
+                thread::spawn(move || {
+                    let mut input = String::new();
+                    io::stdin()
+                        // Blocks only this thread
+                        .read_line(&mut input)
+                        .expect("Failed to read line");
+                    run_flag.store(false, Ordering::Relaxed);
+                });
+
                 match h {
                     Some(h) => {
                         while !h.is_finished() {
