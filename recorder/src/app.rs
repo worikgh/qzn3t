@@ -24,7 +24,7 @@ static ONCE: Once = Once::new();
 pub struct App;
 impl App {
     /// The user interface.  Starts a thread that waits for commands, and....  Return the handle
-    pub fn run(
+    pub fn run_ui(
         &mut self,
         mut config_app: AppData,
     ) -> Result<thread::JoinHandle<Result<(), RecorderError>>, Box<dyn Error>> {
@@ -32,13 +32,20 @@ impl App {
         let app_handle = thread::spawn(move || -> Result<(), RecorderError> {
             // Main loop frequency
             let poll = Duration::from_millis(10);
-
+            let command_rx = match config_app.command_rx.take() {
+                Some(rx) => rx,
+                None => {
+                    return Err(RecorderError::Generic(
+                        "No command rx passed to run_ui".into(),
+                    ));
+                }
+            };
             loop {
                 // Keep real-time
                 let now = Instant::now();
 
                 // Get command from front end, if there is a command
-                let command = match config_app.command_rx.try_recv() {
+                let command = match command_rx.try_recv() {
                     Ok(s) => Some(s),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
@@ -100,12 +107,30 @@ impl App {
         }); // Closure
         Ok(app_handle)
     }
-
-    /// Create AppData
     pub fn initialise(
         &mut self,
         audio_txs: Vec<mpsc::Sender<f32>>,
+        inputs: JackPipes,
+        outputs: JackPipes,
+        file_path: &Path,
+    ) -> Result<AppData, Box<dyn Error>> {
+        self.initialise_inner(audio_txs, None, inputs, outputs, file_path)
+    }
+    pub fn initialise_gui(
+        &mut self,
+        audio_txs: Vec<mpsc::Sender<f32>>,
         command_rx: mpsc::Receiver<Command>,
+        inputs: JackPipes,
+        outputs: JackPipes,
+        file_path: &Path,
+    ) -> Result<AppData, Box<dyn Error>> {
+        self.initialise_inner(audio_txs, Some(command_rx), inputs, outputs, file_path)
+    }
+    /// Create AppData
+    fn initialise_inner(
+        &mut self,
+        audio_txs: Vec<mpsc::Sender<f32>>,
+        command_rx: Option<mpsc::Receiver<Command>>,
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
@@ -173,7 +198,7 @@ pub struct AppData {
     pub recorded_audio: AudioBuffers,
     pub audio_handle: Option<thread::JoinHandle<Result<AudioBuffers, RecorderError>>>,
     audio_txs: Vec<mpsc::Sender<f32>>,
-    command_rx: mpsc::Receiver<Command>,
+    command_rx: Option<mpsc::Receiver<Command>>,
     pub run_f: Arc<AtomicBool>,
     pub ui_run_f: Arc<AtomicBool>,
     inputs: JackPipes,
