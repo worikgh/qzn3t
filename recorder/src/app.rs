@@ -368,9 +368,8 @@ impl AppData {
         let handle = thread::spawn(move || -> Result<AudioBuffers, RecorderError> {
             let _a = send_audio_to_jack::send_audo_to_jack(data_channel_port_names, run_f.clone())?;
             run_f.store(true, Ordering::Relaxed);
-            for c in 0..channels as usize {
+            for (c, sender) in senders.iter().enumerate().take(channels as usize) {
                 let buffer = audio_buffers.get_buffer_idx(c)?;
-                let sender = &senders[c];
                 for s in buffer.iter() {
                     if let Err(err) = sender.send(*s) {
                         return Err(RecorderError::Generic(format!(
