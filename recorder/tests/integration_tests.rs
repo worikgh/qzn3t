@@ -546,16 +546,11 @@ fn record_two_channels_and_play_back() {
         let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
         let mut app = App;
-        let mut app_data = match app.initialise_gui(
-            vec![_audio_tx],
-            _command_rx,
-            JackPipes::new(true),
-            outputs,
-            &output_path,
-        ) {
-            Ok(a) => a,
-            Err(err) => panic!("Cannot initalise AppData: {err}"),
-        };
+        let mut app_data =
+            match app.initialise_ui(_command_rx, JackPipes::new(true), outputs, &output_path) {
+                Ok(a) => a,
+                Err(err) => panic!("Cannot initalise AppData: {err}"),
+            };
         app_data.handle_kommand(Command::Play).unwrap();
 
         // Check the buffers are the same
@@ -723,7 +718,7 @@ fn set_up_recorder(port_names: Vec<String>, dir: &Path) -> AppData {
     let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
     let mut app = App;
-    match app.initialise_gui(vec![_audio_tx], _command_rx, inputs, outputs, dir) {
+    match app.initialise_ui(_command_rx, inputs, outputs, dir) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     }

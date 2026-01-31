@@ -9,5 +9,5 @@ pub fn get_sample_rate() -> usize {
     };
 
     // Get the sample rate from the client
-    client.sample_rate().try_into().unwrap()
+    client.sample_rate()
 }

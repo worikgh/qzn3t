@@ -221,7 +221,7 @@ pub fn ui_loop(
     let _ = UI::set_up_screen();
     loop {
         ui.display(None);
-        if !ui_run.load(Ordering::SeqCst) {
+        if !ui_run.load(Ordering::Relaxed) {
             break;
         }
 

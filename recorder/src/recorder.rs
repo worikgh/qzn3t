@@ -6,7 +6,6 @@ use qzn3t_recorder::app::App;
 use qzn3t_recorder::app::AppData;
 use qzn3t_recorder::errors::RecorderError;
 use qzn3t_recorder::io::JackPipes;
-use qzn3t_recorder::send_audio_to_jack::send_audo_to_jack;
 use qzn3t_recorder::structs::Args;
 use qzn3t_recorder::structs::Command;
 use qzn3t_recorder::ui::ui_loop;
@@ -14,6 +13,7 @@ use std::env::temp_dir;
 use std::sync::mpsc;
 
 fn inner_main(args: Args) -> Result<(), RecorderError> {
+    // Jack pipes for input and output.  FIXME: There should be  defauts for these
     let inputs = JackPipes::from_command_line(&args.inputs, true)?;
     let outputs = JackPipes::from_command_line(&args.outputs, false)?;
 
@@ -27,14 +27,10 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
         temp_dir()
     };
 
+    // File stem for audio data and metadata files are stored with
+    // suffixes ".rwa" and ".json" respectively
     let file_path = dir.join(args.file_name.as_str());
 
-    // Start the application.  Runs in its own thread, the handle is in `app_handle`
-
-    // Channels to send audio data from [`AppData.recorded_audio`] to
-    // Jackd for output FIXME: This does not need to be passed in from
-    // here.  And it is only one channel
-    let (audio_tx, audio_rx) = mpsc::channel::<f32>();
     match args.kommand {
         None => {
             // GUI mode
@@ -42,13 +38,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
             // The app is controlled through a channel with the front end UI
             let (command_tx, command_rx) = mpsc::channel::<Command>();
 
-            let app_data: AppData =
-                app.initialise_gui(vec![audio_tx], command_rx, inputs, outputs, &file_path)?;
-
-            let data_channels = vec![(audio_rx, "system:playback_1".to_string())];
-
-            // The audio output.  Stays valid so long as `_out_port` exists.
-            let _out_port = send_audo_to_jack(data_channels, app_data.run_f.clone())?;
+            let app_data: AppData = app.initialise_ui(command_rx, inputs, outputs, &file_path)?;
 
             let ui_run = app_data.ui_run_f.clone();
             let t = app.run_ui(app_data)?;
@@ -60,7 +50,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
         }
         Some(k) => {
             // Command line mode
-            let mut cfg: AppData = app.initialise(vec![audio_tx], inputs, outputs, &file_path)?;
+            let mut cfg: AppData = app.initialise(inputs, outputs, &file_path)?;
             cfg.handle_kommand(k)?;
             Ok(())
         }

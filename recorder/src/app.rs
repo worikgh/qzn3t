@@ -5,11 +5,9 @@ use crate::errors::RecorderError;
 use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
 use crate::send_audio_to_jack;
 use crate::structs::Command;
-use crate::utils::get_sample_rate;
 use jack_rec;
 use std::error::Error;
-use std::fs;
-use std::io::{self, Write};
+use std::io::{self};
 use std::path::Path;
 use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,7 +21,27 @@ static ONCE: Once = Once::new();
 /// Hold the code that runs the programme. The data is in [`AppData`]
 pub struct App;
 impl App {
-    /// The user interface.  Starts a thread that waits for commands, and....  Return the handle
+    /// Construction.
+    pub fn initialise(
+        &mut self,
+        inputs: JackPipes,
+        outputs: JackPipes,
+        file_path: &Path,
+    ) -> Result<AppData, Box<dyn Error>> {
+        self.initialise_inner(None, inputs, outputs, file_path)
+    }
+    pub fn initialise_ui(
+        &mut self,
+        command_rx: mpsc::Receiver<Command>,
+        inputs: JackPipes,
+        outputs: JackPipes,
+        file_path: &Path,
+    ) -> Result<AppData, Box<dyn Error>> {
+        self.initialise_inner(Some(command_rx), inputs, outputs, file_path)
+    }
+
+    /// The user interface.  Starts a thread that waits for commands.
+    /// Returns the handle
     pub fn run_ui(
         &mut self,
         mut config_app: AppData,
@@ -107,35 +125,16 @@ impl App {
         }); // Closure
         Ok(app_handle)
     }
-    pub fn initialise(
-        &mut self,
-        audio_txs: Vec<mpsc::Sender<f32>>,
-        inputs: JackPipes,
-        outputs: JackPipes,
-        file_path: &Path,
-    ) -> Result<AppData, Box<dyn Error>> {
-        self.initialise_inner(audio_txs, None, inputs, outputs, file_path)
-    }
-    pub fn initialise_gui(
-        &mut self,
-        audio_txs: Vec<mpsc::Sender<f32>>,
-        command_rx: mpsc::Receiver<Command>,
-        inputs: JackPipes,
-        outputs: JackPipes,
-        file_path: &Path,
-    ) -> Result<AppData, Box<dyn Error>> {
-        self.initialise_inner(audio_txs, Some(command_rx), inputs, outputs, file_path)
-    }
-    /// Create AppData
+
+    /// Construction code in common to running with and without a UI
     fn initialise_inner(
         &mut self,
-        audio_txs: Vec<mpsc::Sender<f32>>,
         command_rx: Option<mpsc::Receiver<Command>>,
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
     ) -> Result<AppData, Box<dyn Error>> {
-        // Flag to start and stop the recorder
+        // Flag to start and stop recording/playback
         let run_f = Arc::new(AtomicBool::new(true));
         let ui_run_f = Arc::new(AtomicBool::new(true));
         let run_f_ctl_c = run_f.clone();
@@ -150,46 +149,20 @@ impl App {
                 panic!("Error qzn3t/recorder: setting Ctrl-C handler: {err}");
             }
         });
+
         let channels = inputs.ports().len() as u32;
         let file_manager = FileManager::new(channels, file_path)?;
+
         Ok(AppData {
             recorded_audio: AudioBuffers::new(),
             audio_handle: None,
-            audio_txs,
             command_rx,
             run_f: run_f.clone(),
             ui_run_f,
             inputs,
-            _output: outputs,
+            output: outputs,
             file_manager,
         })
-    }
-
-    /// Read audio data from a file into a buffer TODO: This needs to
-    /// have a parameter for the number of audio channels in the file.
-    /// It should then return `AudioBuffers`.  Perhaps an optional
-    /// vector of names for the channels?
-    /// `file` is open for, and ready to, append Write the contents of
-    /// `buffer` to `file` as binary data Return the number of bytes
-    /// written to the file.  TODO: Pass a `AudioBuffers` structure,
-    /// and write one or more channel to the file.
-    pub fn write_f32_to_file(file: &mut fs::File, buffer: &[f32]) -> Result<usize, RecorderError> {
-        let bytes = unsafe {
-            std::slice::from_raw_parts(buffer.as_ptr() as *const u8, std::mem::size_of_val(buffer))
-        };
-        assert_eq!(std::mem::size_of_val(buffer), bytes.len());
-        if let Err(err) = file.write_all(bytes) {
-            return Err(RecorderError::FileManager(format!(
-                "FileManager::thread_fn: Write error for file {:?}.   Error: {err} ",
-                file
-            )));
-        }
-        if let Err(err) = file.sync_data() {
-            return Err(RecorderError::FileManager(format!(
-                "FileManager::thread_fn: Sync error for file {file:?} Error: {err}"
-            )));
-        }
-        Ok(bytes.len())
     }
 }
 
@@ -197,28 +170,23 @@ impl App {
 pub struct AppData {
     pub recorded_audio: AudioBuffers,
     pub audio_handle: Option<thread::JoinHandle<Result<AudioBuffers, RecorderError>>>,
-    audio_txs: Vec<mpsc::Sender<f32>>,
     command_rx: Option<mpsc::Receiver<Command>>,
     pub run_f: Arc<AtomicBool>,
     pub ui_run_f: Arc<AtomicBool>,
     inputs: JackPipes,
-    _output: JackPipes,
+    output: JackPipes,
     file_manager: FileManager,
 }
 
-enum InnerJackLoopCtl {
-    Continue,
-    Quit,
-}
 impl AppData {
     /// Stop all the processes
     fn quit(&mut self) {
         _ = self.handle_audio_stop();
-        self.ui_run_f.store(false, Ordering::SeqCst);
+        self.ui_run_f.store(false, Ordering::Relaxed);
     }
 
-    /// Spawn a thread to get audio data from a Jack port.  The
-    /// thread's existence defines a "session".  The thread will send
+    /// Spawn a thread to get audio data from Jack.  The thread's
+    /// existence defines a "recording session".  The thread will send
     /// data in real time to be saved to file, and when finished
     /// returns [`AudioBuffers`] with the entire session's audio data
     fn start_getting_audio(
@@ -292,24 +260,18 @@ impl AppData {
                 };
 
                 // Signal that this is running to caller (parent)
-                active_2.store(true, Ordering::SeqCst);
+                active_2.store(true, Ordering::Relaxed);
 
                 // Main loop getting data from Jack
                 loop {
-                    match Self::inner_audio_jack_loop(
+                    if !Self::inner_audio_jack_loop(
                         &mut channels_connected,
                         &audio_rxs,
                         &fm_tx,
                         &mut audio_buffers,
                         channel_count,
-                    ) {
-                        Ok(ctl) => match ctl {
-                            InnerJackLoopCtl::Continue => (),
-                            InnerJackLoopCtl::Quit => {
-                                break;
-                            }
-                        },
-                        Err(err) => return Err(err),
+                    )? {
+                        break;
                     }
                     thread::sleep(Duration::from_millis(10));
                 }
@@ -325,7 +287,7 @@ impl AppData {
         let mut stuck_guard = 0;
         const STUCK_LIMIT: u32 = 100;
         const SLEEP: u64 = 10;
-        while !active_1.load(Ordering::SeqCst) {
+        while !active_1.load(Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(SLEEP));
             stuck_guard += 1;
             if stuck_guard == STUCK_LIMIT {
@@ -335,33 +297,44 @@ impl AppData {
         result
     }
 
-    fn start_sending_audio(
-        &mut self,
-    ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
+    fn get_audio_from_file(&self) -> Result<AudioBuffers, RecorderError> {
         let (audio_path, metadata_path) = self.file_manager.make_paths()?;
-
         // Get number of channels from metadata
         let channels = read_file_metadata(metadata_path)?.channels;
 
-        if channels != self._output.len() as u32 {
+        if channels != self.output.len() as u32 {
             return Err(RecorderError::Generic(format!(
                 "Cannot handle play: {channels} audio channels and {} outputs.",
-                self._output.len()
+                self.output.len()
             )));
         }
         // Get the audio data
         let audio_buffers = read_f32_vec_from_file(&audio_path, channels)?;
+        Ok(audio_buffers)
+    }
+
+    /// Spawn a thread to send audio data to Jack.  The thread's
+    /// existence defines a "playback session".  The thread will send
+    /// data in real time to Kack from `self.audio_buffers`, and when
+    /// finished returns [`AudioBuffers`] with the entire session's
+    /// audio data
+    fn start_sending_audio(
+        &mut self,
+    ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
+        // Get the audio data
+        let audio_buffers = self.recorded_audio.clone();
 
         let run_f = self.run_f.clone();
-        let mut data_channel_port_names = Vec::with_capacity(channels as usize);
+        let mut data_channel_port_names = Vec::with_capacity(audio_buffers.channels() as usize);
 
         // Need a `mpsc` channel for each audio channel to send to
         // Jack, and pair them with the audio ports
         let mut senders = vec![];
+        let channels = audio_buffers.channels();
         for i in 0..channels as usize {
             let (tx, rx) = mpsc::channel::<f32>();
             senders.push(tx);
-            let port_name = self._output.ports()[i].clone();
+            let port_name = self.output.ports()[i].clone();
             data_channel_port_names.push((rx, port_name));
         }
 
@@ -398,10 +371,10 @@ impl AppData {
         fm_tx: &[mpsc::Sender<f32>],
         audio_buffers: &mut AudioBuffers,
         _channels: u32,
-    ) -> Result<InnerJackLoopCtl, RecorderError> {
+    ) -> Result<bool, RecorderError> {
         {
             if channels_connected.iter().all(|&c| !c) {
-                return Ok(InnerJackLoopCtl::Quit);
+                return Ok(false);
             }
 
             // Debugging code.  Should never see this message.
@@ -442,7 +415,7 @@ impl AppData {
             }
             thread::sleep(Duration::from_millis(10));
         }
-        Ok(InnerJackLoopCtl::Continue)
+        Ok(true)
     }
 
     /// Periodically call this from the main loop.  Return Ok(true) if
@@ -517,10 +490,7 @@ impl AppData {
 
     /// Play back the audio data
     fn handle_review_record(&self) -> Result<(), Box<dyn Error>> {
-        self.run_f.store(true, Ordering::Relaxed);
-        // FIXME: This is possibly quite a big copy, and only does one channel.
-        let buffer: Vec<f32> = self.recorded_audio.get_buffer(0)?;
-        self.play_audio(buffer)
+        unimplemented!()
     }
 
     /// Play the contents of `recorded_audio` while recording separately
@@ -543,13 +513,13 @@ impl AppData {
         match k {
             Command::Record => {
                 println!("<enter> to stop");
-                self.run_f.store(true, Ordering::SeqCst);
+                self.run_f.store(true, Ordering::Relaxed);
                 self.handle_record()?;
                 let mut input = String::new();
                 io::stdin()
                     .read_line(&mut input)
                     .expect("Failed to read line");
-                self.run_f.store(false, Ordering::SeqCst);
+                self.run_f.store(false, Ordering::Relaxed);
                 if let Some(h) = self.audio_handle.take() {
                     match h.join() {
                         Ok(Ok(audio_buffers)) => {
@@ -570,7 +540,8 @@ impl AppData {
             Command::Play => {
                 // This is set when the audio buffers loaded and audio
                 // is ready to play
-                self.run_f.store(false, Ordering::SeqCst);
+                self.run_f.store(false, Ordering::Relaxed);
+                self.recorded_audio = self.get_audio_from_file()?;
                 self.handle_play()?;
                 let h = self.audio_handle.take();
 
@@ -615,44 +586,5 @@ impl AppData {
             }
             _ => panic!("Error recorder: -k {k:?} is not handled"),
         }
-    }
-
-    /// Send `recorded_audio` to the backend to play.  Consumes the
-    /// passed data. FIXME: Only does one channel.
-    fn play_audio(&self, audio: Vec<f32>) -> Result<(), Box<dyn Error>> {
-        let txs = self.audio_txs.clone();
-
-        // Flag to shut down playback from the UI
-        let audio_run = self.run_f.clone();
-
-        // Must copy the data so the playback is independant of the
-        // original buffer remaining
-        // let data = data.to_vec();
-        thread::spawn(move || {
-            let sample_rate = get_sample_rate();
-
-            // Send a block of data every 100ms
-            let blk_sz = sample_rate / 10;
-            let mut k = 0;
-
-            for i in audio.iter() {
-                // Allow stopping play back before end of buffer
-                if !audio_run.load(Ordering::Relaxed) {
-                    break;
-                }
-                if let Err(e) = txs[0].send(*i) {
-                    // TODO: This should be an error
-                    eprintln!("recorder Error sending data in play_audio {e}");
-                    break;
-                }
-
-                k += 1;
-                if k == blk_sz {
-                    thread::sleep(std::time::Duration::from_millis(100));
-                    k = 0;
-                }
-            }
-        });
-        Ok(())
     }
 }
