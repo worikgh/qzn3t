@@ -216,6 +216,14 @@ mod tests {
         config.debounce_ms = 100; // Short debounce for testing
         let mut detector = PeakDetector::new(config);
 
+        // Initialise the buffer with a lot of loud data.
+
+        //The buffer must be full to detect peaks.
+        let sample_count = config.sample_rate * config.window_ms / 1_000 + 1;
+
+        let samples = (0..sample_count).map(|_| 0.99).collect::<Vec<f32>>();
+        detector.process_buffer(&samples);
+
         // First critical sample should trigger warning
         detector.process_sample(1.0);
         assert!(detector.should_play_warning());
