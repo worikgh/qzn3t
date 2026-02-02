@@ -15,11 +15,11 @@ pub enum WarningLevel {
 
 #[derive(Debug, Clone, Copy)]
 pub struct PeakDetectorConfig {
-    pub window_ms: u32,          // RMS window size in milliseconds
-    pub warning_threshold: f32,  // e.g., 0.8
     pub critical_threshold: f32, // e.g., 0.95
     pub debounce_ms: u32,        // minimum time between audible warnings
     pub sample_rate: u32,        // samples per second
+    pub warning_threshold: f32,  // e.g., 0.8
+    pub window_ms: u32,          // RMS window size in milliseconds
 }
 
 impl Default for PeakDetectorConfig {
@@ -35,11 +35,12 @@ impl Default for PeakDetectorConfig {
 }
 
 pub struct PeakDetector {
-    config: PeakDetectorConfig,
     buffer: VecDeque<f32>,
-    sum_of_squares: f64, // Use f64 for better numerical stability
-    last_warning_time: Option<Instant>,
+    config: PeakDetectorConfig,
     current_state: WarningLevel,
+    last_warning_time: Option<Instant>,
+    sum_of_squares: f64,
+    window_samples: usize,
 }
 
 impl PeakDetector {
@@ -53,6 +54,7 @@ impl PeakDetector {
             sum_of_squares: 0.0,
             last_warning_time: None,
             current_state: WarningLevel::Normal,
+            window_samples,
         }
     }
 
@@ -66,9 +68,7 @@ impl PeakDetector {
         self.sum_of_squares += square;
 
         // Remove oldest sample if buffer is full
-        let window_samples =
-            (self.config.sample_rate as f32 * self.config.window_ms as f32 / 1000.0) as usize;
-        if self.buffer.len() > window_samples {
+        if self.buffer.len() > self.window_samples {
             if let Some(old_sample) = self.buffer.pop_front() {
                 let old_square = old_sample as f64 * old_sample as f64;
                 self.sum_of_squares -= old_square;
@@ -76,7 +76,7 @@ impl PeakDetector {
         }
 
         // Calculate RMS if we have enough samples
-        if self.buffer.len() >= window_samples / 2 {
+        if self.buffer.len() >= self.window_samples / 2 {
             // Start measuring with half window
             let rms = (self.sum_of_squares / self.buffer.len() as f64).sqrt() as f32;
 
