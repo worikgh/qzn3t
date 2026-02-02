@@ -189,20 +189,23 @@ mod tests {
         let config = PeakDetectorConfig::default();
         let mut detector = PeakDetector::new(config);
 
+        // The buffer must be full to detect peaks.
+        let sample_count = config.sample_rate * config.window_ms / 1_000 + 1;
+
         // Test with quiet signal
-        let quiet_samples = vec![0.1; 1000];
+        let quiet_samples = (0..sample_count).map(|_| 0.1).collect::<Vec<f32>>();
         detector.process_buffer(&quiet_samples);
         assert_eq!(detector.current_state, WarningLevel::Normal);
 
         // Test with loud signal (above warning threshold)
         detector.reset();
-        let loud_samples = vec![0.9; 1000];
+        let loud_samples = (0..sample_count).map(|_| 0.9).collect::<Vec<f32>>();
         detector.process_buffer(&loud_samples);
         assert_eq!(detector.current_state, WarningLevel::Warning);
 
         // Test with clipping signal (above critical threshold)
         detector.reset();
-        let clipping_samples = vec![1.2; 1000]; // Above 1.0, but we'll clamp
+        let clipping_samples = (0..sample_count).map(|_| 0.99).collect::<Vec<f32>>();
         detector.process_buffer(&clipping_samples);
         assert_eq!(detector.current_state, WarningLevel::Critical);
     }
