@@ -36,6 +36,13 @@ impl JackPipes {
         }
     }
 
+    pub fn from_ports(ports: Vec<String>, input: bool) -> Result<Self, RecorderError> {
+        let mut value = JackPipes::new(input);
+        for p in ports.iter() {
+            value.add(p)?;
+        }
+        Ok(value)
+    }
     pub fn len(&self) -> usize {
         self.ports.len()
     }

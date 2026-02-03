@@ -588,3 +588,352 @@ impl AppData {
         }
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::io::{AudioBuffers, JackPipes};
+    use std::sync::mpsc;
+    use tempfile::TempDir;
+
+    // Helper function to create test directory
+    fn setup_test_dir() -> TempDir {
+        tempfile::tempdir().expect("Failed to create temp dir")
+    }
+
+    // Helper function to create JackPipes
+    fn create_jack_pipes(count: usize, input: bool) -> JackPipes {
+        let ports: Vec<String> = (0..count).map(|i| format!("test_port_{}", i)).collect();
+        match JackPipes::from_ports(ports, input) {
+            Ok(p) => p,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
+    #[test]
+    fn test_audio_buffers_operations() {
+        let mut buffers = AudioBuffers::new();
+
+        // Test adding buffers
+        assert!(buffers.add_buffer(vec![1.0, 2.0, 3.0]).is_ok());
+        assert!(buffers.add_buffer(vec![4.0, 5.0, 6.0]).is_ok());
+
+        assert_eq!(buffers.channels(), 2);
+
+        // Test getting buffer
+        let buffer = buffers.get_buffer_idx(0).unwrap();
+        assert_eq!(buffer.len(), 3);
+        assert_eq!(buffer[0], 1.0);
+
+        // Test reset
+        buffers.reset();
+        assert!(
+            buffers
+                .names()
+                .iter()
+                .all(|n| buffers.get_named_buffer(n).unwrap().is_empty())
+        );
+    }
+
+    #[test]
+    fn test_inner_audio_jack_loop_all_disconnected() {
+        let mut channels_connected = vec![false, false];
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+        let audio_rxs = vec![rx1, rx2];
+        let (fm_tx1, _fm_rx1) = mpsc::channel();
+        let (fm_tx2, _fm_rx2) = mpsc::channel();
+        let fm_tx = vec![fm_tx1, fm_tx2];
+        let mut audio_buffers = AudioBuffers::new();
+        audio_buffers.add_buffer(vec![]).unwrap();
+        audio_buffers.add_buffer(vec![]).unwrap();
+
+        let result = AppData::inner_audio_jack_loop(
+            &mut channels_connected,
+            &audio_rxs,
+            &fm_tx,
+            &mut audio_buffers,
+            2,
+        );
+
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // Should return false when all disconnected
+
+        drop(tx1);
+        drop(tx2);
+    }
+
+    #[test]
+    fn test_inner_audio_jack_loop_with_data() {
+        let mut channels_connected = vec![true, true];
+        let (tx1, rx1) = mpsc::channel();
+        let (tx2, rx2) = mpsc::channel();
+        let audio_rxs = vec![rx1, rx2];
+        let (fm_tx1, fm_rx1) = mpsc::channel();
+        let (fm_tx2, fm_rx2) = mpsc::channel();
+        let fm_tx = vec![fm_tx1, fm_tx2];
+        let mut audio_buffers = AudioBuffers::new();
+        audio_buffers.add_buffer(vec![]).unwrap();
+        audio_buffers.add_buffer(vec![]).unwrap();
+
+        // Send some test data
+        tx1.send(1.0).unwrap();
+        tx1.send(2.0).unwrap();
+        tx2.send(3.0).unwrap();
+
+        let result = AppData::inner_audio_jack_loop(
+            &mut channels_connected,
+            &audio_rxs,
+            &fm_tx,
+            &mut audio_buffers,
+            2,
+        );
+
+        assert!(result.is_ok());
+        assert!(result.unwrap()); // Should continue
+
+        // Verify data was received by file manager
+        assert_eq!(fm_rx1.try_recv().unwrap(), 1.0);
+        assert_eq!(fm_rx1.try_recv().unwrap(), 2.0);
+        assert_eq!(fm_rx2.try_recv().unwrap(), 3.0);
+
+        // Verify data was added to buffers
+        assert_eq!(audio_buffers.get_buffer_idx(0).unwrap().len(), 2);
+        assert_eq!(audio_buffers.get_buffer_idx(1).unwrap().len(), 1);
+
+        drop(tx1);
+        drop(tx2);
+    }
+
+    #[test]
+    fn test_clone_audio_buffers() {
+        let mut buffers = AudioBuffers::new();
+        buffers.add_buffer(vec![1.0, 2.0, 3.0]).unwrap();
+
+        let cloned = buffers.clone();
+        assert_eq!(cloned.channels(), 1);
+        assert_eq!(
+            cloned.get_buffer_idx(0).unwrap(),
+            buffers.get_buffer_idx(0).unwrap()
+        );
+    }
+
+    // Below are tests that require a jack client running with the
+    // pipes that `create_jack_pipes` needs to use.  FIXME: (1) Make
+    // that client.  (2) Ensure the pipes being created are all pipes
+    // of it (3) Rename `create_jack_pipes` to drop the word "create"
+    // as it attaches
+    #[test]
+    #[ignore]
+    fn test_handle_audio_stop() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+
+        // Set run flag to true
+        app_data.run_f.store(true, Ordering::Relaxed);
+
+        let result = app_data.handle_audio_stop();
+        assert!(result.is_ok());
+        assert!(!app_data.run_f.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    #[ignore]
+    fn test_check_audio_file_manager() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+
+        let result = app_data.check_audio_file_manager();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_jack_pipes_creation() {
+        let ports = vec!["port1".to_string(), "port2".to_string()];
+        let pipes = JackPipes::from_ports(ports.clone(), true).unwrap();
+
+        assert_eq!(pipes.len(), 2);
+        assert_eq!(&pipes.ports(), &ports);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error qzn3t/recorder: -k")]
+    #[ignore]
+    fn test_handle_kommand_unimplemented() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+
+        // This should panic for unimplemented commands
+        let _ = app_data.handle_kommand(Command::Continue);
+    }
+
+    #[test]
+    #[ignore]
+    fn test_multiple_ctrlc_handlers() {
+        // Test that multiple initializations don't panic
+        let mut app1 = App;
+        let mut app2 = App;
+        let temp_dir = setup_test_dir();
+
+        let inputs1 = create_jack_pipes(2, true);
+        let outputs1 = create_jack_pipes(2, false);
+        let inputs2 = create_jack_pipes(2, true);
+        let outputs2 = create_jack_pipes(2, false);
+
+        let result1 = app1.initialise(inputs1, outputs1, temp_dir.path());
+        let result2 = app2.initialise(inputs2, outputs2, temp_dir.path());
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_run_ui_quit_command() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let app_data = app
+            .initialise_ui(rx, inputs, outputs, temp_dir.path())
+            .unwrap();
+
+        let handle = app.run_ui(app_data).unwrap();
+
+        // Send quit command
+        tx.send(Command::Quit).unwrap();
+
+        // Wait for thread to finish
+        let result = handle.join();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_run_ui_stop_command() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let app_data = app
+            .initialise_ui(rx, inputs, outputs, temp_dir.path())
+            .unwrap();
+
+        let handle = app.run_ui(app_data).unwrap();
+
+        // Send stop then quit
+        tx.send(Command::Stop).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        tx.send(Command::Quit).unwrap();
+
+        let result = handle.join();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_run_ui_continue_command() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let app_data = app
+            .initialise_ui(rx, inputs, outputs, temp_dir.path())
+            .unwrap();
+
+        let handle = app.run_ui(app_data).unwrap();
+
+        // Send continue then quit
+        tx.send(Command::Continue).unwrap();
+        thread::sleep(Duration::from_millis(50));
+        tx.send(Command::Quit).unwrap();
+
+        let result = handle.join();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_run_ui_no_command_receiver() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+
+        // Remove command_rx
+        app_data.command_rx = None;
+
+        let handle = app.run_ui(app_data).unwrap();
+        let result = handle.join().unwrap();
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RecorderError::Generic(_)));
+    }
+    #[test]
+    #[ignore]
+    fn test_app_initialise() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let result = app.initialise(inputs, outputs, temp_dir.path());
+
+        assert!(result.is_ok());
+        let app_data = result.unwrap();
+        assert_eq!(app_data.recorded_audio.channels(), 0);
+        assert!(app_data.audio_handle.is_none());
+    }
+
+    #[test]
+    #[ignore]
+    fn test_app_initialise_ui() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let result = app.initialise_ui(rx, inputs, outputs, temp_dir.path());
+
+        assert!(result.is_ok());
+        let app_data = result.unwrap();
+        assert!(app_data.command_rx.is_some());
+        drop(tx); // Clean up
+    }
+
+    #[test]
+    #[ignore]
+    fn test_app_data_quit() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = create_jack_pipes(2, true);
+        let outputs = create_jack_pipes(2, false);
+
+        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+
+        app_data.quit();
+        assert!(!app_data.ui_run_f.load(Ordering::Relaxed));
+    }
+}
