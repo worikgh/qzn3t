@@ -210,6 +210,11 @@ impl fmt::Display for UIError {
         write!(f, "{msg}")
     }
 }
+impl Drop for UI {
+    fn drop(&mut self) {
+        let _ = UI::cleanup_screen();
+    }
+}
 
 /// The UI loop
 pub fn ui_loop(
@@ -235,10 +240,8 @@ pub fn ui_loop(
                 UIError::Fatal(err) => return Err(err.into()),
             },
         };
+        dbg!(&command);
         command_tx.send(command.clone())?;
-        if command == Command::Quit {
-            break;
-        }
     }
     let _ = UI::cleanup_screen();
     Ok(())
