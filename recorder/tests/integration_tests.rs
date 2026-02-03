@@ -716,7 +716,7 @@ fn set_up_recorder(port_names: Vec<String>, dir: &Path) -> AppData {
     let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
     let mut app = App;
-    match app.initialise_ui(_command_rx, inputs, outputs, dir) {
+    match app.initialise(inputs, outputs, dir) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     }
