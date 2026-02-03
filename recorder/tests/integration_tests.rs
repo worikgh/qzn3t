@@ -50,10 +50,10 @@ fn generate_test_audio(
     let sample_rate = get_sample_rate() as u32;
     let duration_samples = (duration_ms as u64 * sample_rate as u64) / 1_000;
     const PI: f32 = std::f32::consts::PI;
+    let angular_frequency = 2.0 * PI * frequency as f32 / sample_rate as f32;
     match wave_form {
         WaveForm::Sine => {
             // sine(2πft)
-            let angular_frequency = 2.0 * PI * frequency as f32 / sample_rate as f32;
             (0..duration_samples)
                 .map(|i| (angular_frequency * i as f32).sin() * volume)
                 .collect()
@@ -61,7 +61,6 @@ fn generate_test_audio(
 
         WaveForm::Square => {
             // square wave: sign(sin(2πft))
-            let angular_frequency = 2.0 * PI * frequency as f32 / sample_rate as f32;
             (0..duration_samples)
                 .map(|i| {
                     if (angular_frequency * i as f32).sin() >= 0.0 {
@@ -76,7 +75,6 @@ fn generate_test_audio(
         WaveForm::Triangle => {
             // triangle wave using a sawtooth then folding it:
             //  (2 / π) * asin(sin(2πft))
-            let angular_frequency = 2.0 * PI * frequency as f32 / sample_rate as f32;
             (0..duration_samples)
                 .map(|i| {
                     // asin returns values in [-π/2, π/2]; scaling yields a triangle in [-1, 1]
