@@ -55,7 +55,6 @@ pub struct TunerData {
     pub cents_offset: f32,
 }
 
-// Custom ProcessHandler for capturing audio using ringbuf
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct TunerArgs {
