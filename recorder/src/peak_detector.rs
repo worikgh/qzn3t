@@ -28,8 +28,8 @@ impl Default for PeakDetectorConfig {
             window_ms: 200,
             warning_threshold: 0.8,
             critical_threshold: 0.95,
-            debounce_ms: 2000,
-            sample_rate: 44100,
+            debounce_ms: 2_000,
+            sample_rate: 48_000,
         }
     }
 }
@@ -115,7 +115,7 @@ impl PeakDetector {
         self.current_rms().map(|rms| 20.0 * rms.log10())
     }
 
-    /// Check if we should play an audible warning (with debounce)
+    /// Check if we should issue a warning (with debounce)
     pub fn should_play_warning(&mut self) -> bool {
         if self.current_state != WarningLevel::Critical {
             return false;
@@ -143,24 +143,14 @@ impl PeakDetector {
         let level_width = (rms * width as f32) as usize;
         let level_width = level_width.min(width);
 
-        let meter = match self.current_state {
-            WarningLevel::Critical => {
-                format!("[{}⚠]", "#".repeat(level_width))
-            }
-            WarningLevel::Warning => {
-                format!(
-                    "[{}{}]",
-                    "#".repeat(level_width),
-                    " ".repeat(width - level_width)
-                )
-            }
-            WarningLevel::Normal => {
-                format!(
-                    "[{}{}]",
-                    "#".repeat(level_width),
-                    " ".repeat(width - level_width)
-                )
-            }
+        let meter = if self.current_state == WarningLevel::Critical {
+            format!("[{}⚠]", "#".repeat(level_width))
+        } else {
+            format!(
+                "[{}{}]",
+                "#".repeat(level_width),
+                " ".repeat(width - level_width)
+            )
         };
 
         if let Some(dbfs) = self.current_dbfs() {
