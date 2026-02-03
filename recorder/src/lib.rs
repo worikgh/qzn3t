@@ -5,6 +5,7 @@ pub mod app;
 pub mod errors;
 pub mod io;
 pub mod mixer;
+pub mod peak_detector;
 pub mod send_audio_to_jack;
 pub mod structs;
 pub mod ui;
