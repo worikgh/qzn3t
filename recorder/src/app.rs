@@ -9,10 +9,10 @@ use jack_rec;
 use std::error::Error;
 use std::io::{self};
 use std::path::Path;
-use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, mpsc};
+use std::sync::{Mutex, Once};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -151,7 +151,8 @@ impl App {
         });
 
         let channels = inputs.ports().len() as u32;
-        let file_manager = FileManager::new(channels, file_path)?;
+        let fm_state = Arc::new(Mutex::new(FileManagerState::new(channels)));
+        let file_manager = FileManager::new(channels, file_path, fm_state)?;
 
         Ok(AppData {
             recorded_audio: AudioBuffers::new(),

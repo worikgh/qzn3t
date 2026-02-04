@@ -7,6 +7,7 @@ use crate::{errors::RecorderError, utils::get_sample_rate};
 use jack::{Client, PortFlags};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
+use std::sync::{Arc, Mutex};
 use std::{
     self,
     collections::HashMap,
@@ -283,6 +284,23 @@ impl AudioBuffers {
 ///
 /// 2. With a ".json" suffix describing the sanple rate and the number
 ///    of channels.
+///
+/// State of the FileManager to hare with the user interface.
+pub struct FileManagerState {
+    /// For each channel,  from [`PeakDetector::current_rms`]
+    pub levels: Vec<f32>,
+    /// Bytes written to file
+    pub written: u32,
+}
+impl FileManagerState {
+    pub fn new(channels: u32) -> Self {
+        Self {
+            levels: [0.0f32].repeat(channels as usize),
+            written: 0,
+        }
+    }
+}
+
 pub struct FileManager {
     /// Maps audio channel names to their output file paths
     pub file_path: PathBuf,
@@ -301,6 +319,9 @@ pub struct FileManager {
 
     /// Flag to stop ths being started twice
     started: bool,
+
+    /// State to share with UI
+    state: Arc<Mutex<FileManagerState>>,
 }
 
 impl FileManager {
@@ -309,10 +330,14 @@ impl FileManager {
     /// # Arguments
     /// * `channels` - The number of audio channels
     /// * `file_path` The path to the file being managed
-    ///
+    /// * `state` is the shared memory (with the UI) for the state of the `FileManager`
     /// # Errors
     /// Returns an error if the directory doesn't exist.
-    pub fn new(channels: u32, file_path: &Path) -> Result<Self, RecorderError> {
+    pub fn new(
+        channels: u32,
+        file_path: &Path,
+        state: Arc<Mutex<FileManagerState>>,
+    ) -> Result<Self, RecorderError> {
         let mut senders = Vec::new();
         let mut receivers = Vec::new();
         for _ in 0..channels {
@@ -329,6 +354,7 @@ impl FileManager {
             handle: None,
             channels,
             started: false,
+            state,
         })
     }
 
@@ -378,11 +404,17 @@ impl FileManager {
         self.senders.drain(0..).collect()
     }
 
+    /// Return: .0 the path to the raw audio file .1 the path to the metadata file
     pub fn make_paths(&self) -> Result<(PathBuf, PathBuf), RecorderError> {
         let in_path = &self.file_path;
         let audio_path: PathBuf = in_path.with_extension("raw");
         let metadata_path: PathBuf = in_path.with_extension("json");
         Ok((audio_path, metadata_path))
+    }
+
+    /// Get access to  state
+    pub fn get_state(&self) -> Arc<Mutex<FileManagerState>> {
+        self.state.clone()
     }
 }
 
