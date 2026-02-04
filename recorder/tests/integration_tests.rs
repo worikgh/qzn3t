@@ -8,7 +8,7 @@ use jack::{
 use qzn3t_recorder::{
     app::{App, AppData},
     errors::RecorderError,
-    io::{JackPipes, read_f32_vec_from_file},
+    io::{JackPipes, Metadata, read_f32_vec_from_file, read_file_metadata},
     send_audio_to_jack::send_audo_to_jack,
     structs::Command,
     utils::get_sample_rate,
@@ -482,9 +482,16 @@ fn record_two_channels_and_play_back() {
         // Good so far.  The recorded buffers match the input.  Now
         // check the recorded files are the same
 
-        // Sine wave
-        let audio_path = output_path.with_extension("raw");
-        match read_f32_vec_from_file(&audio_path, 2) {
+        let audio_path = recorder.file_manager.make_paths().unwrap().0;
+        let metadata_path = recorder.file_manager.make_paths().unwrap().1;
+        let metadata: Metadata = match read_file_metadata(metadata_path) {
+            Ok(p) => p,
+            Err(err) => panic!("{err}"),
+        };
+        let channels = metadata.channels;
+        assert_eq!(channels, 2);
+        assert_eq!(metadata.sample_rate, get_sample_rate());
+        match read_f32_vec_from_file(&audio_path, channels) {
             Ok(audio_buffer) => {
                 let recovered_sine = audio_buffer.get_buffer(0).unwrap();
                 let recovered_sine = trim_audio(&recovered_sine);
@@ -564,7 +571,16 @@ fn record_two_channels_and_play_back() {
             Ok(pp) => pp.0,
             Err(err) => panic!("{err}"),
         };
-        let audio_buffers = match read_f32_vec_from_file(&file_path, 2) {
+        let metadata_path = recorder.file_manager.make_paths().unwrap().1;
+        let metadata: Metadata = match read_file_metadata(metadata_path) {
+            Ok(p) => p,
+            Err(err) => panic!("{err}"),
+        };
+        let channels = metadata.channels;
+        assert_eq!(channels, 2);
+        assert_eq!(metadata.sample_rate, get_sample_rate());
+
+        let audio_buffers = match read_f32_vec_from_file(&file_path, channels) {
             Ok(p) => p,
             Err(err) => panic!("{err}"),
         };
@@ -682,7 +698,20 @@ fn record_audio() {
     }
     // Check the saved data
     let mut result = true;
-    match read_f32_vec_from_file(&output_path.with_extension("raw"), 1) {
+
+    let file_path = match recorder.file_manager.make_paths() {
+        Ok(p) => p.0,
+        Err(err) => panic!("{err}"),
+    };
+    let metadata_path = recorder.file_manager.make_paths().unwrap().1;
+    let metadata: Metadata = match read_file_metadata(metadata_path) {
+        Ok(p) => p,
+        Err(err) => panic!("{err}"),
+    };
+    let channels = metadata.channels;
+    assert_eq!(channels, 1);
+    assert_eq!(metadata.sample_rate, get_sample_rate());
+    match read_f32_vec_from_file(&file_path, channels) {
         Ok(d) => {
             let imported_data = trim_audio(&d.get_buffer(0).unwrap());
             if imported_data.len() != new_buffer.len() {
