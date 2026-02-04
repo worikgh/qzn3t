@@ -2,7 +2,10 @@
 // License: GPL-3.0
 
 use crate::errors::RecorderError;
-use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
+use crate::io::{
+    AudioBuffers, FileManager, FileManagerState, JackPipes, read_f32_vec_from_file,
+    read_file_metadata,
+};
 use crate::send_audio_to_jack;
 use crate::structs::Command;
 use jack_rec;
@@ -176,7 +179,7 @@ pub struct AppData {
     pub ui_run_f: Arc<AtomicBool>,
     inputs: JackPipes,
     output: JackPipes,
-    file_manager: FileManager,
+    pub file_manager: FileManager,
 }
 
 impl AppData {

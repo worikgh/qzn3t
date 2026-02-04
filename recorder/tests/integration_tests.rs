@@ -272,7 +272,7 @@ impl ProcessHandler for TestPlayProcessHandler {
     }
 }
 #[test]
-fn play_three_channels() {
+fn test_send_audo_to_jack() {
     // The audio buffers
     let audio_buffer_sine = generate_test_audio(220, 0.25, AUDIO_DURATION, WaveForm::Sine);
     let audio_buffer_sine = trim_audio(&audio_buffer_sine);
@@ -560,18 +560,28 @@ fn record_two_channels_and_play_back() {
         app_data.handle_kommand(Command::Play).unwrap();
 
         // Check the buffers are the same
-        let audio_buffers = read_f32_vec_from_file(&output_path.with_extension("raw"), 2).unwrap();
+        let file_path = match app_data.file_manager.make_paths() {
+            Ok(pp) => pp.0,
+            Err(err) => panic!("{err}"),
+        };
+        let audio_buffers = match read_f32_vec_from_file(&file_path, 2) {
+            Ok(p) => p,
+            Err(err) => panic!("{err}"),
+        };
         let ab_0 = trim_audio(audio_buffers.get_buffer_idx(0).unwrap());
         {
-            // let bf_0: std::sync::MutexGuard<'_, Vec<f32>> =
             let bf_0 = trim_audio(&buffers_new[0].lock().unwrap());
             if ab_0.len() != bf_0.len() {
+                eprint!("{} != {}", &ab_0.len(), &bf_0.len());
+                dbg!();
                 result = false;
             } else {
                 for idx in 0..ab_0.len() {
                     let a = ab_0[idx];
                     let b = bf_0[idx];
                     if (a - b).abs() >= f32::EPSILON {
+                        eprint!("{}", a - b);
+                        dbg!();
                         result = false;
                         eprintln!("channel 0: Failed match @ {idx}: Saved: {a}  Buffered: {b}");
                         break;
@@ -583,6 +593,11 @@ fn record_two_channels_and_play_back() {
         {
             let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
             if ab_1.len() != bf_1.len() {
+                eprintln!(
+                    "* Channel 1 recorded audio does not equal played back audio: {} != {}",
+                    &ab_1.len(),
+                    &bf_1.len()
+                );
                 result = false;
             } else {
                 for idx in 0..ab_1.len() {

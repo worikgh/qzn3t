@@ -385,8 +385,7 @@ impl FileManager {
         Ok(())
     }
 
-    // Checks the health of all recording threads.
-
+    /// Check the health of all recording threads.
     /// # Returns
     /// - `Ok(true)` - Thread running normally
     /// - `Ok(false)` -  Thread stopped cleanly or not started
@@ -511,6 +510,7 @@ impl FileManager {
 // ---- FileManager end ----
 
 /// Read audio data from a file into audio buffers
+/// FIXME: Make this private and access through a call to a `FileManager` method
 pub fn read_f32_vec_from_file(
     file_path: &PathBuf,
     channels: u32,
