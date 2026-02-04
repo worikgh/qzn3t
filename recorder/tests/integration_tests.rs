@@ -32,8 +32,16 @@ enum WaveForm {
     Square,
 }
 
+// There is a timing bug
+// Using `cargo test play_three_channels`
+// `play_three_channels` fails when AUDIO_DURATION <=  95
+// `play_three_channels` pass  when AUDIO_DURATION >=  99
+// Using `cargo test`
+// AUDIO_DURATION must be approximately at least 1_000 to pass all
+// tests.  But it is very sensitive, non-linear and intermittent
+
 /// The length of the test audio buffers in ms
-const AUDIO_DURATION: u32 = 1_000;
+const AUDIO_DURATION: u32 = 1_900;
 
 /// Generate a buffer of mono audio samples.
 ///
