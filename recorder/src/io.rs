@@ -18,7 +18,7 @@ use std::{
     thread,
 };
 
-// ---- Inputs Start ----
+// ---- JackPipes Start ----
 /// Define the Jack pipes to use.  FIXME: This probably can be
 /// replaced with `Vec<String>`
 #[derive(Debug, Clone)]
@@ -150,13 +150,11 @@ impl JackPipes {
         }
     }
 }
-//---- Inputs end ----
+//---- JackPipes end ----
 
 // ---- AudioBuffers start ----
 /// Hold recorded audio data buffers.  Allow access by name (useful
 /// for Jack pipes) and by index starting at zero.
-
-//---- AudioBuffers start ----
 #[derive(Clone, Debug)]
 pub struct AudioBuffers {
     buffers: Vec<Vec<f32>>,
@@ -564,6 +562,7 @@ pub fn read_file_metadata(path: PathBuf) -> Result<Metadata, RecorderError> {
     })?;
     Ok(result)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
