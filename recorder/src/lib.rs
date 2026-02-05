@@ -8,5 +8,6 @@ pub mod mixer;
 pub mod peak_detector;
 pub mod send_audio_to_jack;
 pub mod structs;
+pub mod test_utils;
 pub mod ui;
 pub mod utils;
