@@ -714,12 +714,11 @@ mod tests {
     // of it (3) Rename `create_jack_pipes` to drop the word "create"
     // as it attaches
     #[test]
-    #[ignore]
     fn test_handle_audio_stop() {
         let mut app = App;
         let temp_dir = setup_test_dir();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
 
@@ -732,12 +731,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_check_audio_file_manager() {
         let mut app = App;
         let temp_dir = setup_test_dir();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
 
@@ -746,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore] // Adding pipes to `JackPipes` involves validatng them with a Jack client
     fn test_jack_pipes_creation() {
         let ports = vec!["port1".to_string(), "port2".to_string()];
         let pipes = JackPipes::from_ports(ports.clone(), true).unwrap();
@@ -756,13 +754,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error qzn3t/recorder: -k")]
-    #[ignore]
+    #[should_panic(expected = "Error recorder: -k Continue is not handled")]
     fn test_handle_kommand_unimplemented() {
         let mut app = App;
         let temp_dir = setup_test_dir();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
 
@@ -771,17 +768,16 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
-    fn test_multiple_ctrlc_handlers() {
+    fn test_multiple_instances() {
         // Test that multiple initializations don't panic
         let mut app1 = App;
         let mut app2 = App;
         let temp_dir = setup_test_dir();
 
-        let inputs1 = create_jack_pipes(2, true);
-        let outputs1 = create_jack_pipes(2, false);
-        let inputs2 = create_jack_pipes(2, true);
-        let outputs2 = create_jack_pipes(2, false);
+        let inputs1 = JackPipes::new(true);
+        let outputs1 = JackPipes::new(false);
+        let inputs2 = JackPipes::new(true);
+        let outputs2 = JackPipes::new(false);
 
         let result1 = app1.initialise(inputs1, outputs1, temp_dir.path());
         let result2 = app2.initialise(inputs2, outputs2, temp_dir.path());
@@ -791,13 +787,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_run_ui_quit_command() {
         let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let app_data = app
             .initialise_ui(rx, inputs, outputs, temp_dir.path())
@@ -815,13 +810,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_run_ui_stop_command() {
         let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let app_data = app
             .initialise_ui(rx, inputs, outputs, temp_dir.path())
@@ -839,13 +833,13 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore] // FileManager is not running so it fails
     fn test_run_ui_continue_command() {
         let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let app_data = app
             .initialise_ui(rx, inputs, outputs, temp_dir.path())
@@ -856,19 +850,23 @@ mod tests {
         // Send continue then quit
         tx.send(Command::Continue).unwrap();
         thread::sleep(Duration::from_millis(50));
-        tx.send(Command::Quit).unwrap();
+        if let Err(err) = tx.send(Command::Continue) {
+            panic!("Cannot send command: {err}");
+        }
+        if let Err(err) = tx.send(Command::Quit) {
+            panic!("Cannot send command: {err}");
+        }
 
         let result = handle.join();
         assert!(result.is_ok());
     }
 
     #[test]
-    #[ignore]
     fn test_run_ui_no_command_receiver() {
         let mut app = App;
         let temp_dir = setup_test_dir();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
 
@@ -882,12 +880,11 @@ mod tests {
         assert!(matches!(result.unwrap_err(), RecorderError::Generic(_)));
     }
     #[test]
-    #[ignore]
     fn test_app_initialise() {
         let mut app = App;
         let temp_dir = setup_test_dir();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let result = app.initialise(inputs, outputs, temp_dir.path());
 
@@ -898,13 +895,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_app_initialise_ui() {
         let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let result = app.initialise_ui(rx, inputs, outputs, temp_dir.path());
 
@@ -915,12 +911,11 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_app_data_quit() {
         let mut app = App;
         let temp_dir = setup_test_dir();
-        let inputs = create_jack_pipes(2, true);
-        let outputs = create_jack_pipes(2, false);
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
 
         let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
 

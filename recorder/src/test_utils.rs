@@ -154,7 +154,6 @@ pub mod common {
     }
 
     #[derive(Debug)]
-    #[allow(dead_code)]
     pub struct TestAudioOutProcess {
         audio_buffers: Vec<Vec<f32>>,
         outputs: Vec<Port<AudioOut>>,
@@ -162,7 +161,6 @@ pub mod common {
         play_audio_f: Arc<AtomicBool>,
         active: Arc<AtomicBool>,
     }
-
     impl ProcessHandler for TestAudioOutProcess {
         fn process(&mut self, _c: &Client, ps: &ProcessScope) -> Control {
             assert_eq!(self.audio_buffers.len(), self.outputs.len());
