@@ -594,24 +594,11 @@ impl AppData {
 }
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::io::{AudioBuffers, JackPipes};
+    use crate::test_utils::common::setup_test_dir;
     use std::sync::mpsc;
-    use tempfile::TempDir;
-
-    // Helper function to create test directory
-    fn setup_test_dir() -> TempDir {
-        tempfile::tempdir().expect("Failed to create temp dir")
-    }
-
-    // Helper function to create JackPipes
-    fn create_jack_pipes(count: usize, input: bool) -> JackPipes {
-        let ports: Vec<String> = (0..count).map(|i| format!("test_port_{}", i)).collect();
-        match JackPipes::from_ports(ports, input) {
-            Ok(p) => p,
-            Err(err) => panic!("{err}"),
-        }
-    }
 
     #[test]
     fn test_audio_buffers_operations() {

@@ -13,6 +13,7 @@ pub mod common {
         AsyncClient, AudioIn, AudioOut, Client, Control, NotificationHandler, Port, ProcessHandler,
         ProcessScope,
     };
+    use tempfile::TempDir;
 
     use std::{
         path::{Path, PathBuf},
@@ -105,19 +106,14 @@ pub mod common {
         result
     }
 
-    /// Create a Jack client to sink audio to test playing.  A port and
-    /// a buffer for each audio channel.  The client simulates playing
-    /// audio by writing it to the buffer.  The buffers are shared with
-    /// an Arc<Mutex<_>> so they can then be examined to check the
-    /// audio made it
-    /// Test playing back audio.  Generate three channels of audio: a
-    /// square, sine and triangle wave.  Create a Jack
-    /// client with three inputs to act as the sink.  Generally in normal
-    /// use this would be system:playback_1, system:playback_2 and
-    /// system:playback_3 (or whateverpipes lead to sound hardware)  But in this case the audio needs to be
-    /// captured and compared with the original.
+    /// Create a Jack client to sink audio to test playing.  A port
+    /// and a buffer for each audio channel.  The client simulates
+    /// playing audio by writing it to the buffer.  The buffers are
+    /// shared with an Arc<Mutex<_>> so they can then be examined to
+    /// check the audio captured and compare with the original.
     pub struct TestPlayNotificationHandler;
     impl NotificationHandler for TestPlayNotificationHandler {}
+
     pub struct TestPlayProcessHandler {
         ports: Vec<Port<AudioIn>>,
         /// A buffer for each port, shared with caller for verifying test
@@ -330,5 +326,19 @@ pub mod common {
     #[allow(dead_code)]
     pub fn dst_dir() -> PathBuf {
         std::env::current_dir().unwrap().join("tests/data")
+    }
+
+    // Helper function to create test directory
+    pub fn setup_test_dir() -> TempDir {
+        tempfile::tempdir().expect("Failed to create temp dir")
+    }
+
+    // Helper function to create JackPipes
+    pub fn create_jack_pipes(count: usize, input: bool) -> JackPipes {
+        let ports: Vec<String> = (0..count).map(|i| format!("test_port_{}", i)).collect();
+        match JackPipes::from_ports(ports, input) {
+            Ok(p) => p,
+            Err(err) => panic!("{err}"),
+        }
     }
 }
