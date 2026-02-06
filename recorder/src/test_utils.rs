@@ -193,6 +193,7 @@ pub mod common {
             );
             let slen = self.audio_buffers[0].len();
             for j in 0..*frames {
+                // Loop audio if necessary
                 if self.position >= slen {
                     self.position = 0;
                     self.play_audio_f.store(false, Ordering::SeqCst);
@@ -224,7 +225,7 @@ pub mod common {
     /// set it sends the contents of `audio_buffer` to the pipe.  When the
     ///  audio is played `play_audio_f` is reset
     #[allow(dead_code)]
-    pub fn make_jack_client_port(
+    fn make_jack_client_port(
         client_name: &str,
         port_names: Vec<&str>,
         audio_buffers: Vec<Vec<f32>>,
@@ -240,6 +241,7 @@ pub mod common {
                 Ok(cs) => cs,
                 Err(err) => panic!("Failed creating test client {client_name}: {err}"),
             };
+
         // The names of the ports to output data on
         let outputs: Vec<jack::Port<jack::AudioOut>> = port_names
             .iter()
@@ -251,6 +253,7 @@ pub mod common {
             })
             .collect();
 
+        dbg!(&outputs);
         let out_process = TestAudioOutProcess {
             audio_buffers,
             outputs,
@@ -307,6 +310,8 @@ pub mod common {
         AsyncClient<Notifications, TestAudioOutProcess>,
         Arc<AtomicBool>,
     ) {
+        // Exactly one port for each buffer
+        assert_eq!(port_names.len(), audio_data.len());
         let play_audio_f = Arc::new(AtomicBool::new(false));
         let ac = make_jack_client_port(
             client_name,
@@ -320,7 +325,7 @@ pub mod common {
         (ac, play_audio_f)
     }
 
-    /// The destination directory
+    /// The destination directory.  Hard coded into repository/crate structure
     #[allow(dead_code)]
     pub fn dst_dir() -> PathBuf {
         std::env::current_dir().unwrap().join("tests/data")
@@ -329,14 +334,5 @@ pub mod common {
     // Helper function to create test directory
     pub fn setup_test_dir() -> TempDir {
         tempfile::tempdir().expect("Failed to create temp dir")
-    }
-
-    // Helper function to create JackPipes
-    pub fn create_jack_pipes(count: usize, input: bool) -> JackPipes {
-        let ports: Vec<String> = (0..count).map(|i| format!("test_port_{}", i)).collect();
-        match JackPipes::from_ports(ports, input) {
-            Ok(p) => p,
-            Err(err) => panic!("{err}"),
-        }
     }
 }

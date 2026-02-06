@@ -595,9 +595,13 @@ impl AppData {
 #[cfg(test)]
 mod tests {
 
+    use jack::PortFlags;
+
     use super::*;
     use crate::io::{AudioBuffers, JackPipes};
-    use crate::test_utils::common::setup_test_dir;
+    use crate::test_utils::common::{
+        WaveForm, generate_test_audio, play_test_audio, setup_test_dir,
+    };
     use std::sync::mpsc;
 
     #[test]
@@ -744,13 +748,28 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Adding pipes to `JackPipes` involves validatng them with a Jack client
-    fn test_jack_pipes_creation() {
-        let ports = vec!["port1".to_string(), "port2".to_string()];
-        let pipes = JackPipes::from_ports(ports.clone(), true).unwrap();
+    //#[ignore] // Adding pipes to `JackPipes` involves validatng them with a Jack client
+    fn test_jack_pipes_add() {
+        let ports = vec!["port1", "port2"];
+        let length_audio = 100u32; // MS
+        let buf1 = generate_test_audio(110, 0.42, length_audio, WaveForm::Square);
+        let buf2 = generate_test_audio(100, 0.82, length_audio, WaveForm::Triangle);
+        let (ac, _flag) = play_test_audio("test_jack_pipes_add", ports.clone(), vec![&buf1, &buf2]);
+        dbg!(&_flag);
+        let ports = ac
+            .as_client()
+            .ports(Some("port[12]"), None, PortFlags::empty());
+        dbg!(&ports);
+        let mut jack_pipes = JackPipes::new(true);
+        for p in ports.iter() {
+            if let Err(err) = jack_pipes.add(p) {
+                panic!("{err}");
+            }
+        }
+        let ports_test = jack_pipes.ports();
 
-        assert_eq!(pipes.len(), 2);
-        assert_eq!(&pipes.ports(), &ports);
+        assert_eq!(ports_test.len(), 2);
+        assert_eq!(ports_test, ports);
     }
 
     #[test]
