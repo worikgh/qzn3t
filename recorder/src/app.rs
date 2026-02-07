@@ -207,8 +207,6 @@ impl AppData {
         let jack_ports = self.inputs.ports();
 
         // Start up the file manager for saving recorded audio.
-        // Returns a Hash of `u32` => `mpsc::Sender<f32>`.  A `Sender`
-        // for each channel of audio
         self.file_manager.start()?;
         let fm_tx = self.file_manager.drain_senders();
         let channel_count = self.file_manager.channels;
