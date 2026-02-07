@@ -18,7 +18,6 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
     let outputs = JackPipes::from_command_line(&args.outputs, false)?;
 
     // The main programme runs in `App`
-    let mut app = App;
 
     // Directory recordings go to
     let dir = if args.directory.is_some() {
@@ -38,10 +37,10 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
             // The app is controlled through a channel with the front end UI
             let (command_tx, command_rx) = mpsc::channel::<Command>();
 
-            let app_data: AppData = app.initialise_ui(command_rx, inputs, outputs, &file_path)?;
+            let app_data: AppData = App::initialise_ui(command_rx, inputs, outputs, &file_path)?;
 
             let ui_run = app_data.ui_run_f.clone();
-            let t = app.run_ui(app_data)?;
+            let t = App::run_ui(app_data)?;
 
             ui_loop(&command_tx, ui_run)?;
 
@@ -50,7 +49,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
         }
         Some(k) => {
             // Command line mode
-            let mut cfg: AppData = app.initialise(inputs, outputs, &file_path)?;
+            let mut cfg: AppData = App::initialise(inputs, outputs, &file_path)?;
             cfg.handle_kommand(k)?;
             Ok(())
         }

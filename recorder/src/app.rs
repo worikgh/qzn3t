@@ -26,33 +26,31 @@ pub struct App;
 impl App {
     /// Construction.
     pub fn initialise(
-        &mut self,
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
     ) -> Result<AppData, Box<dyn Error>> {
-        self.initialise_inner(None, inputs, outputs, file_path)
+        Self::initialise_inner(None, inputs, outputs, file_path)
     }
     pub fn initialise_ui(
-        &mut self,
         command_rx: mpsc::Receiver<Command>,
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
     ) -> Result<AppData, Box<dyn Error>> {
-        self.initialise_inner(Some(command_rx), inputs, outputs, file_path)
+        Self::initialise_inner(Some(command_rx), inputs, outputs, file_path)
     }
 
     /// The user interface.  Starts a thread that waits for commands.
     /// Returns the handle
     pub fn run_ui(
-        &mut self,
         mut config_app: AppData,
     ) -> Result<thread::JoinHandle<Result<(), RecorderError>>, Box<dyn Error>> {
-        // The version of `self` used inside the loop
         let app_handle = thread::spawn(move || -> Result<(), RecorderError> {
             // Main loop frequency
-            let poll = Duration::from_millis(10);
+            let poll = Duration::from_millis(100);
+
+            // Channel to receive commands on
             let command_rx = match config_app.command_rx.take() {
                 Some(rx) => rx,
                 None => {
@@ -61,6 +59,7 @@ impl App {
                     ));
                 }
             };
+
             loop {
                 // Keep real-time
                 let now = Instant::now();
@@ -131,7 +130,6 @@ impl App {
 
     /// Construction code in common to running with and without a UI
     fn initialise_inner(
-        &mut self,
         command_rx: Option<mpsc::Receiver<Command>>,
         inputs: JackPipes,
         outputs: JackPipes,
@@ -719,12 +717,11 @@ mod tests {
     // as it attaches
     #[test]
     fn test_handle_audio_stop() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
 
         // Set run flag to true
         app_data.run_f.store(true, Ordering::Relaxed);
@@ -736,12 +733,11 @@ mod tests {
 
     #[test]
     fn test_check_audio_file_manager() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
 
         let result = app_data.check_audio_file_manager();
         assert!(result.is_ok());
@@ -775,12 +771,11 @@ mod tests {
     #[test]
     #[should_panic(expected = "Error recorder: -k Continue is not handled")]
     fn test_handle_kommand_unimplemented() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
 
         // This should panic for unimplemented commands
         let _ = app_data.handle_kommand(Command::Continue);
@@ -789,8 +784,6 @@ mod tests {
     #[test]
     fn test_multiple_instances() {
         // Test that multiple initializations don't panic
-        let mut app1 = App;
-        let mut app2 = App;
         let temp_dir = setup_test_dir();
 
         let inputs1 = JackPipes::new(true);
@@ -798,8 +791,8 @@ mod tests {
         let inputs2 = JackPipes::new(true);
         let outputs2 = JackPipes::new(false);
 
-        let result1 = app1.initialise(inputs1, outputs1, temp_dir.path());
-        let result2 = app2.initialise(inputs2, outputs2, temp_dir.path());
+        let result1 = App::initialise(inputs1, outputs1, temp_dir.path());
+        let result2 = App::initialise(inputs2, outputs2, temp_dir.path());
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
@@ -807,17 +800,14 @@ mod tests {
 
     #[test]
     fn test_run_ui_quit_command() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = app
-            .initialise_ui(rx, inputs, outputs, temp_dir.path())
-            .unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
 
-        let handle = app.run_ui(app_data).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
 
         // Send quit command
         tx.send(Command::Quit).unwrap();
@@ -830,17 +820,14 @@ mod tests {
 
     #[test]
     fn test_run_ui_stop_command() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = app
-            .initialise_ui(rx, inputs, outputs, temp_dir.path())
-            .unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
 
-        let handle = app.run_ui(app_data).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
 
         // Send stop then quit
         tx.send(Command::Stop).unwrap();
@@ -854,17 +841,14 @@ mod tests {
     #[test]
     #[ignore] // FileManager is not running so it fails
     fn test_run_ui_continue_command() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = app
-            .initialise_ui(rx, inputs, outputs, temp_dir.path())
-            .unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
 
-        let handle = app.run_ui(app_data).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
 
         // Send continue then quit
         tx.send(Command::Continue).unwrap();
@@ -882,15 +866,12 @@ mod tests {
 
     #[test]
     fn test_command_channel_disconnect() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
         let (command_tx, command_rx) = mpsc::channel::<Command>();
-        let app_data = app
-            .initialise_ui(command_rx, inputs, outputs, temp_dir.path())
-            .unwrap();
-        let handle = app.run_ui(app_data).unwrap();
+        let app_data = App::initialise_ui(command_rx, inputs, outputs, temp_dir.path()).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
         // Drop sender to disconnect
         drop(command_tx);
         let result = handle.join().unwrap();
@@ -901,17 +882,16 @@ mod tests {
 
     #[test]
     fn test_run_ui_no_command_receiver() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
 
         // Remove command_rx
         app_data.command_rx = None;
 
-        let handle = app.run_ui(app_data).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
         let result = handle.join().unwrap();
 
         assert!(result.is_err());
@@ -919,12 +899,11 @@ mod tests {
     }
     #[test]
     fn test_app_initialise() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let result = app.initialise(inputs, outputs, temp_dir.path());
+        let result = App::initialise(inputs, outputs, temp_dir.path());
 
         assert!(result.is_ok());
         let app_data = result.unwrap();
@@ -934,13 +913,12 @@ mod tests {
 
     #[test]
     fn test_app_initialise_ui() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let result = app.initialise_ui(rx, inputs, outputs, temp_dir.path());
+        let result = App::initialise_ui(rx, inputs, outputs, temp_dir.path());
 
         assert!(result.is_ok());
         let app_data = result.unwrap();
@@ -950,12 +928,11 @@ mod tests {
 
     #[test]
     fn test_app_data_quit() {
-        let mut app = App;
         let temp_dir = setup_test_dir();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = app.initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
 
         app_data.quit();
         assert!(!app_data.ui_run_f.load(Ordering::Relaxed));
