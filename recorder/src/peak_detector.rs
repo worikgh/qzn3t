@@ -106,7 +106,6 @@ impl PeakDetector {
         if self.buffer.is_empty() {
             return None;
         }
-
         Some((self.sum_of_squares / self.buffer.len() as f64).sqrt() as f32)
     }
 
@@ -174,6 +173,50 @@ impl PeakDetector {
 mod tests {
     use super::*;
 
+    #[test]
+    /// Test the calculation of rms
+    fn test_current_rms_dbs() {
+        let config = PeakDetectorConfig::default();
+        let mut detector = PeakDetector::new(config);
+
+        // The buffer must be full to calculate a predictable RMS and db
+        let sample_count = config.sample_rate * config.window_ms / 1_000 + 1;
+
+        // Test with silence
+        let quiet_samples = (0..sample_count).map(|_| 0.0).collect::<Vec<f32>>();
+        detector.process_buffer(&quiet_samples);
+
+        // rms should be zero
+        let rms = detector.current_rms().unwrap();
+        assert_eq!(rms, 0.0);
+        // dbfs is inf
+        let dbfs = detector.current_dbfs().unwrap();
+        assert!(dbfs.is_infinite());
+
+        // Test with maximum volume
+        let quiet_samples = (0..sample_count).map(|_| 1.0).collect::<Vec<f32>>();
+        detector.process_buffer(&quiet_samples);
+
+        // rms should be 1.0
+        let rms = detector.current_rms().unwrap();
+        assert_eq!(rms, 1.0);
+
+        // dbfs should be zero
+        let dbfs = detector.current_dbfs().unwrap();
+        assert_eq!(dbfs, 0.0);
+
+        // Test with minimum volume
+        let quiet_samples = (0..sample_count).map(|_| -1.0).collect::<Vec<f32>>();
+        detector.process_buffer(&quiet_samples);
+
+        // rms should be 1.0
+        let rms = detector.current_rms().unwrap();
+        assert_eq!(rms, 1.0);
+
+        // dbfs should be zero
+        let dbfs = detector.current_dbfs().unwrap();
+        assert_eq!(dbfs, 0.0);
+    }
     #[test]
     fn test_peak_detection() {
         let config = PeakDetectorConfig::default();
