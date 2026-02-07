@@ -136,29 +136,6 @@ impl PeakDetector {
         }
     }
 
-    /// Get a visual representation of the level
-    pub fn visual_meter(&self, width: usize) -> String {
-        let rms = self.current_rms().unwrap_or(0.0);
-        let level_width = (rms * width as f32) as usize;
-        let level_width = level_width.min(width);
-
-        let meter = if self.current_state == WarningLevel::Critical {
-            format!("[{}⚠]", "#".repeat(level_width))
-        } else {
-            format!(
-                "[{}{}]",
-                "#".repeat(level_width),
-                " ".repeat(width - level_width)
-            )
-        };
-
-        if let Some(dbfs) = self.current_dbfs() {
-            format!("{} {:.1} dBFS", meter, dbfs)
-        } else {
-            meter
-        }
-    }
-
     /// Reset the detector
     pub fn reset(&mut self) {
         self.buffer.clear();
