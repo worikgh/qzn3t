@@ -71,6 +71,9 @@ pub enum RecorderError {
 
     // Cannot find the pipe
     PipeNotFound(String),
+
+    // Unimplemented methods.  Pass name as argument
+    Unimplemented(String),
 }
 impl fmt::Display for RecorderError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -79,6 +82,7 @@ impl fmt::Display for RecorderError {
 
             RecorderError::DuplicateBufferName(name)
             | RecorderError::DuplicateInput(name)
+            | RecorderError::Unimplemented(name)
             | RecorderError::DuplicateOutput(name)
             | RecorderError::DuplicateInputName(name)
             | RecorderError::FileManager(name)

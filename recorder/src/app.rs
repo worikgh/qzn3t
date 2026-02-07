@@ -494,23 +494,29 @@ impl AppData {
     }
 
     /// Play back the audio data
-    fn handle_review_record(&self) -> Result<(), Box<dyn Error>> {
-        unimplemented!()
+    fn handle_review_record(&self) -> Result<(), RecorderError> {
+        Err(RecorderError::Unimplemented(
+            "handle_review_record".to_string(),
+        ))
     }
 
     /// Play the contents of `recorded_audio` while recording separately
-    fn handle_dubing(&mut self) -> Result<(), Box<dyn Error>> {
-        unimplemented!();
+    fn handle_dubing(&mut self) -> Result<(), RecorderError> {
+        Err(RecorderError::Unimplemented("handle_dubing".to_string()))
     }
 
     /// Mix `recorded_audio` and `recorded_dub` and play it back
-    fn handle_dub_review(&mut self) -> Result<(), Box<dyn Error>> {
+    fn handle_dub_review(&mut self) -> Result<(), RecorderError> {
         // Mix together `recorded_audio` and `recorded_dub` and play it back
-        unimplemented!();
+        Err(RecorderError::Unimplemented(
+            "handle_dub_review".to_string(),
+        ))
     }
 
     fn handle_dub_accept(&mut self) -> Result<(), RecorderError> {
-        unimplemented!();
+        Err(RecorderError::Unimplemented(
+            "handle_dub_accept".to_string(),
+        ))
     }
 
     /// When a command is passed into the programme by `-k`.  This will block until the command is complete
@@ -938,5 +944,72 @@ mod tests {
 
         app_data.quit();
         assert!(!app_data.ui_run_f.load(Ordering::Relaxed));
+    }
+
+    // Test the unimplemented methods to get full test coverage
+    #[test]
+    fn test_unimplemented_methods() {
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
+
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
+        tx.send(Command::DubAccept).unwrap();
+        let result = handle.join().unwrap();
+        assert!(result.is_err());
+        assert_eq!(
+            result,
+            Err(RecorderError::Unimplemented(
+                "handle_dub_accept".to_string()
+            ))
+        );
+
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
+        tx.send(Command::ReviewRecord).unwrap();
+        let result = handle.join().unwrap();
+        assert!(result.is_err());
+        assert_eq!(
+            result,
+            Err(RecorderError::Unimplemented(
+                "handle_review_record".to_string()
+            ))
+        );
+
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
+        tx.send(Command::Dubing).unwrap();
+        let result = handle.join().unwrap();
+        assert!(result.is_err());
+        assert_eq!(
+            result,
+            Err(RecorderError::Unimplemented("handle_dubing".to_string()))
+        );
+
+        let temp_dir = setup_test_dir();
+        let (tx, rx) = mpsc::channel();
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let handle = App::run_ui(app_data).unwrap();
+        tx.send(Command::DubReview).unwrap();
+        let result = handle.join().unwrap();
+        assert!(result.is_err());
+        assert_eq!(
+            result,
+            Err(RecorderError::Unimplemented(
+                "handle_dub_review".to_string()
+            ))
+        );
     }
 }
