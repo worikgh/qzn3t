@@ -70,9 +70,9 @@ impl App {
                     Ok(s) => Some(s),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        // TODO: This should be an error
-                        eprintln!("Error recorder: Disconnected getting command");
-                        break;
+                        return Err(RecorderError::Generic(
+                            "Command channel disconnected".to_string(),
+                        ));
                     }
                 };
                 if let Some(command) = command {
@@ -878,6 +878,25 @@ mod tests {
 
         let result = handle.join();
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_command_channel_disconnect() {
+        let mut app = App;
+        let temp_dir = setup_test_dir();
+        let inputs = JackPipes::new(true);
+        let outputs = JackPipes::new(false);
+        let (command_tx, command_rx) = mpsc::channel::<Command>();
+        let app_data = app
+            .initialise_ui(command_rx, inputs, outputs, temp_dir.path())
+            .unwrap();
+        let handle = app.run_ui(app_data).unwrap();
+        // Drop sender to disconnect
+        drop(command_tx);
+        let result = handle.join().unwrap();
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RecorderError::Generic(_)));
     }
 
     #[test]
