@@ -171,6 +171,8 @@ impl PeakDetector {
 // Example usage
 #[cfg(test)]
 mod tests {
+    use std::thread;
+
     use super::*;
 
     #[test]
@@ -250,11 +252,18 @@ mod tests {
         config.debounce_ms = 100; // Short debounce for testing
         let mut detector = PeakDetector::new(config);
 
-        // Initialise the buffer with a lot of loud data.
-
-        //The buffer must be full to detect peaks.
+        // The buffer must be full to detect peaks.
         let sample_count = config.sample_rate * config.window_ms / 1_000 + 1;
 
+        // Initialise the buffer with a lot of quiet data data.
+        let samples = (0..sample_count).map(|_| 0.49).collect::<Vec<f32>>();
+        detector.process_buffer(&samples);
+
+        // Another mild sample should not trigger a warning
+        detector.process_sample(0.59);
+        assert!(!detector.should_play_warning());
+
+        // Initialise the buffer with a lot of loud data.
         let samples = (0..sample_count).map(|_| 0.99).collect::<Vec<f32>>();
         detector.process_buffer(&samples);
 
@@ -265,5 +274,10 @@ mod tests {
         // Immediately after, shouldn't trigger again
         detector.process_sample(1.0);
         assert!(!detector.should_play_warning());
+
+        // After debounce, should trigger warning
+        thread::sleep(Duration::from_millis(config.debounce_ms as u64 + 1));
+        detector.process_sample(1.0);
+        assert!(detector.should_play_warning());
     }
 }
