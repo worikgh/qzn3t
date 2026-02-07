@@ -93,14 +93,19 @@ impl App {
                         Command::ReviewRecord => config_app.handle_review_record()?,
                         Command::Stop => config_app.handle_audio_stop()?,
                     }
-                }
-
-                // The FileManger must keep going otherwise there is
-                // nothing that can be done with the recording
-                if !config_app.check_audio_file_manager()? {
-                    return Err(RecorderError::FileManager(
-                        "File manager has shut down - main loop".into(),
-                    ));
+                    // For recording and playback the FileManger must keep
+                    // going otherwise there is nothing that can be done
+                    // with the recording
+                    match command {
+                        Command::Record | Command::Play => {
+                            if !config_app.check_audio_file_manager()? {
+                                return Err(RecorderError::FileManager(
+                                    "File manager has shut down - main loop".into(),
+                                ));
+                            }
+                        }
+                        _ => (),
+                    };
                 }
 
                 // Keep to real-time constraints
@@ -839,7 +844,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // FileManager is not running so it fails
     fn test_run_ui_continue_command() {
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
