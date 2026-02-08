@@ -29,16 +29,18 @@ impl App {
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
+        silent: bool,
     ) -> Result<AppData, Box<dyn Error>> {
-        Self::initialise_inner(None, inputs, outputs, file_path)
+        Self::initialise_inner(None, inputs, outputs, file_path, silent)
     }
     pub fn initialise_ui(
         command_rx: mpsc::Receiver<Command>,
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
+        silent: bool,
     ) -> Result<AppData, Box<dyn Error>> {
-        Self::initialise_inner(Some(command_rx), inputs, outputs, file_path)
+        Self::initialise_inner(Some(command_rx), inputs, outputs, file_path, silent)
     }
 
     /// The user interface.  Starts a thread that waits for commands.
@@ -139,6 +141,7 @@ impl App {
         inputs: JackPipes,
         outputs: JackPipes,
         file_path: &Path,
+        silent: bool,
     ) -> Result<AppData, Box<dyn Error>> {
         // Flag to start and stop recording/playback
         let run_f = Arc::new(AtomicBool::new(true));
@@ -169,6 +172,7 @@ impl App {
             inputs,
             output: outputs,
             file_manager,
+            silent,
         })
     }
 }
@@ -183,6 +187,7 @@ pub struct AppData {
     inputs: JackPipes,
     output: JackPipes,
     pub file_manager: FileManager,
+    pub silent: bool, // Suppress all stdout
 }
 
 impl AppData {
@@ -523,7 +528,9 @@ impl AppData {
     pub fn handle_kommand(&mut self, k: Command) -> Result<(), Box<dyn Error>> {
         match k {
             Command::Record => {
-                println!("<enter> to stop");
+                if !self.silent {
+                    println!("<enter> to stop");
+                }
                 self.run_f.store(true, Ordering::Relaxed);
                 self.handle_record()?;
                 let mut input = String::new();
@@ -563,21 +570,23 @@ impl AppData {
                     thread::sleep(Duration::from_millis(10));
                 }
 
-                // A busy loop to detect early quit by user (<enter>
-                // or EOF from keyboard).  The thread is used because
-                // Rust does not have non-blocking IO on std library.
-                // Grrr...
-                println!("Press <enter> to stop playback");
-                let run_flag = self.run_f.clone();
-                thread::spawn(move || {
-                    let mut input = String::new();
-                    io::stdin()
-                        // Blocks only this thread
-                        .read_line(&mut input)
-                        .expect("Failed to read line");
-                    run_flag.store(false, Ordering::Relaxed);
-                });
-
+                if !self.silent {
+                    // A busy loop to detect early quit by user, if
+                    // not using `silent`, (<enter> or EOF from
+                    // keyboard).  The thread is used because Rust
+                    // does not have non-blocking IO on std library.
+                    // Grrr...
+                    println!("Press <enter> to stop playback");
+                    let run_flag = self.run_f.clone();
+                    thread::spawn(move || {
+                        let mut input = String::new();
+                        io::stdin()
+                            // Blocks only this thread
+                            .read_line(&mut input)
+                            .expect("Failed to read line");
+                        run_flag.store(false, Ordering::Relaxed);
+                    });
+                }
                 match h {
                     Some(h) => {
                         while !h.is_finished() {
@@ -730,7 +739,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
         // Set run flag to true
         app_data.run_f.store(true, Ordering::Relaxed);
@@ -746,7 +755,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
         let result = app_data.check_audio_file_manager();
         assert!(result.is_ok());
@@ -784,7 +793,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
         // This should panic for unimplemented commands
         let _ = app_data.handle_kommand(Command::Continue);
@@ -800,8 +809,8 @@ mod tests {
         let inputs2 = JackPipes::new(true);
         let outputs2 = JackPipes::new(false);
 
-        let result1 = App::initialise(inputs1, outputs1, temp_dir.path());
-        let result2 = App::initialise(inputs2, outputs2, temp_dir.path());
+        let result1 = App::initialise(inputs1, outputs1, temp_dir.path(), true);
+        let result2 = App::initialise(inputs2, outputs2, temp_dir.path(), true);
 
         assert!(result1.is_ok());
         assert!(result2.is_ok());
@@ -814,7 +823,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
 
         let handle = App::run_ui(app_data).unwrap();
 
@@ -834,7 +843,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
 
         let handle = App::run_ui(app_data).unwrap();
 
@@ -854,7 +863,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
 
         let handle = App::run_ui(app_data).unwrap();
 
@@ -878,7 +887,8 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
         let (command_tx, command_rx) = mpsc::channel::<Command>();
-        let app_data = App::initialise_ui(command_rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data =
+            App::initialise_ui(command_rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         // Drop sender to disconnect
         drop(command_tx);
@@ -894,7 +904,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
         // Remove command_rx
         app_data.command_rx = None;
@@ -911,7 +921,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let result = App::initialise(inputs, outputs, temp_dir.path());
+        let result = App::initialise(inputs, outputs, temp_dir.path(), true);
 
         assert!(result.is_ok());
         let app_data = result.unwrap();
@@ -926,7 +936,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let result = App::initialise_ui(rx, inputs, outputs, temp_dir.path());
+        let result = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true);
 
         assert!(result.is_ok());
         let app_data = result.unwrap();
@@ -940,7 +950,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let mut app_data = App::initialise(inputs, outputs, temp_dir.path()).unwrap();
+        let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
         app_data.quit();
         assert!(!app_data.ui_run_f.load(Ordering::Relaxed));
@@ -954,7 +964,7 @@ mod tests {
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
 
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::DubAccept).unwrap();
         let result = handle.join().unwrap();
@@ -970,7 +980,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::ReviewRecord).unwrap();
         let result = handle.join().unwrap();
@@ -986,7 +996,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::Dubing).unwrap();
         let result = handle.join().unwrap();
@@ -1000,7 +1010,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let inputs = JackPipes::new(true);
         let outputs = JackPipes::new(false);
-        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path()).unwrap();
+        let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::DubReview).unwrap();
         let result = handle.join().unwrap();

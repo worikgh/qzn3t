@@ -290,7 +290,7 @@ pub mod common {
         let (_audio_tx, _audio_rx) = mpsc::channel::<f32>();
         let (_command_tx, _command_rx) = mpsc::channel::<Command>();
 
-        match App::initialise(inputs, outputs, dir) {
+        match App::initialise(inputs, outputs, dir, true) {
             Ok(a) => a,
             Err(err) => panic!("Cannot initalise AppData: {err}"),
         }

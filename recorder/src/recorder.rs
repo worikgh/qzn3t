@@ -33,11 +33,16 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
     match args.kommand {
         None => {
             // GUI mode
-
+            if args.silent {
+                return Err(RecorderError::Generic(
+                    "Cannot run in GUI mode and silent".to_string(),
+                ));
+            }
             // The app is controlled through a channel with the front end UI
             let (command_tx, command_rx) = mpsc::channel::<Command>();
 
-            let app_data: AppData = App::initialise_ui(command_rx, inputs, outputs, &file_path)?;
+            let app_data: AppData =
+                App::initialise_ui(command_rx, inputs, outputs, &file_path, args.silent)?;
 
             let ui_run = app_data.ui_run_f.clone();
             let t = App::run_ui(app_data)?;
@@ -49,7 +54,7 @@ fn inner_main(args: Args) -> Result<(), RecorderError> {
         }
         Some(k) => {
             // Command line mode
-            let mut cfg: AppData = App::initialise(inputs, outputs, &file_path)?;
+            let mut cfg: AppData = App::initialise(inputs, outputs, &file_path, args.silent)?;
             cfg.handle_kommand(k)?;
             Ok(())
         }

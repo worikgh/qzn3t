@@ -49,6 +49,15 @@ pub struct Args {
     /// commands make sense
     #[arg(short = 'k', long)]
     pub kommand: Option<Command>,
+
+    /// If set all stdout will be suppressed.
+    #[arg(
+        short = 's',
+        long,
+        default_value_t = false,
+        long_help = "Suppress all stdout"
+    )]
+    pub silent: bool,
 }
 
 #[derive(Debug, Clone, ValueEnum, PartialEq, Hash, Eq)]
