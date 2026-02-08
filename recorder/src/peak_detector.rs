@@ -28,7 +28,7 @@ impl Default for PeakDetectorConfig {
             window_ms: 200,
             warning_threshold: 0.8,
             critical_threshold: 0.95,
-            debounce_ms: 2_000,
+            debounce_ms: 500,
             sample_rate: 48_000,
         }
     }
