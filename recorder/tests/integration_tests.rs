@@ -34,7 +34,6 @@ const AUDIO_DURATION: [u32; 4] = [1, 10, 100, 1_000];
 fn record_two_channels_and_play_back() {
     // The test audio
     for audio_duration in AUDIO_DURATION.iter() {
-        dbg!(audio_duration);
         let audio_duration_ms = audio_duration;
 
         let audio_buffer_sine = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Sine);
@@ -111,7 +110,7 @@ fn record_two_channels_and_play_back() {
         // The two recorded buffers must be identical to the source buffers
         if rec_sine.len() != audio_buffer_sine.len() {
             eprintln!(
-                "Fail: Sine lengths differ: recorded: {} Original: {} audio_duration: {audio_duration}",
+                "* Error: Sine lengths differ: recorded: {} Original: {} audio_duration: {audio_duration}",
                 rec_sine.len(),
                 audio_buffer_sine.len()
             );
@@ -120,7 +119,7 @@ fn record_two_channels_and_play_back() {
             for i in 0..audio_buffer_sine.len() {
                 if (rec_sine[i] - audio_buffer_sine[i]).abs() > f32::EPSILON {
                     eprintln!(
-                        "Fail: Sine differs at {i}, {:0.4}, {:0.4} audio_duration: {audio_duration}",
+                        "* Error: Sine differs at {i}, {:0.4}, {:0.4} audio_duration: {audio_duration}",
                         rec_sine[i], audio_buffer_sine[i]
                     );
                     result = false;
@@ -130,7 +129,7 @@ fn record_two_channels_and_play_back() {
         }
         if rec_tri.len() != audio_buffer_tri.len().min(rec_tri.len()) {
             eprintln!(
-                "Fail: Triangle lengths differ: recorded: {} Original: {} audio_duration: {audio_duration}",
+                "* Error: Triangle lengths differ: recorded: {} Original: {} audio_duration: {audio_duration}",
                 rec_tri.len(),
                 audio_buffer_tri.len()
             );
@@ -138,7 +137,7 @@ fn record_two_channels_and_play_back() {
         } else {
             for i in 0..audio_buffer_tri.len() {
                 if (rec_tri[i] - audio_buffer_tri[i]).abs() > f32::EPSILON {
-                    eprintln!("Fail: Triangle differs at {i} audio_duration: {audio_duration}");
+                    eprintln!("* Error: Triangle differs at {i} audio_duration: {audio_duration}");
                     result = false;
                     break;
                 }
@@ -164,7 +163,7 @@ fn record_two_channels_and_play_back() {
                     let recovered_tri = trim_audio(&audio_buffer.get_buffer(1).unwrap());
                     if recovered_tri.len() != rec_tri.len() {
                         eprintln!(
-                            "Fail: recovered_tri.len()/{} != rec_tri.len()/{} audio_duration: {audio_duration}",
+                            "* Error: recovered_tri.len()/{} != rec_tri.len()/{} audio_duration: {audio_duration}",
                             recovered_tri.len(),
                             rec_tri.len()
                         );
@@ -173,7 +172,7 @@ fn record_two_channels_and_play_back() {
                         for i in 0..rec_tri.len() {
                             if (rec_tri[i] - recovered_tri[i]).abs() > f32::EPSILON {
                                 eprintln!(
-                                    "Fail: Recorded tri differs at {i} audio_duration: {audio_duration}"
+                                    "* Error: Recorded tri differs at {i} audio_duration: {audio_duration}"
                                 );
                                 result = false;
                                 break;
@@ -182,7 +181,7 @@ fn record_two_channels_and_play_back() {
                     }
                     if recovered_sine.len() != rec_sine.len() {
                         eprintln!(
-                            "Fail: recovered_sine.len()/{} != rec_sine.len()/{} audio_duration: {audio_duration}",
+                            "* Error: recovered_sine.len()/{} != rec_sine.len()/{} audio_duration: {audio_duration}",
                             recovered_sine.len(),
                             rec_sine.len()
                         );
@@ -191,7 +190,7 @@ fn record_two_channels_and_play_back() {
                         for i in 0..rec_sine.len() {
                             if (rec_sine[i] - recovered_sine[i]).abs() > f32::EPSILON {
                                 eprintln!(
-                                    "Fail: Recorded sine differs at {i} audio_duration: {audio_duration}"
+                                    "* Error: Recorded sine differs at {i} audio_duration: {audio_duration}"
                                 );
                                 result = false;
                                 break;
@@ -201,7 +200,7 @@ fn record_two_channels_and_play_back() {
                 }
                 Err(err) => {
                     eprintln!(
-                        "Fail: Cannot read data from {audio_path:?}.  Error: {err} audio_duration: {audio_duration}"
+                        "* Error: Cannot read data from {audio_path:?}.  Error: {err} audio_duration: {audio_duration}"
                     );
                     result = false;
                 }
@@ -209,10 +208,11 @@ fn record_two_channels_and_play_back() {
         }
         if result {
             // Test playing back the audio files from the previous test
-
+            eprint!("* DBG Initialise buffers ");
+            dbg!();
             let buffers = vec![
                 Arc::new(Mutex::new(Vec::<f32>::new())),
-                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(Mutex::new(Vec::<f32>::new())),
             ];
             let buffers_new = buffers.to_vec();
             let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
@@ -264,7 +264,7 @@ fn record_two_channels_and_play_back() {
                 let bf_0 = trim_audio(&buffers_new[0].lock().unwrap());
                 if ab_0.len() != bf_0.len() {
                     eprint!(
-                        "{} != {} audio_duration: {audio_duration}",
+                        "* Error: {} != {} audio_duration: {audio_duration} ",
                         &ab_0.len(),
                         &bf_0.len()
                     );
@@ -275,10 +275,9 @@ fn record_two_channels_and_play_back() {
                         let a = ab_0[idx];
                         let b = bf_0[idx];
                         if (a - b).abs() >= f32::EPSILON {
-                            dbg!();
                             result = false;
                             eprintln!(
-                                "channel 0: Failed match @ {idx}: Saved: {a:0.4}  Buffered: {b:0.4} audio_duration: {audio_duration}"
+                                "* Error: channel 0: Failed match @ {idx}: Saved: {a:0.4}  Buffered: {b:0.4} audio_duration: {audio_duration}"
                             );
                             break;
                         }
@@ -289,11 +288,12 @@ fn record_two_channels_and_play_back() {
             {
                 let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
                 if ab_1.len() != bf_1.len() {
-                    eprintln!(
-                        "* Channel 1 recorded audio does not equal played back audio: {} != {} audio_duration: {audio_duration}",
+                    eprint!(
+                        "* Error: Channel 1 recorded audio does not equal played back audio: {} != {} audio_duration: {audio_duration} ",
                         &ab_1.len(),
                         &bf_1.len()
                     );
+                    dbg!();
                     result = false;
                 } else {
                     for idx in 0..ab_1.len() {
@@ -301,7 +301,7 @@ fn record_two_channels_and_play_back() {
                         let b = bf_1[idx];
                         if (a - b).abs() >= f32::EPSILON {
                             eprintln!(
-                                "channel 1: Failed match @ {idx}: Saved: {a}  Buffered: {b} audio_duration: {audio_duration}"
+                                "* Error: channel 1: Failed match @ {idx}: Saved: {a}  Buffered: {b} audio_duration: {audio_duration}"
                             );
                         }
                     }
@@ -401,7 +401,7 @@ fn record_audio() {
                 let imported_data = trim_audio(&d.get_buffer(0).unwrap());
                 if imported_data.len() != new_buffer.len() {
                     eprintln!(
-                        "Fail: recovered_tri.len()/{} != rec_tri.len()/{} audio_duration: {audio_duration}",
+                        "* Error: recovered_tri.len()/{} != rec_tri.len()/{} audio_duration: {audio_duration}",
                         imported_data.len(),
                         new_buffer.len()
                     );
@@ -410,7 +410,7 @@ fn record_audio() {
                     for i in 0..new_buffer.len() {
                         if (new_buffer[i] - imported_data[i]).abs() > f32::EPSILON {
                             eprintln!(
-                                "Fail: Recorded tri differs at {i} audio_duration: {audio_duration}"
+                                "* Error: Recorded tri differs at {i} audio_duration: {audio_duration}"
                             );
                             result = false;
                             break;
