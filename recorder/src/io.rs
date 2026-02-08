@@ -445,30 +445,35 @@ impl FileManager {
             ))
         })?;
 
-        // The audio data file
-        let mut file = match OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true) // Creates file if it doesn't exist
-            .truncate(true) // Don't clear file contents
-            .open(audio_path)
-        {
-            // let mut file: File = match File::create(&audio_path). {
-            Ok(f) => f,
-            Err(err) => panic!("{:?}: {err}", self.file_path),
-        };
+        let file_path = self.file_path.clone();
 
         let state = self.state.clone();
         Ok(thread::spawn(move || -> Result<(), RecorderError> {
             let mut c = 0;
 
+            // The audio data file
+            let mut file = match OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(audio_path)
+            {
+                // let mut file: File = match File::create(&audio_path). {
+                Ok(f) => f,
+                Err(err) => panic!("{:?}: {err}", file_path),
+            };
             // A peak detector for each channel
             let mut peak_detectors = (0..channels)
                 .map(|_| PeakDetector::new(PeakDetectorConfig::default()))
                 .collect::<Vec<PeakDetector>>();
+
+            // A warning level for each client.  FIXME: Can this come
+            // directly from the PeakDetector above?
             let mut warning_levels = (0..channels)
                 .map(|_| WarningLevel::Normal)
                 .collect::<Vec<WarningLevel>>();
+
             // Buffer a sample from each channel before writing
             let mut buffer: Vec<f32> = Vec::with_capacity(channels as usize);
             while let Ok(s) = receivers[c].recv() {

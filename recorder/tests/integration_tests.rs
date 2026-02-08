@@ -157,8 +157,8 @@ fn record_two_channels_and_play_back() {
         let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
 
         let client_name = "test_play_client";
-        let _ac = make_test_play_client(client_name, port_names, buffers).unwrap();
-        let port_names = _ac
+        let ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+        let port_names = ac
             .as_client()
             .ports(Some(client_name), None, PortFlags::IS_INPUT);
 
