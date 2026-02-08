@@ -2,20 +2,17 @@
 // License: GPL-3.0
 
 use crate::errors::RecorderError;
-use crate::io::{
-    AudioBuffers, FileManager, FileManagerState, JackPipes, read_f32_vec_from_file,
-    read_file_metadata,
-};
+use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
 use crate::send_audio_to_jack;
 use crate::structs::Command;
 use jack_rec;
 use std::error::Error;
 use std::io::{self};
 use std::path::Path;
+use std::sync::Once;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::TryRecvError;
 use std::sync::{Arc, mpsc};
-use std::sync::{Mutex, Once};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -564,7 +561,7 @@ impl AppData {
 
                 // Wait for recording to get started
                 while !self.run_f.load(Ordering::Relaxed) {
-                    // FIME: Add a time out to this incase of failure,
+                    // FIXME: Add a time out to this incase of failure,
                     // to stop a hang
                     thread::sleep(Duration::from_millis(10));
                 }

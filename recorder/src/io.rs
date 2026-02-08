@@ -149,6 +149,7 @@ impl JackPipes {
 // ---- AudioBuffers start ----
 /// Hold recorded audio data buffers.  Allow access by name (useful
 /// for Jack pipes) and by index starting at zero.
+
 #[derive(Clone, Debug)]
 pub struct AudioBuffers {
     buffers: Vec<Vec<f32>>,
@@ -559,6 +560,8 @@ pub fn read_f32_vec_from_file(
     Ok(result)
 }
 
+/// Given a path to a metadata file read the data from the file and
+/// return it as a struct.
 pub fn read_file_metadata(path: PathBuf) -> Result<Metadata, RecorderError> {
     let json = fs::read_to_string(&path).map_err(|err| {
         RecorderError::Generic(format!("Cannot read metadata from {path:?}. {err}"))

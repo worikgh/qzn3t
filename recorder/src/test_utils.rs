@@ -134,12 +134,12 @@ pub mod common {
         buffers: Vec<Arc<Mutex<Vec<f32>>>>,
     ) -> Result<AsyncClient<TestPlayNotificationHandler, TestPlayProcessHandler>, RecorderError>
     {
-        let (_client, _) =
-            Client::new(name, jack::ClientOptions::NO_START_SERVER).expect("Cannot make Jack sink");
+        let (client, _) = Client::new(name, jack::ClientOptions::NO_START_SERVER)
+            .expect("make_test_play_client: Cannot make Jack client");
 
         let mut ports = vec![];
         for p in port_names.iter() {
-            let port = _client
+            let port = client
                 .register_port(p, AudioIn::default())
                 .expect("Creating port");
             ports.push(port);
@@ -147,7 +147,7 @@ pub mod common {
 
         let notification_handler = TestPlayNotificationHandler;
         let process_handler = TestPlayProcessHandler { buffers, ports };
-        let ac = _client
+        let ac = client
             .activate_async(notification_handler, process_handler)
             .unwrap();
         Ok(ac)
@@ -253,7 +253,6 @@ pub mod common {
             })
             .collect();
 
-        dbg!(&outputs);
         let out_process = TestAudioOutProcess {
             audio_buffers,
             outputs,
