@@ -3,6 +3,7 @@
 
 //! Structures and code to maintain the input and output buffers and
 //! processes
+use crate::peak_detector::{PeakDetector, PeakDetectorConfig, WarningLevel};
 use crate::{errors::RecorderError, utils::get_sample_rate};
 use jack::{Client, PortFlags};
 use serde::{Deserialize, Serialize};
@@ -282,12 +283,14 @@ pub struct FileManagerState {
     pub levels: Vec<f32>,
     /// Bytes written to file
     pub written: u32,
+    pub warning_levels: Vec<WarningLevel>,
 }
 impl FileManagerState {
     pub fn new(channels: u32) -> Self {
         Self {
             levels: [0.0f32].repeat(channels as usize),
             written: 0,
+            warning_levels: vec![],
         }
     }
 }
@@ -324,11 +327,7 @@ impl FileManager {
     /// * `state` is the shared memory (with the UI) for the state of the `FileManager`
     /// # Errors
     /// Returns an error if the directory doesn't exist.
-    pub fn new(
-        channels: u32,
-        file_path: &Path,
-        state: Arc<Mutex<FileManagerState>>,
-    ) -> Result<Self, RecorderError> {
+    pub fn new(channels: u32, file_path: &Path) -> Result<Self, RecorderError> {
         let mut senders = Vec::new();
         let mut receivers = Vec::new();
         for _ in 0..channels {
@@ -345,7 +344,7 @@ impl FileManager {
             handle: None,
             channels,
             started: false,
-            state,
+            state: Arc::new(Mutex::new(FileManagerState::new(channels))),
         })
     }
 
@@ -458,20 +457,36 @@ impl FileManager {
             Err(err) => panic!("{:?}: {err}", self.file_path),
         };
 
+        let state = self.state.clone();
         Ok(thread::spawn(move || -> Result<(), RecorderError> {
             let mut c = 0;
 
+            // A peak detector for each channel
+            let mut peak_detectors = (0..channels)
+                .map(|_| PeakDetector::new(PeakDetectorConfig::default()))
+                .collect::<Vec<PeakDetector>>();
+            let mut warning_levels = (0..channels)
+                .map(|_| WarningLevel::Normal)
+                .collect::<Vec<WarningLevel>>();
             // Buffer a sample from each channel before writing
             let mut buffer: Vec<f32> = Vec::with_capacity(channels as usize);
             while let Ok(s) = receivers[c].recv() {
                 // Does this very naive buffering effect performance?
                 // Would it be better to do in 100ms (?) chunks?
                 buffer.push(s);
+                warning_levels[c] = peak_detectors[c].process_sample(s);
                 c += 1;
                 if c == channels as usize {
                     Self::write_samples(&mut file, &buffer)?;
                     c = 0;
                     buffer.clear();
+                    {
+                        let mut state = state.lock().unwrap();
+                        state.warning_levels = warning_levels.clone();
+                        state.levels = (0..channels)
+                            .map(|c| peak_detectors[c as usize].current_rms().unwrap_or(0.0))
+                            .collect::<Vec<f32>>();
+                    }
                 }
             }
             Ok(())

@@ -160,8 +160,7 @@ impl App {
         });
 
         let channels = inputs.ports().len() as u32;
-        let fm_state = Arc::new(Mutex::new(FileManagerState::new(channels)));
-        let file_manager = FileManager::new(channels, file_path, fm_state)?;
+        let file_manager = FileManager::new(channels, file_path)?;
 
         Ok(AppData {
             recorded_audio: AudioBuffers::new(),
