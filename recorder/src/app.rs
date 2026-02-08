@@ -589,7 +589,7 @@ impl AppData {
                 match h {
                     Some(h) => {
                         while !h.is_finished() {
-                            thread::sleep(Duration::from_millis(1000));
+                            thread::sleep(Duration::from_millis(10));
                         }
                         if let Err(err) = h.join() {
                             Err(
