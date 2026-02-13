@@ -130,6 +130,18 @@ pub mod common {
         fn process(&mut self, _: &Client, ps: &ProcessScope) -> Control {
             for (idx, p) in self.ports.iter().enumerate() {
                 let t = p.as_slice(ps);
+                let zeros = find_zeros(t);
+                // It is natural to get buffers ending with zeros.  I
+                // am interested in buffers that start with, but do
+                // not end with, a sequence of zeros
+                let zeros = zeros
+                    .iter()
+                    .filter(|a| a.0 + a.1 != 1024)
+                    .collect::<Vec<&(usize, usize)>>();
+                if !zeros.is_empty() {
+                    eprint!("TestPlayProcessHandler: Zeros: {zeros:?} ");
+                    dbg![];
+                }
                 self.buffers[idx].lock().unwrap().extend_from_slice(t);
             }
             Control::Continue

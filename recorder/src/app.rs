@@ -765,11 +765,9 @@ mod tests {
         let buf1 = generate_test_audio(110, 0.42, length_audio, WaveForm::Square);
         let buf2 = generate_test_audio(100, 0.82, length_audio, WaveForm::Triangle);
         let (ac, _flag) = play_test_audio("test_jack_pipes_add", ports.clone(), vec![&buf1, &buf2]);
-        dbg!(&_flag);
         let ports = ac
             .as_client()
             .ports(Some("port[12]"), None, PortFlags::empty());
-        dbg!(&ports);
         let mut jack_pipes = JackPipes::new(true);
         for p in ports.iter() {
             if let Err(err) = jack_pipes.add(p) {

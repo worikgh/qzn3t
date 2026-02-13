@@ -2,7 +2,7 @@
 // License: GPL-3.0
 
 use qzn3t_recorder::test_utils::common::{
-    WaveForm, dst_dir, generate_test_audio, make_test_play_client, play_test_audio,
+    WaveForm, dst_dir, find_zeros, generate_test_audio, make_test_play_client, play_test_audio,
     set_up_recorder, trim_audio,
 };
 
@@ -26,6 +26,40 @@ const AUDIO_DURATION: [u32; 4] = [1, 10, 100, 1_000];
 // Tests todo:
 // `get_audio_from_jack` when the pipe is disconnected.  Test the error
 
+/// The buffers recorded by the Jack sink are (sometimes) 1024 bytes
+/// longer than the buffer sent.  Of the two buffers passed here if
+/// they are different length return the extra data pretty printed as
+/// text I have found is long runs of zeros in the extra data in the
+/// longer buffer
+fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
+    let left_len = left.len();
+    let right_len = right.len();
+    if left_len != right_len {
+        let (short, long) = if left_len > right_len {
+            (right, left)
+        } else {
+            (left, right)
+        };
+        let len = long.len() - short.len();
+        let start = long.len().saturating_sub(2 * len);
+        let err_vec = long[start..].to_vec();
+        Some(pretty_buffer(&err_vec))
+    } else {
+        None
+    }
+}
+
+/// Prepare a buffer of f32 to be printed
+fn pretty_buffer(input: &[f32]) -> String {
+    let chunked = input.chunks(4);
+    chunked.fold("".to_string(), |a, b| {
+        format!(
+            "{a}{}\n",
+            b.iter().fold("".to_string(), |a, b| format!("{a}{b:>8.4}"))
+        )
+    })
+}
+
 /// Generate two audio tracks: sine and triangle waves.  Record both
 /// simultaneously and save them both to disc files.  Use the
 /// generated audio file to test the command line interface for
@@ -36,10 +70,11 @@ fn record_two_channels_and_play_back() {
     for audio_duration in AUDIO_DURATION.iter() {
         let audio_duration_ms = audio_duration;
 
-        let audio_buffer_sine = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Sine);
+        let audio_buffer_sine =
+            generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
         let audio_buffer_sine = trim_audio(&audio_buffer_sine);
 
-        let audio_buffer_tri = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Triangle);
+        let audio_buffer_tri = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
         let audio_buffer_tri = trim_audio(&audio_buffer_tri);
 
         // Directory recorded audio is sent to
@@ -57,7 +92,7 @@ fn record_two_channels_and_play_back() {
         );
 
         // Set up the recorder
-        // The inputs (Jack pipes to record) first
+        // The inputs (Jack pipes to record)
         let mut inputs = JackPipes::new(true);
         let port_tri = format!("{}:{port_tri}", ac.as_client().name());
         if let Err(err) = inputs.add(&port_tri) {
@@ -105,6 +140,14 @@ fn record_two_channels_and_play_back() {
         let rec_tri = trim_audio(&rec_tri);
 
         // The two recorded buffers must be identical to the source buffers
+        if let Some(dbg_msg) = dbg_buffers(&rec_sine, &audio_buffer_sine) {
+            eprint!("Error: Sine:\n{dbg_msg} ");
+            dbg!()
+        }
+        if let Some(dbg_msg) = dbg_buffers(&rec_tri, &audio_buffer_tri) {
+            eprint!("Drror: Tri:\n{dbg_msg} ");
+            dbg!()
+        }
         assert_eq!(rec_sine.len(), audio_buffer_sine.len());
         assert_eq!(rec_tri.len(), audio_buffer_tri.len());
         for i in 0..audio_buffer_sine.len() {
@@ -158,10 +201,11 @@ fn record_two_channels_and_play_back() {
 
         let client_name = "test_play_client";
         let ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+        let client_name = ac.as_client().name();
         let port_names = ac
             .as_client()
             .ports(Some(client_name), None, PortFlags::IS_INPUT);
-
+        // dbg!(&port_names);
         let mut outputs = JackPipes::new(false);
         for p in port_names.iter() {
             outputs.add(p).unwrap();
@@ -194,27 +238,226 @@ fn record_two_channels_and_play_back() {
             Err(err) => panic!("{err}"),
         };
         let ab_0 = trim_audio(audio_buffers.get_buffer_idx(0).unwrap());
-        {
-            let bf_0 = trim_audio(&buffers_new[0].lock().unwrap());
-            dbg!(&bf_0.len());
-            assert_eq!(ab_0.len() as i32 - bf_0.len() as i32, 0);
-            for idx in 0..ab_0.len() {
-                let a = ab_0[idx];
-                let b = bf_0[idx];
-                assert!((a - b).abs() < f32::EPSILON);
+        let ab_1 = trim_audio(audio_buffers.get_buffer_idx(1).unwrap());
+        let bf_0 = trim_audio(&buffers_new[0].lock().unwrap());
+        let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
+        for buf in [
+            (&ab_0, "&ab_0"),
+            (&ab_1, "&ab_1"),
+            (&bf_0, "&bf_0"),
+            (&bf_1, "&bf_1"),
+        ] {
+            let zeros = find_zeros(buf.0);
+            if !zeros.is_empty() {
+                eprint!("Zeros: {} {:?} @ {audio_duration}", buf.1, &zeros);
+                dbg![];
             }
         }
 
-        let ab_1 = trim_audio(audio_buffers.get_buffer_idx(1).unwrap());
-        {
-            let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
-            dbg!(ab_1.len(), bf_1.len());
-            assert_eq!(ab_1.len() as i32 - bf_1.len() as i32, 0);
-            for idx in 0..ab_1.len() {
-                let a = ab_1[idx];
-                let b = bf_1[idx];
-                assert!((a - b).abs() < f32::EPSILON);
-            }
+        if let Some(dbg_msg) = dbg_buffers(&ab_0, &bf_0) {
+            eprint!("Error: ab_0/bf_0:\n{dbg_msg} ");
+            dbg!()
+        }
+        // dbg!(&bf_0.len());
+        if let Some(dbg_msg) = dbg_buffers(&ab_1, &bf_1) {
+            eprint!("Error: ab_1/bf_1:\n{dbg_msg} ");
+            dbg!()
+        }
+        assert_eq!(ab_0.len() as i32 - bf_0.len() as i32, 0);
+        for idx in 0..ab_0.len() {
+            let a = ab_0[idx];
+            let b = bf_0[idx];
+            assert!((a - b).abs() < f32::EPSILON);
+        }
+        // dbg!(ab_1.len(), bf_1.len());
+        assert_eq!(ab_1.len() as i32 - bf_1.len() as i32, 0);
+        for idx in 0..ab_1.len() {
+            let a = ab_1[idx];
+            let b = bf_1[idx];
+            assert!((a - b).abs() < f32::EPSILON);
+        }
+    }
+}
+
+#[test]
+fn test_playback() {
+    let args: Vec<String> = std::env::args().collect();
+
+    let audio_duration_ms = match args.get(2) {
+        Some(s) => s,
+        None => &"100".to_string(),
+    };
+
+    let audio_duration_ms = match audio_duration_ms.parse::<u32>() {
+        Ok(u) => u,
+        Err(err) => {
+            panic!("Failed do get duration ms: {err}");
+        }
+    };
+    dbg!(&audio_duration_ms);
+    let audio_buffer_geo = generate_test_audio(220, 0.25, audio_duration_ms, WaveForm::Geometric);
+    let audio_buffer_geo = trim_audio(&audio_buffer_geo);
+
+    // Directory recorded audio is sent to
+    let output_path = dst_dir().join("geometric");
+
+    // Client to play the output:
+    let client_name = "integration_test";
+    // Output port
+    let port_name = "geometric";
+    let (ac, play_audio_f) = play_test_audio(client_name, vec![port_name], vec![&audio_buffer_geo]);
+    assert!(!play_audio_f.load(Ordering::Relaxed));
+
+    // Set up the recorder
+    let mut inputs = JackPipes::new(true);
+    let port_name_complete = format!("{}:{port_name}", ac.as_client().name());
+    if let Err(err) = inputs.add(&port_name_complete) {
+        panic!("{err}");
+    }
+    let mut app_data = set_up_recorder(vec![port_name_complete], &output_path);
+    if let Err(err) = app_data.handle_record() {
+        panic!("Called handle_recording(): {err}");
+    }
+
+    // Start the test signal
+    play_audio_f.store(true, Ordering::SeqCst);
+
+    // Wait for audio to stop
+    thread::sleep(Duration::from_millis(audio_duration_ms as u64));
+    let mut loop_cnt = 0;
+    let delay_ms = 100;
+    const LOOP_LIM: u32 = 10;
+    loop {
+        if !play_audio_f.load(Ordering::SeqCst) {
+            break;
+        }
+        if loop_cnt >= LOOP_LIM {
+            panic!(
+                "Audio has not stopped playing: {}ms elapsed",
+                loop_cnt * delay_ms
+            );
+        }
+        loop_cnt += 1;
+        thread::sleep(Duration::from_millis(100));
+    }
+    if let Err(err) = app_data.handle_audio_stop() {
+        panic!("Could not stop audio: {err}");
+    }
+
+    // Get two recorded buffers
+    let rec_geo = app_data.recorded_audio.get_buffer(0).unwrap();
+    let rec_geo = trim_audio(&rec_geo);
+
+    // The two recorded buffers must be identical to the source buffers
+    if let Some(dbg_msg) = dbg_buffers(&rec_geo, &audio_buffer_geo) {
+        eprint!("Error: geo:\n{dbg_msg} ");
+        dbg!()
+    }
+
+    let zero_runs_rec_geo = find_zeros(&rec_geo);
+    let zero_runs_audio_buffer_geo = find_zeros(&audio_buffer_geo);
+    if !zero_runs_rec_geo.is_empty() || !zero_runs_audio_buffer_geo.is_empty() {
+        dbg!(zero_runs_rec_geo);
+        dbg!(zero_runs_audio_buffer_geo);
+        panic!("rec_geo or audio_buffer_geo have zero runs");
+    }
+
+    assert_eq!(rec_geo.len(), audio_buffer_geo.len());
+
+    for i in 0..audio_buffer_geo.len() {
+        assert!((rec_geo[i] - audio_buffer_geo[i]).abs() < f32::EPSILON);
+    }
+
+    // Good so far.  The recorded buffer matches the input.  Now
+    // check the recorded files are the same
+
+    let audio_path = app_data.file_manager.make_paths().unwrap().0;
+    let metadata_path = app_data.file_manager.make_paths().unwrap().1;
+    let metadata: Metadata = match read_file_metadata(metadata_path) {
+        Ok(p) => p,
+        Err(err) => panic!("{err}"),
+    };
+    let channels = metadata.channels;
+    assert_eq!(channels, 1);
+    assert_eq!(metadata.sample_rate, get_sample_rate());
+    if let Ok(audio_buffer) = read_f32_vec_from_file(&audio_path, channels) {
+        let recovered_geo = audio_buffer.get_buffer(0).unwrap();
+        let recovered_geo = trim_audio(&recovered_geo);
+        assert_eq!(recovered_geo.len(), rec_geo.len());
+        for i in 0..rec_geo.len() {
+            assert!((rec_geo[i] - recovered_geo[i]).abs() < f32::EPSILON);
+        }
+    } else {
+        panic![];
+    }
+
+    // Test playing back the audio files from the previous test.
+    // Playback is simulated by having the Jack client sink audio int
+    // a shared buffer
+    let shared = Arc::new(Mutex::new(Vec::<f32>::new()));
+    // The client takes it as a vector
+    let buffers = vec![shared];
+    // The copy kept here (`.to_vec()` calls `clone` on cotents)
+    let buffers_shared = buffers.to_vec();
+
+    let port_names = vec!["playback_1".to_string()];
+    let client_name = "test_play_client";
+    let ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+    let client_name = ac.as_client().name();
+    let port_names = ac
+        .as_client()
+        .ports(Some(client_name), None, PortFlags::IS_INPUT);
+
+    // The pipes from the player being tested to the Jack client
+    // sinking audio in the shared buffers
+    let mut outputs = JackPipes::new(false);
+    for p in port_names.iter() {
+        outputs.add(p).unwrap();
+    }
+
+    let mut app_data = match App::initialise(JackPipes::new(true), outputs, &output_path, true) {
+        Ok(a) => a,
+        Err(err) => panic!("Cannot initalise AppData: {err}"),
+    };
+
+    // This blocks.
+    app_data.handle_kommand(Command::Play).unwrap();
+
+    // Check the buffers are the same
+    let file_path = match app_data.file_manager.make_paths() {
+        Ok(pp) => pp.0,
+        Err(err) => panic!("FileManager.make_paths(): {err}"),
+    };
+    let metadata_path = app_data.file_manager.make_paths().unwrap().1;
+    let metadata: Metadata = match read_file_metadata(metadata_path) {
+        Ok(p) => p,
+        Err(err) => panic!("{err}"),
+    };
+    let channels = metadata.channels;
+    assert_eq!(channels, 1);
+    assert_eq!(metadata.sample_rate, get_sample_rate());
+
+    let audio_buffers = match read_f32_vec_from_file(&file_path, channels) {
+        Ok(p) => p,
+        Err(err) => panic!("{err}"),
+    };
+    let ab_0 = trim_audio(audio_buffers.get_buffer_idx(0).unwrap());
+    let zero_runs = find_zeros(&ab_0);
+    if !zero_runs.is_empty() {
+        panic!("ab_0 has zero runs: {zero_runs:?}");
+    }
+    {
+        let bf_0 = trim_audio(&buffers_shared[0].lock().unwrap());
+        let zero_runs = find_zeros(&bf_0);
+        if !zero_runs.is_empty() {
+            panic!("bf_0 has zero runs: {zero_runs:?}");
+        }
+        dbg!(&bf_0.len());
+        assert_eq!(ab_0.len() as i32 - bf_0.len() as i32, 0);
+        for idx in 0..ab_0.len() {
+            let a = ab_0[idx];
+            let b = bf_0[idx];
+            assert!((a - b).abs() < f32::EPSILON);
         }
     }
 }
