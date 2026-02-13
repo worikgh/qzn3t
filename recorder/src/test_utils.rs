@@ -340,4 +340,69 @@ pub mod common {
     pub fn setup_test_dir() -> TempDir {
         tempfile::tempdir().expect("Failed to create temp dir")
     }
+
+    /// Find runs of zero in a buffer.  There is a bug where series of
+    /// zeros are being added to the buffer written to by the client
+    /// (created by `make_test_play_client` that sinks audio in shared
+    /// buffers).  This function returns an analysis of the buffer
+    /// returning the start index and length of series of zeros in the
+    /// supplied buffer
+    pub fn find_zeros(input: &[f32]) -> Vec<(usize, usize)> {
+        let mut ret = vec![];
+        let mut i = 0;
+
+        while i < input.len() {
+            if input[i].abs() < f32::EPSILON {
+                let start = i;
+                while i < input.len() && input[i].abs() < f32::EPSILON {
+                    i += 1;
+                }
+                let length = i - start;
+                if length > 1 {
+                    ret.push((start, length));
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        ret
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_zeros_detects_zero_runs_correctly() {
+        let input: Vec<f32> = vec![
+            1.0,
+            0.0,
+            0.0,  // zero run at index 1 length 2
+            -0.0, // treated as zero (IEEE -0.0)
+            2.5,
+            3.0,
+            0.0, // zero run at index 6 length 1
+            0.0,
+            0.0,                // run continues -> index 6 length 3
+            -0.0,               // continues (index 6 length 4)
+            4.0,                // non-zero
+            f32::EPSILON / 2.0, // smaller than EPSILON => treated as zero
+            0.0,
+            5.0,
+            0.0,
+            1.0,
+        ];
+
+        // Expected runs:
+        // - start 1, length 3 (indices 1..4 include 0.0,0.0,-0.0)
+        // - start 6, length 4 (indices 6..10 include 0.0,0.0,-0.0,-0.0)
+        // - start 11, length 2 (EPSILON/2 treated as zero)
+        // - start 14, length 1, not counted
+        let expected = vec![(1usize, 3usize), (6usize, 4usize), (11usize, 2usize)];
+
+        let got = common::find_zeros(&input);
+        assert_eq!(got, expected);
+    }
 }
