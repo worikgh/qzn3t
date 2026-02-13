@@ -33,6 +33,7 @@ pub mod common {
         Sine,
         Triangle,
         Square,
+        Geometric,
     }
 
     /// Generate a buffer of mono audio samples.
@@ -52,6 +53,12 @@ pub mod common {
         const PI: f32 = std::f32::consts::PI;
         let angular_frequency = 2.0 * PI * frequency as f32 / sample_rate as f32;
         match wave_form {
+            // The samples go from 1.0 and go linearly to -1.0 over
+            // the duration.
+            WaveForm::Geometric => (0..duration_samples)
+                .map(|n| 1.0 - 2.0 * n as f32 / duration_samples as f32)
+                // .map(|n| 1.0 - 2.0 * duration_samples as f32 / n as f32)
+                .collect(),
             WaveForm::Sine => {
                 // sine(2πft)
                 (0..duration_samples)
