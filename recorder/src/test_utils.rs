@@ -130,18 +130,6 @@ pub mod common {
         fn process(&mut self, _: &Client, ps: &ProcessScope) -> Control {
             for (idx, p) in self.ports.iter().enumerate() {
                 let t = p.as_slice(ps);
-                let zeros = find_zeros(t);
-                // It is natural to get buffers ending with zeros.  I
-                // am interested in buffers that start with, but do
-                // not end with, a sequence of zeros
-                let zeros = zeros
-                    .iter()
-                    .filter(|a| a.0 + a.1 != 1024)
-                    .collect::<Vec<&(usize, usize)>>();
-                if !zeros.is_empty() {
-                    eprint!("TestPlayProcessHandler: Zeros: {zeros:?} ");
-                    dbg![];
-                }
                 self.buffers[idx].lock().unwrap().extend_from_slice(t);
             }
             Control::Continue
@@ -179,6 +167,20 @@ pub mod common {
         position: usize,
         play_audio_f: Arc<AtomicBool>,
         active: Arc<AtomicBool>,
+
+        /// Debugging the bug where runs of zeros are inserted, mostly
+        /// to one channel.  COuld the zeros and non zeros sent to
+        /// each channel
+        zeros_sent: Arc<Mutex<Vec<u32>>>,
+        non_zeros_sent: Arc<Mutex<Vec<u32>>>,
+    }
+    impl TestAudioOutProcess {
+        pub fn get_zeros_sent(&self, channel: u32) -> u32 {
+            self.zeros_sent.lock().unwrap()[channel as usize]
+        }
+        pub fn get_non_zeros_sent(&self, channel: u32) -> u32 {
+            self.non_zeros_sent.lock().unwrap()[channel as usize]
+        }
     }
     impl ProcessHandler for TestAudioOutProcess {
         fn process(&mut self, _c: &Client, ps: &ProcessScope) -> Control {
@@ -222,6 +224,11 @@ pub mod common {
                     for (i, out) in outputs.iter_mut().enumerate().take(olen) {
                         let sample = self.audio_buffers[i][self.position];
                         out[j] = sample;
+                        if sample.abs() <= f32::EPSILON {
+                            self.zeros_sent.lock().unwrap()[i] += 1;
+                        } else {
+                            self.non_zeros_sent.lock().unwrap()[i] += 1;
+                        }
                     }
                     self.position += 1;
                 } else {
@@ -278,6 +285,8 @@ pub mod common {
             position: 0,
             play_audio_f,
             active: active_flag.clone(),
+            zeros_sent: Arc::new(Mutex::new(vec![])),
+            non_zeros_sent: Arc::new(Mutex::new(vec![])),
         };
         match client.activate_async(Notifications, out_process) {
             Ok(ac) => {
@@ -318,7 +327,7 @@ pub mod common {
     /// Jack client and flag `play_audio_f` that controls the audio
     /// playing. Audio plays when `play_audio_f` is true and is stopped
     /// when false.
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::type_complexity)]
     pub fn play_test_audio(
         client_name: &str,
         port_names: Vec<&str>,
@@ -326,20 +335,77 @@ pub mod common {
     ) -> (
         AsyncClient<Notifications, TestAudioOutProcess>,
         Arc<AtomicBool>,
+        Arc<Mutex<Vec<u32>>>,
+        Arc<Mutex<Vec<u32>>>,
     ) {
         // Exactly one port for each buffer
         assert_eq!(port_names.len(), audio_data.len());
         let play_audio_f = Arc::new(AtomicBool::new(false));
-        let ac = make_jack_client_port(
-            client_name,
-            port_names,
-            audio_data
-                .iter()
-                .map(|b| b.to_vec())
-                .collect::<Vec<Vec<f32>>>(),
-            play_audio_f.clone(),
-        );
-        (ac, play_audio_f)
+        let audio_buffers = audio_data
+            .iter()
+            .map(|b| b.to_vec())
+            .collect::<Vec<Vec<f32>>>();
+        // let ac = make_jack_client_port(
+        //     client_name,
+        //     port_names,
+        //     audio_data
+        //         .iter()
+        //         .map(|b| b.to_vec())
+        //         .collect::<Vec<Vec<f32>>>(),
+        //     play_audio_f.clone(),
+        // );
+
+        assert_eq!(port_names.len(), audio_buffers.len());
+
+        // Do not return the active client until it has started
+        let active_flag = Arc::new(AtomicBool::new(false));
+
+        let (client, _status) =
+            match jack::Client::new(client_name, jack::ClientOptions::NO_START_SERVER) {
+                Ok(cs) => cs,
+                Err(err) => panic!("Failed creating test client {client_name}: {err}"),
+            };
+
+        // The names of the ports to output data on
+        let outputs: Vec<jack::Port<jack::AudioOut>> = port_names
+            .iter()
+            .map(|p| match client.register_port(p, AudioOut::default()) {
+                Ok(p) => p,
+                Err(err) => {
+                    panic!("Cannot create output port {p} for client {client_name}. {err}")
+                }
+            })
+            .collect();
+        let channel_count = audio_buffers.len();
+        let zeros_sent = Arc::new(Mutex::new(vec![0_u32; channel_count]));
+        let non_zeros_sent = Arc::new(Mutex::new(vec![0_u32; channel_count]));
+        let out_process = TestAudioOutProcess {
+            audio_buffers,
+            outputs,
+            position: 0,
+            play_audio_f: play_audio_f.clone(),
+            active: active_flag.clone(),
+            zeros_sent: zeros_sent.clone(),
+            non_zeros_sent: non_zeros_sent.clone(),
+        };
+        let ac = match client.activate_async(Notifications, out_process) {
+            Ok(ac) => {
+                let mut activate_wait = 0;
+                loop {
+                    if !active_flag.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(1));
+                    activate_wait += 1;
+                    if activate_wait == 100 {
+                        panic!("Could not activate client");
+                    }
+                }
+                ac
+            }
+            Err(err) => panic!("Cannot create async for client {client_name}. {err}"),
+        };
+        (ac, play_audio_f, zeros_sent, non_zeros_sent)
     }
 
     /// The destination directory.  Hard coded into repository/crate structure

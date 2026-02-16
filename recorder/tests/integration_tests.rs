@@ -60,10 +60,10 @@ fn pretty_buffer(input: &[f32]) -> String {
     })
 }
 
-/// Generate two audio tracks: sine and triangle waves.  Record both
-/// simultaneously and save them both to disc files.  Use the
+/// Generate two identical audio tracks (WaveForm::Geometric).  Record
+/// both simultaneously and save them both to disc files.  Use the
 /// generated audio file to test the command line interface for
-/// playing back files
+/// playing back files.
 #[test]
 fn record_two_channels_and_play_back() {
     // The test audio
@@ -85,7 +85,7 @@ fn record_two_channels_and_play_back() {
         let port_tri = "tri-wave";
 
         let client_name = "integration_test";
-        let (ac, play_audio_f) = play_test_audio(
+        let (ac, play_audio_f, zeros, non_zeros) = play_test_audio(
             client_name,
             vec![port_sine, port_tri],
             vec![&audio_buffer_sine, &audio_buffer_tri],
@@ -218,7 +218,18 @@ fn record_two_channels_and_play_back() {
         };
 
         app_data.handle_kommand(Command::Play).unwrap();
-
+        let eq = |v: &[u32]| -> bool {
+            match v.first() {
+                None => true, // empty: consider all-equal
+                Some(&first) => v.iter().all(|&x| x == first),
+            }
+        };
+        if !eq(&zeros.lock().unwrap()) {
+            dbg!(&zeros);
+        }
+        if !eq(&non_zeros.lock().unwrap()) {
+            dbg!(&non_zeros);
+        }
         // Check the buffers are the same
         let file_path = match app_data.file_manager.make_paths() {
             Ok(pp) => pp.0,
@@ -305,7 +316,8 @@ fn test_playback() {
     let client_name = "integration_test";
     // Output port
     let port_name = "geometric";
-    let (ac, play_audio_f) = play_test_audio(client_name, vec![port_name], vec![&audio_buffer_geo]);
+    let (ac, play_audio_f, _, _) =
+        play_test_audio(client_name, vec![port_name], vec![&audio_buffer_geo]);
     assert!(!play_audio_f.load(Ordering::Relaxed));
 
     // Set up the recorder
@@ -476,7 +488,7 @@ fn record_audio() {
         // The Jack client playing the test audio to be recorded
         let port_name = "record_audio";
         let client_name = "integration_test";
-        let (ac, play_audio_flag) =
+        let (ac, play_audio_flag, _, _) =
             play_test_audio(client_name, vec![port_name], vec![&audio_buffer]);
 
         // The port to record audio data from

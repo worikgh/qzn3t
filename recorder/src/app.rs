@@ -764,7 +764,8 @@ mod tests {
         let length_audio = 100u32; // MS
         let buf1 = generate_test_audio(110, 0.42, length_audio, WaveForm::Square);
         let buf2 = generate_test_audio(100, 0.82, length_audio, WaveForm::Triangle);
-        let (ac, _flag) = play_test_audio("test_jack_pipes_add", ports.clone(), vec![&buf1, &buf2]);
+        let (ac, _flag, _, _) =
+            play_test_audio("test_jack_pipes_add", ports.clone(), vec![&buf1, &buf2]);
         let ports = ac
             .as_client()
             .ports(Some("port[12]"), None, PortFlags::empty());
