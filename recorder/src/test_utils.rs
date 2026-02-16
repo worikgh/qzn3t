@@ -135,6 +135,13 @@ pub mod common {
             Control::Continue
         }
     }
+
+    /// Set up a client (named `name`) with ports (names in
+    /// `port_names`) that reads audio data form the ports and write
+    /// it into shared buffers (`buffers`).  This is for testing,
+    /// writing the buffers in lieu of sending to audio hardware.  The
+    /// buffers can be examined to check what data would have been
+    /// sent to audio hardware.
     pub fn make_test_play_client(
         name: &str,
         port_names: Vec<String>,
