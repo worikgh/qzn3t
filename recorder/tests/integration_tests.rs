@@ -70,39 +70,38 @@ fn record_two_channels_and_play_back() {
     for audio_duration in AUDIO_DURATION.iter() {
         let audio_duration_ms = audio_duration;
 
-        let audio_buffer_sine =
-            generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
-        let audio_buffer_sine = trim_audio(&audio_buffer_sine);
+        let audio_buffer_one = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
+        let audio_buffer_one = trim_audio(&audio_buffer_one);
 
-        let audio_buffer_tri = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
-        let audio_buffer_tri = trim_audio(&audio_buffer_tri);
+        let audio_buffer_two = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
+        let audio_buffer_two = trim_audio(&audio_buffer_two);
 
         // Directory recorded audio is sent to
         let output_path = dst_dir().join("two_channels");
 
         // Client to play the output:
-        let port_sine = "sine-wave";
-        let port_tri = "tri-wave";
+        let port_one = "sine-wave";
+        let port_two = "tri-wave";
 
         let client_name = "integration_test";
         let (ac, play_audio_f, zeros, non_zeros) = play_test_audio(
             client_name,
-            vec![port_sine, port_tri],
-            vec![&audio_buffer_sine, &audio_buffer_tri],
+            vec![port_one, port_two],
+            vec![&audio_buffer_one, &audio_buffer_two],
         );
 
         // Set up the recorder
         // The inputs (Jack pipes to record)
         let mut inputs = JackPipes::new(true);
-        let port_tri = format!("{}:{port_tri}", ac.as_client().name());
-        if let Err(err) = inputs.add(&port_tri) {
+        let port_two = format!("{}:{port_two}", ac.as_client().name());
+        if let Err(err) = inputs.add(&port_two) {
             panic!("{err}");
         }
-        let port_sine_complete = format!("{}:{port_sine}", ac.as_client().name());
-        if let Err(err) = inputs.add(&port_sine_complete) {
+        let port_one_complete = format!("{}:{port_one}", ac.as_client().name());
+        if let Err(err) = inputs.add(&port_one_complete) {
             panic!("{err}");
         }
-        let mut recorder = set_up_recorder(vec![port_sine_complete, port_tri], &output_path);
+        let mut recorder = set_up_recorder(vec![port_one_complete, port_two], &output_path);
 
         // Start the recorder.
         if let Err(err) = recorder.handle_record() {
@@ -134,27 +133,27 @@ fn record_two_channels_and_play_back() {
             panic!("Could not stop audio: {err}");
         }
         // Get two recorded buffers
-        let rec_sine = recorder.recorded_audio.get_buffer(0).unwrap();
-        let rec_sine = trim_audio(&rec_sine);
-        let rec_tri = recorder.recorded_audio.get_buffer(1).unwrap();
-        let rec_tri = trim_audio(&rec_tri);
+        let rec_one = recorder.recorded_audio.get_buffer(0).unwrap();
+        let rec_one = trim_audio(&rec_one);
+        let rec_two = recorder.recorded_audio.get_buffer(1).unwrap();
+        let rec_two = trim_audio(&rec_two);
 
         // The two recorded buffers must be identical to the source buffers
-        if let Some(dbg_msg) = dbg_buffers(&rec_sine, &audio_buffer_sine) {
+        if let Some(dbg_msg) = dbg_buffers(&rec_one, &audio_buffer_one) {
             eprint!("Error: Sine:\n{dbg_msg} ");
             dbg!()
         }
-        if let Some(dbg_msg) = dbg_buffers(&rec_tri, &audio_buffer_tri) {
+        if let Some(dbg_msg) = dbg_buffers(&rec_two, &audio_buffer_two) {
             eprint!("Drror: Tri:\n{dbg_msg} ");
             dbg!()
         }
-        assert_eq!(rec_sine.len(), audio_buffer_sine.len());
-        assert_eq!(rec_tri.len(), audio_buffer_tri.len());
-        for i in 0..audio_buffer_sine.len() {
-            assert!((rec_sine[i] - audio_buffer_sine[i]).abs() < f32::EPSILON);
+        assert_eq!(rec_one.len(), audio_buffer_one.len());
+        assert_eq!(rec_two.len(), audio_buffer_two.len());
+        for i in 0..audio_buffer_one.len() {
+            assert!((rec_one[i] - audio_buffer_one[i]).abs() < f32::EPSILON);
         }
-        for i in 0..audio_buffer_tri.len() {
-            assert!((rec_tri[i] - audio_buffer_tri[i]).abs() < f32::EPSILON);
+        for i in 0..audio_buffer_two.len() {
+            assert!((rec_two[i] - audio_buffer_two[i]).abs() < f32::EPSILON);
         }
 
         // Good so far.  The recorded buffers match the input.  Now
@@ -171,17 +170,17 @@ fn record_two_channels_and_play_back() {
         assert_eq!(metadata.sample_rate, get_sample_rate());
         match read_f32_vec_from_file(&audio_path, channels) {
             Ok(audio_buffer) => {
-                let recovered_sine = audio_buffer.get_buffer(0).unwrap();
-                let recovered_sine = trim_audio(&recovered_sine);
-                let recovered_tri = trim_audio(&audio_buffer.get_buffer(1).unwrap());
-                assert_eq!(recovered_tri.len(), rec_tri.len());
-                assert_eq!(recovered_sine.len(), rec_sine.len());
-                for i in 0..rec_tri.len() {
-                    assert!((rec_tri[i] - recovered_tri[i]).abs() < f32::EPSILON);
+                let recovered_one = audio_buffer.get_buffer(0).unwrap();
+                let recovered_one = trim_audio(&recovered_one);
+                let recovered_two = trim_audio(&audio_buffer.get_buffer(1).unwrap());
+                assert_eq!(recovered_two.len(), rec_two.len());
+                assert_eq!(recovered_one.len(), rec_one.len());
+                for i in 0..rec_two.len() {
+                    assert!((rec_two[i] - recovered_two[i]).abs() < f32::EPSILON);
                 }
 
-                for i in 0..rec_sine.len() {
-                    assert!((rec_sine[i] - recovered_sine[i]).abs() < f32::EPSILON);
+                for i in 0..rec_one.len() {
+                    assert!((rec_one[i] - recovered_one[i]).abs() < f32::EPSILON);
                 }
             }
             Err(err) => {
