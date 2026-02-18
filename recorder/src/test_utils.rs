@@ -223,23 +223,17 @@ pub mod common {
 
             // The frame lengths must all be the same.
             let frames: Vec<usize> = outputs.iter().map(|o| o.len()).collect();
-            assert!(
-                frames
-                    .first()
-                    .map(|first| frames.iter().all(|x| x == first))
-                    .unwrap_or(false)
-            );
-            let frames: &usize = frames.first().unwrap();
+            assert!(frames.windows(2).all(|w| w[0] == w[1]) || frames.len() <= 1);
+            let frames: usize = *frames.first().unwrap();
 
             // All the audio buffers must be the same length
             assert!(
                 self.audio_buffers
                     .first()
-                    .map(|first| self.audio_buffers.iter().all(|x| x.len() == first.len()))
-                    .unwrap_or(false)
+                    .is_some_and(|first| self.audio_buffers.iter().all(|x| x.len() == first.len()))
             );
             let slen = self.audio_buffers[0].len();
-            for j in 0..*frames {
+            for j in 0..frames {
                 // Loop audio if necessary
                 if self.position >= slen {
                     self.position = 0;
@@ -265,7 +259,6 @@ pub mod common {
                     }
                 }
             }
-
             Control::Continue
         }
     }
