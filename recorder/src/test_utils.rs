@@ -125,12 +125,21 @@ pub mod common {
         ports: Vec<Port<AudioIn>>,
         /// A buffer for each port, shared with caller for verifying test
         buffers: Vec<Arc<Mutex<Vec<f32>>>>,
+        zeros_sent: Arc<Mutex<Vec<u32>>>,
+        non_zeros_sent: Arc<Mutex<Vec<u32>>>,
     }
     impl ProcessHandler for TestPlayProcessHandler {
         fn process(&mut self, _: &Client, ps: &ProcessScope) -> Control {
             for (idx, p) in self.ports.iter().enumerate() {
-                let t = p.as_slice(ps);
-                self.buffers[idx].lock().unwrap().extend_from_slice(t);
+                let samples = p.as_slice(ps);
+                for s in samples.iter() {
+                    if s.abs() <= f32::EPSILON {
+                        self.zeros_sent.lock().unwrap()[idx] += 1;
+                    } else {
+                        self.non_zeros_sent.lock().unwrap()[idx] += 1;
+                    }
+                }
+                self.buffers[idx].lock().unwrap().extend_from_slice(samples);
             }
             Control::Continue
         }
@@ -142,12 +151,21 @@ pub mod common {
     /// writing the buffers in lieu of sending to audio hardware.  The
     /// buffers can be examined to check what data would have been
     /// sent to audio hardware.
+    #[allow(clippy::type_complexity)]
     pub fn make_test_play_client(
         name: &str,
         port_names: Vec<String>,
         buffers: Vec<Arc<Mutex<Vec<f32>>>>,
-    ) -> Result<AsyncClient<TestPlayNotificationHandler, TestPlayProcessHandler>, RecorderError>
-    {
+    ) -> Result<
+        (
+            AsyncClient<TestPlayNotificationHandler, TestPlayProcessHandler>,
+            // This counts zeros received per audio channel
+            Arc<Mutex<Vec<u32>>>,
+            // This counts non-zeros received per audio channel
+            Arc<Mutex<Vec<u32>>>,
+        ),
+        RecorderError,
+    > {
         let (client, _) = Client::new(name, jack::ClientOptions::NO_START_SERVER)
             .expect("make_test_play_client: Cannot make Jack client");
 
@@ -160,11 +178,20 @@ pub mod common {
         }
 
         let notification_handler = TestPlayNotificationHandler;
-        let process_handler = TestPlayProcessHandler { buffers, ports };
+        let channels_count = port_names.len();
+        let zeros_sent = Arc::new(Mutex::new(vec![0u32; channels_count]));
+        let non_zeros_sent = Arc::new(Mutex::new(vec![0u32; channels_count]));
+
+        let process_handler = TestPlayProcessHandler {
+            buffers,
+            ports,
+            zeros_sent: zeros_sent.clone(),
+            non_zeros_sent: non_zeros_sent.clone(),
+        };
         let ac = client
             .activate_async(notification_handler, process_handler)
             .unwrap();
-        Ok(ac)
+        Ok((ac, zeros_sent, non_zeros_sent))
     }
 
     #[derive(Debug)]
@@ -180,14 +207,6 @@ pub mod common {
         /// each channel
         zeros_sent: Arc<Mutex<Vec<u32>>>,
         non_zeros_sent: Arc<Mutex<Vec<u32>>>,
-    }
-    impl TestAudioOutProcess {
-        pub fn get_zeros_sent(&self, channel: u32) -> u32 {
-            self.zeros_sent.lock().unwrap()[channel as usize]
-        }
-        pub fn get_non_zeros_sent(&self, channel: u32) -> u32 {
-            self.non_zeros_sent.lock().unwrap()[channel as usize]
-        }
     }
     impl ProcessHandler for TestAudioOutProcess {
         fn process(&mut self, _c: &Client, ps: &ProcessScope) -> Control {
@@ -231,10 +250,12 @@ pub mod common {
                     for (i, out) in outputs.iter_mut().enumerate().take(olen) {
                         let sample = self.audio_buffers[i][self.position];
                         out[j] = sample;
+                        let mut zeros_sent = self.zeros_sent.lock().unwrap();
+                        let mut non_zeros_sent = self.non_zeros_sent.lock().unwrap();
                         if sample.abs() <= f32::EPSILON {
-                            self.zeros_sent.lock().unwrap()[i] += 1;
+                            zeros_sent[i] += 1;
                         } else {
-                            self.non_zeros_sent.lock().unwrap()[i] += 1;
+                            non_zeros_sent[i] += 1;
                         }
                     }
                     self.position += 1;

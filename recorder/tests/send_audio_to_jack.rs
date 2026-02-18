@@ -68,8 +68,8 @@ fn test_send_audo_to_jack() {
     ];
 
     let client_name = "test_play_client";
-    let _ac = make_test_play_client(client_name, port_names, buffers).unwrap();
-    let port_names = _ac
+    let (ac, _, _) = make_test_play_client(client_name, port_names, buffers).unwrap();
+    let port_names = ac
         .as_client()
         .ports(Some(client_name), None, PortFlags::IS_INPUT);
 

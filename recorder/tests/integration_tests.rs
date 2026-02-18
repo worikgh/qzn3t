@@ -84,7 +84,7 @@ fn record_two_channels_and_play_back() {
         let port_two = "tri-wave";
 
         let client_name = "integration_test";
-        let (ac, play_audio_f, zeros, non_zeros) = play_test_audio(
+        let (ac, play_audio_f, source_zeros, source_non_zeros) = play_test_audio(
             client_name,
             vec![port_one, port_two],
             vec![&audio_buffer_one, &audio_buffer_two],
@@ -199,7 +199,8 @@ fn record_two_channels_and_play_back() {
         let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
 
         let client_name = "test_play_client";
-        let ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+        let (ac, sink_zeros, sink_non_zeros) =
+            make_test_play_client(client_name, port_names, buffers).unwrap();
         let client_name = ac.as_client().name();
         let port_names = ac
             .as_client()
@@ -216,18 +217,30 @@ fn record_two_channels_and_play_back() {
             Err(err) => panic!("Cannot initalise AppData: {err}"),
         };
 
+        // This will block
         app_data.handle_kommand(Command::Play).unwrap();
+
+        // Count the zero and non-zero samples from the source and in
+        // the sink.  Because both channels are identicle these should
+        // be too
         let eq = |v: &[u32]| -> bool {
             match v.first() {
                 None => true, // empty: consider all-equal
                 Some(&first) => v.iter().all(|&x| x == first),
             }
         };
-        if !eq(&zeros.lock().unwrap()) {
-            dbg!(&zeros);
+        // The source zeros/non_zeros per channel
+        if !eq(&source_zeros.lock().unwrap()) {
+            dbg!(&source_zeros);
         }
-        if !eq(&non_zeros.lock().unwrap()) {
-            dbg!(&non_zeros);
+        if !eq(&source_non_zeros.lock().unwrap()) {
+            dbg!(&source_non_zeros);
+        }
+        if !eq(&sink_zeros.lock().unwrap()) {
+            dbg!(sink_zeros);
+        }
+        if !eq(&sink_non_zeros.lock().unwrap()) {
+            dbg!(sink_non_zeros);
         }
         // Check the buffers are the same
         let file_path = match app_data.file_manager.make_paths() {
@@ -413,7 +426,7 @@ fn test_playback() {
 
     let port_names = vec!["playback_1".to_string()];
     let client_name = "test_play_client";
-    let ac = make_test_play_client(client_name, port_names, buffers).unwrap();
+    let (ac, _, _) = make_test_play_client(client_name, port_names, buffers).unwrap();
     let client_name = ac.as_client().name();
     let port_names = ac
         .as_client()
