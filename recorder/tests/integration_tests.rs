@@ -45,7 +45,7 @@ fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
         let mut v: f32 = short[0];
         let mut idx = 1;
         while idx <= short.len() {
-            let t = short[idx];
+            let t = if idx == short.len() { v } else { short[idx] };
             if (t - v).abs() > f32::EPSILON || idx == short.len() {
                 ret = format!("{ret}{v}:{idx} ");
                 v = t;
@@ -56,7 +56,7 @@ fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
         let mut v: f32 = long[0];
         let mut idx = 1;
         while idx <= long.len() {
-            let t = long[idx];
+            let t = if idx == long.len() { v } else { long[idx] };
             if (t - v).abs() > f32::EPSILON || idx == long.len() {
                 ret = format!("{ret}{v}:{idx} ");
                 v = t;
