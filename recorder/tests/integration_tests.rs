@@ -2,8 +2,8 @@
 // License: GPL-3.0
 
 use qzn3t_recorder::test_utils::common::{
-    WaveForm, dst_dir, find_zeros, generate_test_audio, make_test_play_client, play_test_audio,
-    set_up_recorder, trim_audio,
+    WaveForm, describe_linear_buffer, dst_dir, find_zeros, generate_test_audio,
+    make_test_play_client, play_test_audio, set_up_recorder, trim_audio,
 };
 
 use jack::PortFlags;
@@ -44,29 +44,8 @@ fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
             (left, right)
         };
         let mut ret = "Short: ".to_string();
-        if !short.is_empty() {
-            let mut v: f32 = short[0];
-            let mut idx = 1;
-            while idx <= short.len() {
-                let t = if idx == short.len() { v } else { short[idx] };
-                if (t - v).abs() > f32::EPSILON || idx == short.len() {
-                    ret = format!("{ret}{v}:{idx} ");
-                    v = t;
-                }
-                idx += 1;
-            }
-        }
-        ret = format!("{ret}\nLong:  ");
-        let mut v: f32 = long[0];
-        let mut idx = 1;
-        while idx <= long.len() {
-            let t = if idx == long.len() { v } else { long[idx] };
-            if (t - v).abs() > f32::EPSILON || idx == long.len() {
-                ret = format!("{ret}{v}:{idx} ");
-                v = t;
-            }
-            idx += 1;
-        }
+        ret = format!("{ret}{}", describe_linear_buffer(short));
+        ret = format!("{ret}\nLong:  {}", describe_linear_buffer(long));
         Some(ret)
     } else {
         None

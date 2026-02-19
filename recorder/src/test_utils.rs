@@ -460,6 +460,36 @@ pub mod common {
 
         ret
     }
+    /// Testing zeros bug with constant (linear) buffers.  This function
+    /// reports each run of numbers in the buffer, where it starts, and
+    /// how long it is.  A "good" buffer will have one entry, starting at
+    /// 0, and continuing for the entire length of the buffer
+    pub fn describe_linear_buffer(buffer: &[f32]) -> String {
+        let mut ret = "".to_string();
+        if buffer.is_empty() {
+            return ret;
+        }
+        let mut idx: usize = 0;
+        let mut start = idx;
+        let mut len = 0;
+        let mut v = buffer[0];
+
+        while idx < buffer.len() {
+            let t = buffer[idx];
+            if (t - v).abs() <= f32::EPSILON {
+                len += 1;
+            } else {
+                // Value changed
+                ret = format!("{ret}{v}:{start}:{len} ");
+                start = idx;
+                len = 1;
+                v = t;
+            }
+            idx += 1;
+        }
+        ret = format!("{ret}{v}:{start}:{len} ");
+        ret
+    }
 }
 
 #[cfg(test)]
