@@ -101,10 +101,12 @@ fn record_two_channels_and_play_back() {
         let output_path = dst_dir().join("two_channels");
 
         // Client to play the output:
-        let port_one = "sine-wave";
-        let port_two = "tri-wave";
+        let port_one = "port-one";
+        let port_two = "port-two";
 
         let client_name = "integration_test";
+
+        // Set up audio to play.  Will start when `play_audio_f` is set
         let (ac, play_audio_f, source_zeros, source_non_zeros) = play_test_audio(
             client_name,
             vec![port_one, port_two],
@@ -114,22 +116,23 @@ fn record_two_channels_and_play_back() {
         // Set up the recorder
         // The inputs (Jack pipes to record)
         let mut inputs = JackPipes::new(true);
-        let port_two = format!("{}:{port_two}", ac.as_client().name());
-        if let Err(err) = inputs.add(&port_two) {
-            panic!("{err}");
-        }
         let port_one_complete = format!("{}:{port_one}", ac.as_client().name());
         if let Err(err) = inputs.add(&port_one_complete) {
             panic!("{err}");
         }
-        let mut recorder = set_up_recorder(vec![port_one_complete, port_two], &output_path);
+        let port_two_complete = format!("{}:{port_two}", ac.as_client().name());
+        if let Err(err) = inputs.add(&port_two_complete) {
+            panic!("{err}");
+        }
+        let mut recorder =
+            set_up_recorder(vec![port_one_complete, port_two_complete], &output_path);
 
         // Start the recorder.
         if let Err(err) = recorder.handle_record() {
             panic!("Called handle_recording(): {err}");
         }
 
-        // Start the test signal
+        // Start the test audio
         play_audio_f.store(true, Ordering::SeqCst);
 
         // Wait for audio to stop
@@ -153,6 +156,7 @@ fn record_two_channels_and_play_back() {
         if let Err(err) = recorder.handle_audio_stop() {
             panic!("Could not stop audio: {err}");
         }
+
         // Get two recorded buffers
         let rec_one = recorder.recorded_audio.get_buffer(0).unwrap();
         let rec_one = trim_audio(&rec_one);
@@ -211,17 +215,19 @@ fn record_two_channels_and_play_back() {
             }
         };
 
-        // Test playing back the audio files from the previous test
-        let buffers = vec![
+        // Test playing back the audio files from the previous test.
+        // The source is the recorded data on the file system plaed by
+        // `play` and the sink are two shred buffers
+        let buffers_to_client = vec![
             Arc::new(Mutex::new(Vec::<f32>::new())),
             Arc::new(Mutex::new(Vec::<f32>::new())),
         ];
-        let buffers_new = buffers.to_vec();
-        let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
+        let buffers_here = buffers_to_client.to_vec();
 
         let client_name = "test_play_client";
+        let port_names = vec!["playback_1".to_string(), "playback_2".to_string()];
         let (ac, sink_zeros, sink_non_zeros) =
-            make_test_play_client(client_name, port_names, buffers).unwrap();
+            make_test_play_client(client_name, port_names, buffers_to_client).unwrap();
         let client_name = ac.as_client().name();
         let port_names = ac
             .as_client()
@@ -283,8 +289,8 @@ fn record_two_channels_and_play_back() {
         };
         let ab_0 = trim_audio(audio_buffers.get_buffer_idx(0).unwrap());
         let ab_1 = trim_audio(audio_buffers.get_buffer_idx(1).unwrap());
-        let bf_0 = trim_audio(&buffers_new[0].lock().unwrap());
-        let bf_1 = trim_audio(&buffers_new[1].lock().unwrap());
+        let bf_0 = trim_audio(&buffers_here[0].lock().unwrap());
+        let bf_1 = trim_audio(&buffers_here[1].lock().unwrap());
         for buf in [
             (&ab_0, "&ab_0"),
             (&ab_1, "&ab_1"),
