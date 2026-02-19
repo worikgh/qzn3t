@@ -15,6 +15,8 @@ use qzn3t_recorder::{
 };
 
 use std::{
+    fs::OpenOptions,
+    io::Write,
     sync::{Arc, Mutex, atomic::Ordering},
     thread,
     time::Duration,
@@ -81,6 +83,117 @@ fn pretty_buffer(input: &[f32]) -> String {
             b.iter().fold("".to_string(), |a, b| format!("{a}{b:>8.4}"))
         )
     })
+}
+
+/// Write a file that has valid audio data in it.  Two channels, 100
+/// samples per channel, channel one (c1) constant 0.25, channel two
+/// (c2) constant 0.75.  Play the file back through the shared buffer
+/// test client and check it
+#[test]
+fn test_play_cmd() {
+    // Audio data
+    const LEN: usize = 10_000;
+    let c1 = vec![0.25f32; LEN];
+    let c2 = vec![0.75f32; LEN];
+
+    let audio_data: Vec<f32> = c1
+        .clone()
+        .into_iter()
+        .zip(c2.clone())
+        .flat_map(|(a, b)| [a, b])
+        .collect();
+    assert!(find_zeros(&audio_data).is_empty());
+
+    let raw_path = dst_dir().join("test_playback.raw");
+    let metadata_path = dst_dir().join("test_playback.json");
+
+    // Write the raw data
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&raw_path)
+            .unwrap();
+        let bytes: Vec<u8> = audio_data
+            .iter()
+            .flat_map(|&sample| sample.to_le_bytes())
+            .collect();
+
+        file.write_all(&bytes).unwrap();
+    }
+    // Write the metadata
+    {
+        let meta_data = Metadata {
+            channels: 2,
+            sample_rate: 48_000, // This does not matter for this test
+        };
+        let json = serde_json::to_string_pretty(&meta_data).unwrap();
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&metadata_path)
+            .unwrap();
+        file.write_all(json.as_bytes()).unwrap();
+    }
+
+    // Create the sink client
+    let sink_buffers = vec![
+        Arc::new(Mutex::new(Vec::<f32>::new())),
+        Arc::new(Mutex::new(Vec::<f32>::new())),
+    ];
+    let shared_buffers = sink_buffers.clone();
+    let client_name = "test-play-cmd";
+    let (sink, _, _) = make_test_play_client(
+        client_name,
+        vec!["c1".to_string(), "c2".to_string()],
+        sink_buffers,
+    )
+    .unwrap();
+    let port_names = sink
+        .as_client()
+        .ports(Some(client_name), None, PortFlags::IS_INPUT);
+    let mut outputs = JackPipes::new(false);
+    for p in port_names.iter() {
+        outputs.add(p).unwrap();
+    }
+    let mut app_data = match App::initialise(
+        JackPipes::new(true),
+        outputs,
+        &dst_dir().join("test_playback"),
+        true,
+    ) {
+        Ok(a) => a,
+        Err(err) => panic!("Cannot initalise AppData: {err}"),
+    };
+
+    app_data.handle_kommand(Command::Play).unwrap();
+    // // Wait for play to finish
+    // let sample_rate = get_sample_rate();
+    // // Use microseconds so we can use short buffer lengths
+    // let micro_sec = 20 * 1_000_000 * LEN as u64 / (sample_rate as u64);
+    // eprintln!("DBG: sample_rate: {sample_rate} sleep {micro_sec}us");
+    // thread::sleep(Duration::from_micros(micro_sec));
+
+    // The `shared` buffers must be the same as `c1` and `c2`, except
+    // the shared buffers will have leading and trailing silence
+    let shared_1 = shared_buffers[0].lock().unwrap().clone();
+    let shared_1 = trim_audio(&shared_1);
+    let shared_2 = shared_buffers[1].lock().unwrap().clone();
+    let shared_2 = trim_audio(&shared_2);
+    if let Some(dbg_1) = dbg_buffers(&c1, &shared_1) {
+        dbg!(dbg_1);
+    }
+    if let Some(dbg_2) = dbg_buffers(&c2, &shared_2) {
+        dbg!(dbg_2);
+    }
+    assert_eq!(c1.len(), shared_1.len());
+    assert_eq!(c2.len(), shared_2.len(), "Testing channel two length");
+    for i in 0..LEN {
+        assert_eq!(c1[i], shared_1[i]);
+        assert_eq!(c2[i], shared_2[i]);
+    }
 }
 
 /// Generate two identical audio tracks (WaveForm::Geometric).  Record
