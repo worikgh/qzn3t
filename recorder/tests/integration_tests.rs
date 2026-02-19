@@ -169,12 +169,6 @@ fn test_play_cmd() {
     };
 
     app_data.handle_kommand(Command::Play).unwrap();
-    // // Wait for play to finish
-    // let sample_rate = get_sample_rate();
-    // // Use microseconds so we can use short buffer lengths
-    // let micro_sec = 20 * 1_000_000 * LEN as u64 / (sample_rate as u64);
-    // eprintln!("DBG: sample_rate: {sample_rate} sleep {micro_sec}us");
-    // thread::sleep(Duration::from_micros(micro_sec));
 
     // The `shared` buffers must be the same as `c1` and `c2`, except
     // the shared buffers will have leading and trailing silence
