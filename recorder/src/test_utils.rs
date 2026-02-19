@@ -167,6 +167,7 @@ pub mod common {
         ),
         RecorderError,
     > {
+        assert_eq!(port_names.len(), buffers.len());
         let (client, _) = Client::new(name, jack::ClientOptions::NO_START_SERVER)
             .expect("make_test_play_client: Cannot make Jack client");
 
