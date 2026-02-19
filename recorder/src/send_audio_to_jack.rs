@@ -6,6 +6,7 @@
 use crate::errors::RecorderError;
 use jack::contrib::ClosureProcessHandler;
 use jack::{AudioOut, Client, ClientOptions};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -88,11 +89,16 @@ pub fn send_audo_to_jack(
         })
         .collect::<Vec<String>>();
     assert_eq!(out_port_names.len(), sinks.len());
-
     // The call back handler for Jackd
     let mut state = AudioSenderState { audio_rxs };
     let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
         let run_flag = run_f.load(Ordering::Relaxed);
+
+        // Quit the loop when all channels are disconnected.  Start
+        // with the assumption that every channel is disconnected
+        let channel_count = out_ports.len();
+        let mut disconnect_guard: HashMap<usize, bool> =
+            (0..channel_count).map(|c| (c, true)).collect();
 
         for (idx, out) in out_ports.iter_mut().enumerate() {
             let out = out.as_mut_slice(ps);
@@ -102,9 +108,14 @@ pub fn send_audo_to_jack(
                         Ok(s) => *sample = s,
                         Err(TryRecvError::Empty) => *sample = 0.0,
                         Err(TryRecvError::Disconnected) => {
+                            disconnect_guard.insert(idx, false);
                             *sample = 0.0;
                             run_f.store(false, Ordering::Relaxed);
-                            return jack::Control::Quit;
+
+                            // When every channel is disconnected
+                            if disconnect_guard.iter().all(|(_, f)| !f) {
+                                return jack::Control::Quit;
+                            }
                         }
                     }
                 }
