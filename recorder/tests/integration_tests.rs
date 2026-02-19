@@ -42,15 +42,17 @@ fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
             (left, right)
         };
         let mut ret = "Short: ".to_string();
-        let mut v: f32 = short[0];
-        let mut idx = 1;
-        while idx <= short.len() {
-            let t = if idx == short.len() { v } else { short[idx] };
-            if (t - v).abs() > f32::EPSILON || idx == short.len() {
-                ret = format!("{ret}{v}:{idx} ");
-                v = t;
+        if !short.is_empty() {
+            let mut v: f32 = short[0];
+            let mut idx = 1;
+            while idx <= short.len() {
+                let t = if idx == short.len() { v } else { short[idx] };
+                if (t - v).abs() > f32::EPSILON || idx == short.len() {
+                    ret = format!("{ret}{v}:{idx} ");
+                    v = t;
+                }
+                idx += 1;
             }
-            idx += 1;
         }
         ret = format!("{ret}\nLong:  ");
         let mut v: f32 = long[0];
