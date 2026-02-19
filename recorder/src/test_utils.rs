@@ -34,6 +34,7 @@ pub mod common {
         Triangle,
         Square,
         Geometric,
+        Linear,
     }
 
     /// Generate a buffer of mono audio samples.
@@ -55,9 +56,9 @@ pub mod common {
         match wave_form {
             // The samples go from 1.0 and go linearly to -1.0 over
             // the duration.
+            WaveForm::Linear => vec![volume; duration_samples as usize],
             WaveForm::Geometric => (0..duration_samples)
                 .map(|n| 1.0 - 2.0 * n as f32 / duration_samples as f32)
-                // .map(|n| 1.0 - 2.0 * duration_samples as f32 / n as f32)
                 .collect(),
             WaveForm::Sine => {
                 // sine(2πft)
@@ -366,15 +367,6 @@ pub mod common {
             .iter()
             .map(|b| b.to_vec())
             .collect::<Vec<Vec<f32>>>();
-        // let ac = make_jack_client_port(
-        //     client_name,
-        //     port_names,
-        //     audio_data
-        //         .iter()
-        //         .map(|b| b.to_vec())
-        //         .collect::<Vec<Vec<f32>>>(),
-        //     play_audio_f.clone(),
-        // );
 
         assert_eq!(port_names.len(), audio_buffers.len());
 

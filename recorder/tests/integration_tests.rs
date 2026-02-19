@@ -30,7 +30,8 @@ const AUDIO_DURATION: [u32; 4] = [1, 10, 100, 1_000];
 /// longer than the buffer sent.  Of the two buffers passed here if
 /// they are different length return the extra data pretty printed as
 /// text I have found is long runs of zeros in the extra data in the
-/// longer buffer
+/// longer buffer.  Using WaveForm::Linear it is easier to characterse
+/// these buffers.
 fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
     let left_len = left.len();
     let right_len = right.len();
@@ -40,16 +41,36 @@ fn dbg_buffers(left: &[f32], right: &[f32]) -> Option<String> {
         } else {
             (left, right)
         };
-        let len = long.len() - short.len();
-        let start = long.len().saturating_sub(2 * len);
-        let err_vec = long[start..].to_vec();
-        Some(pretty_buffer(&err_vec))
+        let mut ret = "Short: ".to_string();
+        let mut v: f32 = short[0];
+        let mut idx = 1;
+        while idx <= short.len() {
+            let t = short[idx];
+            if (t - v).abs() > f32::EPSILON || idx == short.len() {
+                ret = format!("{ret}{v}:{idx} ");
+                v = t;
+            }
+            idx += 1;
+        }
+        ret = format!("{ret}\nLong:  ");
+        let mut v: f32 = long[0];
+        let mut idx = 1;
+        while idx <= long.len() {
+            let t = long[idx];
+            if (t - v).abs() > f32::EPSILON || idx == long.len() {
+                ret = format!("{ret}{v}:{idx} ");
+                v = t;
+            }
+            idx += 1;
+        }
+        Some(ret)
     } else {
         None
     }
 }
 
 /// Prepare a buffer of f32 to be printed
+#[allow(dead_code)]
 fn pretty_buffer(input: &[f32]) -> String {
     let chunked = input.chunks(4);
     chunked.fold("".to_string(), |a, b| {
@@ -70,10 +91,10 @@ fn record_two_channels_and_play_back() {
     for audio_duration in AUDIO_DURATION.iter() {
         let audio_duration_ms = audio_duration;
 
-        let audio_buffer_one = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
+        let audio_buffer_one = generate_test_audio(0, 0.75, *audio_duration, WaveForm::Linear);
         let audio_buffer_one = trim_audio(&audio_buffer_one);
 
-        let audio_buffer_two = generate_test_audio(220, 0.25, *audio_duration, WaveForm::Geometric);
+        let audio_buffer_two = generate_test_audio(0, 0.25, *audio_duration, WaveForm::Linear);
         let audio_buffer_two = trim_audio(&audio_buffer_two);
 
         // Directory recorded audio is sent to
