@@ -53,7 +53,6 @@ pub fn send_audo_to_jack(
         .iter()
         .map(|(_, p)| p.clone())
         .collect::<Vec<String>>();
-    let port_name = "output";
 
     // Client to play audio from
     let (client, _status) = match Client::new(CLIENT_NAME, ClientOptions::NO_START_SERVER) {
@@ -65,6 +64,7 @@ pub fn send_audo_to_jack(
         }
     };
 
+    let port_name = "output";
     let mut out_ports: Vec<jack::Port<AudioOut>> = (0..sinks.len())
         .map(|n| {
             let name = format!("{port_name}_{}", n + 1);
@@ -77,6 +77,7 @@ pub fn send_audo_to_jack(
                 })
         })
         .collect::<Result<Vec<_>, _>>()?;
+
     // For making connections
     let out_port_names = out_ports
         .iter()
