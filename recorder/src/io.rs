@@ -168,6 +168,13 @@ impl AudioBuffers {
         }
     }
 
+    pub fn new_channels(channels: usize) -> Self {
+        let mut ret = Self::new();
+        for _ in 0..channels {
+            ret.add_buffer(vec![]).unwrap();
+        }
+        ret
+    }
     pub fn add_named_buffer(&mut self, name: &str, buffer: Vec<f32>) -> Result<(), RecorderError> {
         match self.buffer_names.get_mut(name) {
             Some(_) => Err(RecorderError::DuplicateBufferName(name.into())),
@@ -539,7 +546,8 @@ pub fn read_f32_vec_from_file(
     }
     if !data.len().is_multiple_of(channels as usize) {
         return Err(RecorderError::Generic(format!(
-            "File size is not a multiple of channels: {channels}"
+            "File size {} is not a multiple of channels: {channels}",
+            data.len()
         )));
     }
 

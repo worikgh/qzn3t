@@ -1,9 +1,12 @@
 // Copyright (c) 2025 Worik Turei Stanton
 // License: GPL-3.0
 
-use qzn3t_recorder::test_utils::common::{
-    WaveForm, describe_linear_buffer, dst_dir, find_zeros, generate_test_audio,
-    make_test_play_client, play_test_audio, set_up_recorder, trim_audio,
+use qzn3t_recorder::{
+    io::AudioBuffers,
+    test_utils::common::{
+        WaveForm, describe_linear_buffer, dst_dir, find_zeros, generate_test_audio,
+        make_test_play_client, play_test_audio, set_up_recorder, trim_audio,
+    },
 };
 
 use jack::PortFlags;
@@ -71,15 +74,18 @@ fn pretty_buffer(input: &[f32]) -> String {
 #[test]
 fn test_play_cmd() {
     // Audio data
-    const LEN: usize = 10_000;
+    const LEN: usize = 1_400;
+    let channel_count: usize = 3;
     let c1 = vec![0.25f32; LEN];
-    let c2 = vec![0.75f32; LEN];
+    let c2 = vec![0.5f32; LEN];
+    let c3 = vec![0.75f32; LEN];
 
     let audio_data: Vec<f32> = c1
         .clone()
         .into_iter()
         .zip(c2.clone())
-        .flat_map(|(a, b)| [a, b])
+        .zip(c3.clone())
+        .flat_map(|((a, b), c)| [a, b, c])
         .collect();
     assert!(find_zeros(&audio_data).is_empty());
 
@@ -104,7 +110,7 @@ fn test_play_cmd() {
     // Write the metadata
     {
         let meta_data = Metadata {
-            channels: 2,
+            channels: 3,
             sample_rate: 48_000, // This does not matter for this test
         };
         let json = serde_json::to_string_pretty(&meta_data).unwrap();
@@ -118,15 +124,16 @@ fn test_play_cmd() {
     }
 
     // Create the sink client
-    let sink_buffers = vec![
-        Arc::new(Mutex::new(Vec::<f32>::new())),
-        Arc::new(Mutex::new(Vec::<f32>::new())),
-    ];
+    let sink_buffers = (0..channel_count)
+        .map(|_| Arc::new(Mutex::new(Vec::<f32>::new())))
+        .collect::<Vec<Arc<Mutex<Vec<f32>>>>>();
     let shared_buffers = sink_buffers.clone();
     let client_name = "test-play-cmd";
-    let (sink, _, _) = make_test_play_client(
+    let (sink, _zs, _nz) = make_test_play_client(
         client_name,
-        vec!["c1".to_string(), "c2".to_string()],
+        (0..channel_count)
+            .map(|c| format!("c{c}"))
+            .collect::<Vec<String>>(),
         sink_buffers,
     )
     .unwrap();
@@ -137,17 +144,16 @@ fn test_play_cmd() {
     for p in port_names.iter() {
         outputs.add(p).unwrap();
     }
-    let mut app_data = match App::initialise(
-        JackPipes::new(true),
-        outputs,
-        &dst_dir().join("test_playback"),
-        true,
-    ) {
+    let file_path = &dst_dir().join("test_playback");
+    dbg!(file_path);
+    let mut app_data = match App::initialise(JackPipes::new(true), outputs, file_path, true) {
         Ok(a) => a,
         Err(err) => panic!("Cannot initalise AppData: {err}"),
     };
 
-    app_data.handle_kommand(Command::Play).unwrap();
+    if let Err(err) = app_data.handle_kommand(Command::Play) {
+        panic!("{err}");
+    }
 
     // The `shared` buffers must be the same as `c1` and `c2`, except
     // the shared buffers will have leading and trailing silence
@@ -155,17 +161,91 @@ fn test_play_cmd() {
     let shared_1 = trim_audio(&shared_1);
     let shared_2 = shared_buffers[1].lock().unwrap().clone();
     let shared_2 = trim_audio(&shared_2);
-    if let Some(dbg_1) = dbg_buffers(&c1, &shared_1) {
-        dbg!(dbg_1);
-    }
-    if let Some(dbg_2) = dbg_buffers(&c2, &shared_2) {
-        dbg!(dbg_2);
-    }
+    let shared_3 = shared_buffers[2].lock().unwrap().clone();
+    let shared_3 = trim_audio(&shared_3);
+    // if let Some(dbg_1) = dbg_buffers(&c1, &shared_1) {
+    //	dbg!(dbg_1);
+    // }
+    // if let Some(dbg_2) = dbg_buffers(&c2, &shared_2) {
+    //	dbg!(dbg_2);
+    // }
     assert_eq!(c1.len(), shared_1.len());
     assert_eq!(c2.len(), shared_2.len(), "Testing channel two length");
+    assert_eq!(c3.len(), shared_3.len());
     for i in 0..LEN {
         assert_eq!(c1[i], shared_1[i]);
         assert_eq!(c2[i], shared_2[i]);
+        assert_eq!(c3[i], shared_3[i]);
+    }
+}
+
+/// Minimal definition of the "zeros" bug, where in multi channel
+/// playback the last channel gets zeros appended to its buffer
+#[test]
+fn zeroes() {
+    const LEN: usize = 1_0;
+    let channel_count: usize = 3;
+    let mut audio = vec![];
+    for m in 0..channel_count {
+        let l = (m as f32 + 1.0) / (channel_count as f32 + 1.0);
+        audio.push(vec![l; LEN]);
+    }
+
+    let mut audio_data = Vec::with_capacity(LEN * channel_count);
+    for i in 0..LEN {
+        for c in 0..channel_count {
+            dbg!(i * LEN + c);
+            audio_data.push(audio[c][i]);
+        }
+    }
+    assert!(find_zeros(&audio_data).is_empty());
+
+    let mut audio_buffers = AudioBuffers::new();
+    for _ in 0..channel_count {
+        audio_buffers.add_buffer(vec![]).unwrap();
+    }
+    // Create the sink client
+    let sink_buffers = (0..channel_count)
+        .map(|_| Arc::new(Mutex::new(Vec::<f32>::new())))
+        .collect::<Vec<Arc<Mutex<Vec<f32>>>>>();
+    let shared_buffers = sink_buffers.clone();
+    let client_name = "test-play-cmd";
+    let (sink, _zs, _nz) = make_test_play_client(
+        client_name,
+        (0..channel_count)
+            .map(|c| format!("c{c}"))
+            .collect::<Vec<String>>(),
+        sink_buffers,
+    )
+    .unwrap();
+    let port_names = sink
+        .as_client()
+        .ports(Some(client_name), None, PortFlags::IS_INPUT);
+    let mut outputs = JackPipes::new(false);
+    for p in port_names.iter() {
+        outputs.add(p).unwrap();
+    }
+    let file_path = &dst_dir().join("test_playback");
+    dbg!(file_path);
+    let mut app_data = match App::initialise(JackPipes::new(true), outputs, file_path, true) {
+        Ok(a) => a,
+        Err(err) => panic!("Cannot initalise AppData: {err}"),
+    };
+
+    if let Err(err) = app_data.handle_kommand(Command::Play) {
+        panic!("{err}");
+    }
+
+    let mut from_shared: Vec<Vec<f32>> = vec![];
+    for c in 0..channel_count {
+        from_shared[c] = trim_audio(&shared_buffers[c].lock().unwrap().clone());
+        assert_eq!(audio[c].len(), from_shared[c].len());
+    }
+
+    for i in 0..LEN {
+        for c in 0..channel_count {
+            assert_eq!(audio[c][i], from_shared[c][i]);
+        }
     }
 }
 

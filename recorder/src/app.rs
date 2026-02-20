@@ -5,6 +5,7 @@ use crate::errors::RecorderError;
 use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
 use crate::send_audio_to_jack;
 use crate::structs::Command;
+use crate::test_utils::common::describe_linear_buffer;
 use jack_rec;
 use std::error::Error;
 use std::io::{self};
@@ -321,7 +322,7 @@ impl AppData {
 
     /// Spawn a thread to send audio data to Jack.  The thread's
     /// existence defines a "playback session".  The thread will send
-    /// data in real time to Kack from `self.audio_buffers`, and when
+    /// data in real time to Jack from `self.audio_buffers`, and when
     /// finished returns [`AudioBuffers`] with the entire session's
     /// audio data
     fn start_sending_audio(
@@ -329,6 +330,9 @@ impl AppData {
     ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
         // Get the audio data
         let audio_buffers = self.recorded_audio.clone();
+        // Tested good
+        // dbg!(describe_linear_buffer(audio_buffers.get_buffer_idx(0).unwrap()));
+        // dbg!(describe_linear_buffer(audio_buffers.get_buffer_idx(1).unwrap()));
 
         let run_f = self.run_f.clone();
         let mut data_channel_port_names = Vec::with_capacity(audio_buffers.channels() as usize);
@@ -361,6 +365,9 @@ impl AppData {
             while run_f.load(Ordering::Relaxed) {
                 thread::sleep(Duration::from_millis(100));
             }
+            // Tested good
+            // dbg!(describe_linear_buffer(audio_buffers.get_buffer_idx(0).unwrap()));
+            // dbg!(describe_linear_buffer(audio_buffers.get_buffer_idx(1).unwrap()));
             Ok(audio_buffers)
         });
         Ok(handle)
@@ -556,6 +563,9 @@ impl AppData {
                 // is ready to play
                 self.run_f.store(false, Ordering::Relaxed);
                 self.recorded_audio = self.get_audio_from_file()?;
+                // These tested good
+                // dbg!(describe_linear_buffer(self.recorded_audio.get_buffer_idx(0).unwrap()));
+                // dbg!(describe_linear_buffer(self.recorded_audio.get_buffer_idx(1).unwrap()));
                 self.handle_play()?;
                 let h = self.audio_handle.take();
 

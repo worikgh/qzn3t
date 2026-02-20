@@ -6,7 +6,7 @@ pub mod common {
     use crate::{
         app::{App, AppData},
         errors::RecorderError,
-        io::JackPipes,
+        io::{AudioBuffers, JackPipes},
         utils::get_sample_rate,
     };
     use jack::{
@@ -128,6 +128,22 @@ pub mod common {
         buffers: Vec<Arc<Mutex<Vec<f32>>>>,
         zeros_sent: Arc<Mutex<Vec<u32>>>,
         non_zeros_sent: Arc<Mutex<Vec<u32>>>,
+        audio_buffers: AudioBuffers,
+    }
+    impl Drop for TestPlayProcessHandler {
+        fn drop(&mut self) {
+            for c in 0..self.audio_buffers.channels() {
+                let dbg = format!(
+                    "TestPlayProcessHandler buf: {c}: {}",
+                    describe_linear_buffer(
+                        self.audio_buffers
+                            .get_buffer_idx(c.try_into().unwrap())
+                            .unwrap()
+                    )
+                );
+                dbg!(dbg);
+            }
+        }
     }
     impl ProcessHandler for TestPlayProcessHandler {
         fn process(&mut self, _: &Client, ps: &ProcessScope) -> Control {
@@ -140,6 +156,10 @@ pub mod common {
                         self.non_zeros_sent.lock().unwrap()[idx] += 1;
                     }
                 }
+                self.audio_buffers
+                    .get_buffer_mut(idx.try_into().unwrap())
+                    .unwrap()
+                    .extend_from_slice(samples);
                 self.buffers[idx].lock().unwrap().extend_from_slice(samples);
             }
             Control::Continue
@@ -183,12 +203,13 @@ pub mod common {
         let channels_count = port_names.len();
         let zeros_sent = Arc::new(Mutex::new(vec![0u32; channels_count]));
         let non_zeros_sent = Arc::new(Mutex::new(vec![0u32; channels_count]));
-
+        let channel_count = ports.len();
         let process_handler = TestPlayProcessHandler {
             buffers,
             ports,
             zeros_sent: zeros_sent.clone(),
             non_zeros_sent: non_zeros_sent.clone(),
+            audio_buffers: AudioBuffers::new_channels(channel_count),
         };
         let ac = client
             .activate_async(notification_handler, process_handler)

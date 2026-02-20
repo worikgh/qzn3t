@@ -63,10 +63,8 @@ impl ProcessHandler for SendAudioToJackProcess {
                 for sample in out.iter_mut() {
                     match self.state.audio_rxs[idx].try_recv() {
                         Ok(s) => {
-                            *sample = {
-                                self.buffers.get_buffer_mut(idx as u32).unwrap().push(s);
-                                s
-                            }
+                            self.buffers.get_buffer_mut(idx as u32).unwrap().push(s);
+                            *sample = s
                         }
                         Err(TryRecvError::Empty) => *sample = 0.0,
                         Err(TryRecvError::Disconnected) => {
