@@ -4,8 +4,9 @@
 //! Create a client that can be used to play audio
 
 use crate::errors::RecorderError;
-use jack::contrib::ClosureProcessHandler;
-use jack::{AudioOut, Client, ClientOptions};
+use crate::io::AudioBuffers;
+use crate::test_utils::common::describe_linear_buffer;
+use jack::{AsyncClient, AudioOut, Client, ClientOptions, ProcessHandler};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -27,7 +28,70 @@ impl AudioSenderState {
         }
     }
 }
+pub struct Notifications;
+impl jack::NotificationHandler for Notifications {}
+pub struct SendAudioToJackProcess {
+    run_f: Arc<AtomicBool>,
+    out_ports: Vec<jack::Port<AudioOut>>,
+    state: AudioSenderState,
 
+    // Debugging code: Finding zeros bug.  All good from here
+    buffers: AudioBuffers,
+}
+impl Drop for SendAudioToJackProcess {
+    fn drop(&mut self) {
+        for c in 0..self.buffers.channels() {
+            dbg!(describe_linear_buffer(
+                self.buffers.get_buffer_idx(c as usize).unwrap()
+            ));
+        }
+    }
+}
+impl ProcessHandler for SendAudioToJackProcess {
+    fn process(&mut self, _: &Client, ps: &jack::ProcessScope) -> jack::Control {
+        let run_flag = self.run_f.load(Ordering::Relaxed);
+
+        // Quit the loop when all channels are disconnected.  Start
+        // with the assumption that every channel is disconnected
+        let channel_count = self.out_ports.len();
+        let mut disconnect_guard: HashMap<usize, bool> =
+            (0..channel_count).map(|c| (c, true)).collect();
+
+        for (idx, out) in self.out_ports.iter_mut().enumerate() {
+            let out = out.as_mut_slice(ps);
+            if run_flag {
+                for sample in out.iter_mut() {
+                    match self.state.audio_rxs[idx].try_recv() {
+                        Ok(s) => {
+                            *sample = {
+                                self.buffers.get_buffer_mut(idx as u32).unwrap().push(s);
+                                s
+                            }
+                        }
+                        Err(TryRecvError::Empty) => *sample = 0.0,
+                        Err(TryRecvError::Disconnected) => {
+                            disconnect_guard.insert(idx, false);
+                            *sample = 0.0;
+                            self.run_f.store(false, Ordering::Relaxed);
+
+                            // When every channel is disconnected
+                            if disconnect_guard.iter().all(|(_, f)| !f) {
+                                return jack::Control::Quit;
+                            }
+                        }
+                    }
+                }
+            } else {
+                self.state.empty_rx();
+                for sample in out.iter_mut() {
+                    *sample = 0.0;
+                }
+            }
+        }
+
+        jack::Control::Continue
+    }
+}
 /// Create the audio output port and send raw audio data received on
 /// channel `data_channel` to the sound hardware.
 pub fn send_audo_to_jack(
@@ -39,9 +103,8 @@ pub fn send_audo_to_jack(
 
     // When this is set to false all data is ignored
     run_f: Arc<AtomicBool>,
-) -> Result<impl std::any::Any, RecorderError> {
+) -> Result<AsyncClient<Notifications, SendAudioToJackProcess>, RecorderError> {
     // Own the inputs.  `mpsc::Receiver<_>`s cannot be shared, so consume them here
-
     let audio_rxs: Vec<mpsc::Receiver<f32>> = data_channels_ports
         .iter_mut()
         .map(|(dc, _)| {
@@ -66,7 +129,7 @@ pub fn send_audo_to_jack(
     };
 
     let port_name = "output";
-    let mut out_ports: Vec<jack::Port<AudioOut>> = (0..sinks.len())
+    let out_ports: Vec<jack::Port<AudioOut>> = (0..sinks.len())
         .map(|n| {
             let name = format!("{port_name}_{}", n + 1);
             client
@@ -90,47 +153,15 @@ pub fn send_audo_to_jack(
         .collect::<Vec<String>>();
     assert_eq!(out_port_names.len(), sinks.len());
     // The call back handler for Jackd
-    let mut state = AudioSenderState { audio_rxs };
-    let process_callback = move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-        let run_flag = run_f.load(Ordering::Relaxed);
-
-        // Quit the loop when all channels are disconnected.  Start
-        // with the assumption that every channel is disconnected
-        let channel_count = out_ports.len();
-        let mut disconnect_guard: HashMap<usize, bool> =
-            (0..channel_count).map(|c| (c, true)).collect();
-
-        for (idx, out) in out_ports.iter_mut().enumerate() {
-            let out = out.as_mut_slice(ps);
-            if run_flag {
-                for sample in out.iter_mut() {
-                    match state.audio_rxs[idx].try_recv() {
-                        Ok(s) => *sample = s,
-                        Err(TryRecvError::Empty) => *sample = 0.0,
-                        Err(TryRecvError::Disconnected) => {
-                            disconnect_guard.insert(idx, false);
-                            *sample = 0.0;
-                            run_f.store(false, Ordering::Relaxed);
-
-                            // When every channel is disconnected
-                            if disconnect_guard.iter().all(|(_, f)| !f) {
-                                return jack::Control::Quit;
-                            }
-                        }
-                    }
-                }
-            } else {
-                state.empty_rx();
-                for sample in out.iter_mut() {
-                    *sample = 0.0;
-                }
-            }
-        }
-
-        jack::Control::Continue
+    let state = AudioSenderState { audio_rxs };
+    let channel_count = out_ports.len();
+    let send_audio_to_jack_process = SendAudioToJackProcess {
+        run_f: run_f.clone(),
+        out_ports,
+        state,
+        buffers: AudioBuffers::new_channels(channel_count),
     };
-    let process_handler = ClosureProcessHandler::new(process_callback);
-    let active_client = match client.activate_async((), process_handler) {
+    let active_client = match client.activate_async(Notifications, send_audio_to_jack_process) {
         Ok(ac) => ac,
         Err(err) => {
             return Err(RecorderError::Generic(format!(
