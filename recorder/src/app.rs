@@ -331,8 +331,11 @@ impl AppData {
         // Get the audio data
         let audio_buffers = self.recorded_audio.clone();
         // Tested good
-        // dbg!(describe_linear_buffer(audio_buffers.get_buffer_idx(0).unwrap()));
-        // dbg!(describe_linear_buffer(audio_buffers.get_buffer_idx(1).unwrap()));
+        for c in 0..audio_buffers.channels() as usize {
+            dbg!(describe_linear_buffer(
+                audio_buffers.get_buffer_idx(c).unwrap()
+            ));
+        }
 
         let run_f = self.run_f.clone();
         let mut data_channel_port_names = Vec::with_capacity(audio_buffers.channels() as usize);
