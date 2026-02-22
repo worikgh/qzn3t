@@ -5,7 +5,6 @@ use crate::errors::RecorderError;
 use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
 use crate::send_audio_to_jack;
 use crate::structs::Command;
-use crate::test_utils::common::describe_linear_buffer;
 use jack_rec;
 use std::error::Error;
 use std::io::{self};
@@ -396,12 +395,6 @@ impl AppData {
     ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
         // Get the audio data
         let audio_buffers = self.recorded_audio.clone();
-        // Tested good
-        for c in 0..audio_buffers.channels() as usize {
-            dbg!(describe_linear_buffer(
-                audio_buffers.get_buffer_idx(c).unwrap()
-            ));
-        }
 
         let run_f = self.run_f.clone();
         let mut data_channel_port_names: Vec<(mpsc::Receiver<f32>, String)> =
@@ -419,6 +412,7 @@ impl AppData {
         }
 
         let a = send_audio_to_jack::send_audo_to_jack(data_channel_port_names, run_f.clone())?;
+        dbg!(JackPipes::list_ports().unwrap());
         self.client_name = Some(a.as_client().name().to_string());
 
         let handle = thread::spawn(move || -> Result<AudioBuffers, RecorderError> {

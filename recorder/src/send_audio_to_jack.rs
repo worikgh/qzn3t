@@ -4,8 +4,7 @@
 //! Create a client that can be used to play audio
 
 use crate::errors::RecorderError;
-use crate::io::AudioBuffers;
-use crate::test_utils::common::describe_linear_buffer;
+use crate::io::JackPipes;
 use jack::{AsyncClient, AudioOut, Client, ClientOptions, ProcessHandler};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -34,18 +33,6 @@ pub struct SendAudioToJackProcess {
     run_f: Arc<AtomicBool>,
     out_ports: Vec<jack::Port<AudioOut>>,
     state: AudioSenderState,
-
-    // Debugging code: Finding zeros bug.  All good from here
-    buffers: AudioBuffers,
-}
-impl Drop for SendAudioToJackProcess {
-    fn drop(&mut self) {
-        for c in 0..self.buffers.channels() {
-            dbg!(describe_linear_buffer(
-                self.buffers.get_buffer_idx(c as usize).unwrap()
-            ));
-        }
-    }
 }
 impl ProcessHandler for SendAudioToJackProcess {
     fn process(&mut self, _: &Client, ps: &jack::ProcessScope) -> jack::Control {
@@ -62,10 +49,8 @@ impl ProcessHandler for SendAudioToJackProcess {
             if run_flag {
                 for sample in out.iter_mut() {
                     match self.state.audio_rxs[idx].try_recv() {
-                        Ok(s) => {
-                            self.buffers.get_buffer_mut(idx as u32).unwrap().push(s);
-                            *sample = s
-                        }
+                        Ok(s) => *sample = s,
+
                         Err(TryRecvError::Empty) => *sample = 0.0,
                         Err(TryRecvError::Disconnected) => {
                             disconnect_guard.insert(idx, false);
@@ -150,14 +135,13 @@ pub fn send_audo_to_jack(
         })
         .collect::<Vec<String>>();
     assert_eq!(out_port_names.len(), sinks.len());
+
     // The call back handler for Jackd
     let state = AudioSenderState { audio_rxs };
-    let channel_count = out_ports.len();
     let send_audio_to_jack_process = SendAudioToJackProcess {
         run_f: run_f.clone(),
         out_ports,
         state,
-        buffers: AudioBuffers::new_channels(channel_count),
     };
     let active_client = match client.activate_async(Notifications, send_audio_to_jack_process) {
         Ok(ac) => ac,
@@ -177,5 +161,6 @@ pub fn send_audo_to_jack(
             )));
         }
     }
+    dbg!(JackPipes::list_ports().unwrap());
     Ok(active_client)
 }
