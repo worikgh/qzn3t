@@ -506,7 +506,7 @@ impl FileManager {
         }))
     }
 
-    /// Write data to a file.  `file` is pen for appending and the
+    /// Write data to a file.  `file` is open for appending and the
     /// file pointer is in the correct place.  `samples` are the data
     /// to write. `file` is left ready for more data to be written to
     /// it.  This function does no checking of the data. It just

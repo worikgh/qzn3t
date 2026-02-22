@@ -167,7 +167,7 @@ impl App {
             run_f: run_f.clone(),
             ui_run_f,
             inputs,
-            output: outputs,
+            outputs,
             file_manager,
             silent,
         })
@@ -182,7 +182,7 @@ pub struct AppData {
     pub run_f: Arc<AtomicBool>,
     pub ui_run_f: Arc<AtomicBool>,
     inputs: JackPipes,
-    output: JackPipes,
+    pub outputs: JackPipes,
     pub file_manager: FileManager,
     pub silent: bool, // Suppress all stdout
 }
@@ -309,10 +309,10 @@ impl AppData {
         // Get number of channels from metadata
         let channels = read_file_metadata(metadata_path)?.channels;
 
-        if channels != self.output.len() as u32 {
+        if channels != self.outputs.len() as u32 {
             return Err(RecorderError::Generic(format!(
                 "Cannot handle play: {channels} audio channels and {} outputs.",
-                self.output.len()
+                self.outputs.len()
             )));
         }
         // Get the audio data
@@ -347,7 +347,7 @@ impl AppData {
         for i in 0..channels as usize {
             let (tx, rx) = mpsc::channel::<f32>();
             senders.push(tx);
-            let port_name = self.output.ports()[i].clone();
+            let port_name = self.outputs.ports()[i].clone();
             data_channel_port_names.push((rx, port_name));
         }
 
