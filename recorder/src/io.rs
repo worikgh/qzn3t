@@ -93,6 +93,22 @@ impl JackPipes {
 
 /// Private interface
 impl JackPipes {
+    /// List all ports on the server: This is used in debugging.  TODO: Delete this
+    pub fn list_ports() -> Result<Vec<String>, RecorderError> {
+        let client_name = "port-lister";
+        let (client, _) = match Client::new(client_name, jack::ClientOptions::NO_START_SERVER) {
+            Ok(cs) => cs,
+            Err(err) => {
+                return Err(RecorderError::CannotCreateClient(
+                    client_name.to_string(),
+                    format!("{err}"),
+                ));
+            }
+        };
+
+        // List all audio ports
+        Ok(client.ports(None, Some("32 bit float mono audio"), PortFlags::empty()))
+    }
     /// An input to this programme is the name of a Jack 32-bit audio
     /// output pipe.  It is of the form: "<client>:<pipe name>"
     fn validate_jack_pipe(pipe: &str, input: bool) -> Result<(), RecorderError> {

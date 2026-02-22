@@ -189,7 +189,7 @@ pub struct AppData {
 
 impl AppData {
     /// Stop all the processes
-    fn quit(&mut self) {
+    pub fn quit(&mut self) {
         _ = self.handle_audio_stop();
         self.ui_run_f.store(false, Ordering::Relaxed);
     }
