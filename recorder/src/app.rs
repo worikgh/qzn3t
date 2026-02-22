@@ -420,7 +420,7 @@ impl AppData {
 
         let a = send_audio_to_jack::send_audo_to_jack(data_channel_port_names, run_f.clone())?;
         self.client_name = Some(a.as_client().name().to_string());
-        dbg!(&self.client_name);
+
         let handle = thread::spawn(move || -> Result<AudioBuffers, RecorderError> {
             let _a = a;
             // run_f.store(true, Ordering::Relaxed);
