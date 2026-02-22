@@ -29,7 +29,15 @@ impl App {
         file_path: &Path,
         silent: bool,
     ) -> Result<AppData, Box<dyn Error>> {
-        Self::initialise_inner(None, inputs, outputs, file_path, silent)
+        let mut this = AppData::new(file_path, inputs.len().max(outputs.len()) as u32)?;
+        for p in inputs.ports().iter() {
+            this.add_jack_input(p)?;
+        }
+        for p in outputs.ports().iter() {
+            this.add_jack_output(p)?;
+        }
+        this.be_quiet(silent);
+        Ok(this)
     }
     pub fn initialise_ui(
         command_rx: mpsc::Receiver<Command>,
@@ -38,7 +46,16 @@ impl App {
         file_path: &Path,
         silent: bool,
     ) -> Result<AppData, Box<dyn Error>> {
-        Self::initialise_inner(Some(command_rx), inputs, outputs, file_path, silent)
+        let mut this = AppData::new(file_path, inputs.len().max(outputs.len()) as u32)?;
+        for p in inputs.ports().iter() {
+            this.add_jack_input(p)?;
+        }
+        for p in outputs.ports().iter() {
+            this.add_jack_output(p)?;
+        }
+        this.add_command_rx(command_rx);
+        this.be_quiet(silent);
+        Ok(this)
     }
 
     /// The user interface.  Starts a thread that waits for commands.
@@ -133,45 +150,47 @@ impl App {
         Ok(app_handle)
     }
 
-    /// Construction code in common to running with and without a UI
-    fn initialise_inner(
-        command_rx: Option<mpsc::Receiver<Command>>,
-        inputs: JackPipes,
-        outputs: JackPipes,
-        file_path: &Path,
-        silent: bool,
-    ) -> Result<AppData, Box<dyn Error>> {
-        // Flag to start and stop recording/playback
-        let run_f = Arc::new(AtomicBool::new(true));
-        let ui_run_f = Arc::new(AtomicBool::new(true));
-        let run_f_ctl_c = run_f.clone();
+    // /// Construction code in common to running with and without a UI
+    // fn initialise_inner(
+    //	command_rx: Option<mpsc::Receiver<Command>>,
+    //	inputs: JackPipes,
+    //	outputs: JackPipes,
+    //	file_path: &Path,
+    //	silent: bool,
+    // ) -> Result<AppData, Box<dyn Error>> {
+    //	// Flag to start and stop recording/playback
+    //	let run_f = Arc::new(AtomicBool::new(true));
+    //	let ui_run_f = Arc::new(AtomicBool::new(true));
+    //	let run_f_ctl_c = run_f.clone();
 
-        // Ctl-c handlers must only be set once.  Not a problem for
-        // normal use, but tests are often run in parallel, so this is
-        // done for testing
-        ONCE.call_once(|| {
-            if let Err(err) = ctrlc::set_handler(move || {
-                run_f_ctl_c.store(false, Ordering::Relaxed);
-            }) {
-                panic!("Error qzn3t/recorder: setting Ctrl-C handler: {err}");
-            }
-        });
+    //	// Ctl-c handlers must only be set once.  Not a problem for
+    //	// normal use, but tests are often run in parallel, so this is
+    //	// done for testing
+    //	ONCE.call_once(|| {
+    //	    if let Err(err) = ctrlc::set_handler(move || {
+    //		run_f_ctl_c.store(false, Ordering::Relaxed);
+    //	    }) {
+    //		panic!("Error qzn3t/recorder: setting Ctrl-C handler: {err}");
+    //	    }
+    //	});
 
-        let channels = inputs.ports().len() as u32;
-        let file_manager = FileManager::new(channels, file_path)?;
+    //	let file_manager = {
+    //	    let channels = inputs.ports().len().max(outputs.ports().len()) as u32;
+    //	    FileManager::new(channels, file_path)?
+    //	};
 
-        Ok(AppData {
-            recorded_audio: AudioBuffers::new(),
-            audio_handle: None,
-            command_rx,
-            run_f: run_f.clone(),
-            ui_run_f,
-            inputs,
-            outputs,
-            file_manager,
-            silent,
-        })
-    }
+    //	Ok(AppData {
+    //	    recorded_audio: AudioBuffers::new(),
+    //	    audio_handle: None,
+    //	    command_rx,
+    //	    run_f: run_f.clone(),
+    //	    ui_run_f,
+    //	    inputs,
+    //	    outputs,
+    //	    file_manager,
+    //	    silent,
+    //	})
+    // }
 }
 
 /// Hold the data for the programme.
@@ -185,13 +204,60 @@ pub struct AppData {
     pub outputs: JackPipes,
     pub file_manager: FileManager,
     pub silent: bool, // Suppress all stdout
+    pub client_name: Option<String>,
 }
 
 impl AppData {
+    pub fn new(file_path: &Path, channels: u32) -> Result<Self, RecorderError> {
+        let run_f = Arc::new(AtomicBool::new(false));
+        let run_f_ctl_c = run_f.clone();
+
+        // Ctl-c handlers must only be set once.  Not a problem for
+        // normal use, but tests are often run in parallel, so this is
+        // done for testing
+        ONCE.call_once(|| {
+            if let Err(err) = ctrlc::set_handler(move || {
+                run_f_ctl_c.store(false, Ordering::Relaxed);
+            }) {
+                panic!("Error qzn3t/recorder: setting Ctrl-C handler: {err}");
+            }
+        });
+        Ok(Self {
+            recorded_audio: AudioBuffers::new(),
+            audio_handle: None,
+            command_rx: None,
+            run_f,
+            ui_run_f: Arc::new(AtomicBool::new(false)),
+            inputs: JackPipes::new(),
+            outputs: JackPipes::new(),
+            file_manager: FileManager::new(channels, file_path)?,
+            silent: true,
+            client_name: None,
+        })
+    }
+    pub fn add_command_rx(&mut self, rx: mpsc::Receiver<Command>) {
+        self.command_rx = Some(rx);
+    }
+    pub fn be_quiet(&mut self, s: bool) {
+        self.silent = s;
+    }
+    pub fn add_jack_input(&mut self, name: &str) -> Result<(), RecorderError> {
+        self.inputs.add(name)
+    }
+    pub fn add_jack_output(&mut self, name: &str) -> Result<(), RecorderError> {
+        self.outputs.add(name)
+    }
     /// Stop all the processes
     pub fn quit(&mut self) {
         _ = self.handle_audio_stop();
         self.ui_run_f.store(false, Ordering::Relaxed);
+    }
+
+    pub fn run(&mut self) {
+        self.run_f.store(true, Ordering::Relaxed);
+    }
+    pub fn stop(&mut self) -> Result<(), RecorderError> {
+        self.handle_audio_stop()
     }
 
     /// Spawn a thread to get audio data from Jack.  The thread's
@@ -201,7 +267,7 @@ impl AppData {
     fn start_getting_audio(
         &mut self,
     ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
-        // Copy of the switch to turn the recorder off
+        // Copy of the switch to start and stop the recorder
         let run_f = self.run_f.clone();
 
         // The names of ports (implicitly indexed by channel number,
@@ -324,7 +390,7 @@ impl AppData {
     /// existence defines a "playback session".  The thread will send
     /// data in real time to Jack from `self.audio_buffers`, and when
     /// finished returns [`AudioBuffers`] with the entire session's
-    /// audio data
+    /// audio data.
     fn start_sending_audio(
         &mut self,
     ) -> Result<thread::JoinHandle<Result<AudioBuffers, RecorderError>>, RecorderError> {
@@ -338,22 +404,26 @@ impl AppData {
         }
 
         let run_f = self.run_f.clone();
-        let mut data_channel_port_names = Vec::with_capacity(audio_buffers.channels() as usize);
+        let mut data_channel_port_names: Vec<(mpsc::Receiver<f32>, String)> =
+            Vec::with_capacity(audio_buffers.channels() as usize);
 
         // Need a `mpsc` channel for each audio channel to send to
         // Jack, and pair them with the audio ports
         let mut senders = vec![];
         let channels = audio_buffers.channels();
-        for i in 0..channels as usize {
+        assert_eq!(self.outputs.len(), channels as usize);
+        for port_name in self.outputs.ports().iter() {
             let (tx, rx) = mpsc::channel::<f32>();
             senders.push(tx);
-            let port_name = self.outputs.ports()[i].clone();
-            data_channel_port_names.push((rx, port_name));
+            data_channel_port_names.push((rx, port_name.to_string()));
         }
 
+        let a = send_audio_to_jack::send_audo_to_jack(data_channel_port_names, run_f.clone())?;
+        self.client_name = Some(a.as_client().name().to_string());
+        dbg!(&self.client_name);
         let handle = thread::spawn(move || -> Result<AudioBuffers, RecorderError> {
-            let _a = send_audio_to_jack::send_audo_to_jack(data_channel_port_names, run_f.clone())?;
-            run_f.store(true, Ordering::Relaxed);
+            let _a = a;
+            // run_f.store(true, Ordering::Relaxed);
             for (c, sender) in senders.iter().enumerate().take(channels as usize) {
                 let buffer = audio_buffers.get_buffer_idx(c)?;
                 for s in buffer.iter() {
@@ -482,7 +552,7 @@ impl AppData {
     }
 
     /// The command: stop
-    pub fn handle_audio_stop(&mut self) -> Result<(), Box<dyn Error>> {
+    pub fn handle_audio_stop(&mut self) -> Result<(), RecorderError> {
         // This ends the main loop
         self.run_f.store(false, Ordering::Relaxed);
 
@@ -496,8 +566,8 @@ impl AppData {
                     self.recorded_audio = audio_buffers;
                     Ok(())
                 }
-                Ok(Err(recorder_error)) => Err(recorder_error.into()),
-                Err(err) => Err(format!("Error {err:?}").into()),
+                Ok(Err(recorder_error)) => Err(recorder_error),
+                Err(err) => Err(RecorderError::Generic(format!("Error {err:?}"))),
             }
         } else {
             Ok(())
@@ -745,8 +815,8 @@ mod tests {
     #[test]
     fn test_handle_audio_stop() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -761,8 +831,8 @@ mod tests {
     #[test]
     fn test_check_audio_file_manager() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -782,7 +852,7 @@ mod tests {
         let ports = ac
             .as_client()
             .ports(Some("port[12]"), None, PortFlags::empty());
-        let mut jack_pipes = JackPipes::new(true);
+        let mut jack_pipes = JackPipes::new();
         for p in ports.iter() {
             if let Err(err) = jack_pipes.add(p) {
                 panic!("{err}");
@@ -798,8 +868,8 @@ mod tests {
     #[should_panic(expected = "Error recorder: -k Continue is not handled")]
     fn test_handle_kommand_unimplemented() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -812,10 +882,10 @@ mod tests {
         // Test that multiple initializations don't panic
         let temp_dir = setup_test_dir();
 
-        let inputs1 = JackPipes::new(true);
-        let outputs1 = JackPipes::new(false);
-        let inputs2 = JackPipes::new(true);
-        let outputs2 = JackPipes::new(false);
+        let inputs1 = JackPipes::new();
+        let outputs1 = JackPipes::new();
+        let inputs2 = JackPipes::new();
+        let outputs2 = JackPipes::new();
 
         let result1 = App::initialise(inputs1, outputs1, temp_dir.path(), true);
         let result2 = App::initialise(inputs2, outputs2, temp_dir.path(), true);
@@ -828,8 +898,8 @@ mod tests {
     fn test_run_ui_quit_command() {
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -848,8 +918,8 @@ mod tests {
     fn test_run_ui_stop_command() {
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -868,8 +938,8 @@ mod tests {
     fn test_run_ui_continue_command() {
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -892,8 +962,8 @@ mod tests {
     #[test]
     fn test_command_channel_disconnect() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
         let (command_tx, command_rx) = mpsc::channel::<Command>();
         let app_data =
             App::initialise_ui(command_rx, inputs, outputs, temp_dir.path(), true).unwrap();
@@ -909,8 +979,8 @@ mod tests {
     #[test]
     fn test_run_ui_no_command_receiver() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -926,8 +996,8 @@ mod tests {
     #[test]
     fn test_app_initialise() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let result = App::initialise(inputs, outputs, temp_dir.path(), true);
 
@@ -941,8 +1011,8 @@ mod tests {
     fn test_app_initialise_ui() {
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let result = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true);
 
@@ -955,8 +1025,8 @@ mod tests {
     #[test]
     fn test_app_data_quit() {
         let temp_dir = setup_test_dir();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let mut app_data = App::initialise(inputs, outputs, temp_dir.path(), true).unwrap();
 
@@ -969,8 +1039,8 @@ mod tests {
     fn test_unimplemented_methods() {
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
 
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
@@ -986,8 +1056,8 @@ mod tests {
 
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::ReviewRecord).unwrap();
@@ -1002,8 +1072,8 @@ mod tests {
 
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::Dubing).unwrap();
@@ -1016,8 +1086,8 @@ mod tests {
 
         let temp_dir = setup_test_dir();
         let (tx, rx) = mpsc::channel();
-        let inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let inputs = JackPipes::new();
+        let outputs = JackPipes::new();
         let app_data = App::initialise_ui(rx, inputs, outputs, temp_dir.path(), true).unwrap();
         let handle = App::run_ui(app_data).unwrap();
         tx.send(Command::DubReview).unwrap();

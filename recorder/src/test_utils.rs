@@ -353,8 +353,8 @@ pub mod common {
     /// Set up a recorder for testing
     #[allow(dead_code)]
     pub fn set_up_recorder(port_names: Vec<String>, dir: &Path) -> AppData {
-        let mut inputs = JackPipes::new(true);
-        let outputs = JackPipes::new(false);
+        let mut inputs = JackPipes::new();
+        let outputs = JackPipes::new();
         for p in port_names.iter() {
             inputs.add(p).unwrap();
         }
