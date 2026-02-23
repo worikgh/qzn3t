@@ -4,6 +4,9 @@
 #[allow(dead_code)]
 struct AudioBuffer {
     data: Vec<Vec<f32>>,
+    /// Require this so there can be an empty buffer.  `usize` not
+    /// `u32` as it is == `data.len()` if `data` is not empty
+    channels: usize,
 }
 
 impl AudioBuffer {
@@ -20,14 +23,15 @@ impl AudioBuffer {
         }
     }
 
-    /// Check that all channels have the same number of samples
+    /// Check that all channels have the same number of samples and
+    /// the `channels` field is correctr
     #[allow(dead_code)]
     pub fn valid(&self) -> bool {
         if self.data.is_empty() {
-            true
+            self.channels > 0 // Only zero channels is invalid
         } else {
             let s = self.data[0].len();
-            self.data.iter().all(|d| d.len() == s)
+            self.data.len() == self.channels && self.data.iter().all(|d| d.len() == s)
         }
     }
 }
@@ -65,7 +69,10 @@ mod tests {
     #[test]
     fn usage() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let audio = AudioBuffer { data: data.clone() };
+        let audio = AudioBuffer {
+            data: data.clone(),
+            channels: 2,
+        };
 
         let mut iter = audio.frames();
         while let Some(frame) = iter.next_frame() {
@@ -76,14 +83,31 @@ mod tests {
     #[test]
     fn valid() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let audio = AudioBuffer { data: data.clone() };
+        let audio = AudioBuffer {
+            data: data.clone(),
+            channels: 2,
+        };
         assert!(audio.valid());
+    }
+
+    #[test]
+    fn invalid_channels() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let audio = AudioBuffer {
+            data: data.clone(),
+            channels: 3,
+        };
+        assert!(!audio.valid());
     }
 
     #[test]
     fn invalid() {
         let data = vec![vec![1.0, 2.0], vec![4.0, 5.0, 6.0]];
-        let audio = AudioBuffer { data: data.clone() };
-        assert!(!audio.valid());
+        let audio = AudioBuffer {
+            data: data.clone(),
+            channels: 2,
+        };
+        let test = audio.valid();
+        assert!(!test);
     }
 }
