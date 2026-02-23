@@ -5,7 +5,7 @@ use crate::errors::RecorderError;
 use crate::io::{AudioBuffers, FileManager, JackPipes, read_f32_vec_from_file, read_file_metadata};
 use crate::send_audio_to_jack;
 use crate::structs::Command;
-use jack_rec;
+use jack_rec::{self, Notifications, ProcessAudioFromJack};
 use std::error::Error;
 use std::io::{self};
 use std::path::Path;
@@ -269,8 +269,8 @@ impl AppData {
         // Copy of the switch to start and stop the recorder
         let run_f = self.run_f.clone();
 
-        // The names of ports (implicitly indexed by channel number,
-        // 0-based)
+        // The names of import Jack ports (implicitly indexed by
+        // channel number, 0-based)
         let jack_ports = self.inputs.ports();
 
         // Start up the file manager for saving recorded audio.
@@ -324,12 +324,13 @@ impl AppData {
                 // Name of the Jack client that receives data from the inputs
                 let client = "Qzn3t/Recorder".to_string();
 
-                let ac = match jack_rec::read_port(client, inputs, buf_txs, run_f.clone()) {
-                    Ok(p) => p,
-                    Err(err) => {
-                        return Err(err.into());
-                    }
-                };
+                let ac: jack::AsyncClient<Notifications, ProcessAudioFromJack> =
+                    match jack_rec::read_port(client, inputs, buf_txs, run_f.clone()) {
+                        Ok(p) => p,
+                        Err(err) => {
+                            return Err(err.into());
+                        }
+                    };
 
                 // Signal that this is running to caller (parent)
                 active_2.store(true, Ordering::Relaxed);

@@ -131,16 +131,18 @@ fn playback() {
 
     // Set up a `recorder` to play the data back
     let mut player = AppData::new(source_stem.as_path(), 1).unwrap();
-    player.handle_play().unwrap();
 
     // Set up a `recorder` to record the data
     let mut recorder = AppData::new(sink_stem.as_path(), 1).unwrap();
     let client_name = player.client_name.as_ref().unwrap().to_string();
     let ji = format!("{client_name}:output_1");
     recorder.add_jack_input(ji.as_str()).unwrap();
-    recorder.handle_record().unwrap();
+    player.add_jack_output(ji.as_str()).unwrap();
+    player.handle_kommand(Command::Play).unwrap();
     player.run();
+    recorder.handle_record().unwrap();
     recorder.run();
+    dbg!(JackPipes::list_ports().unwrap());
 
     // Pause for the audio to play
     let sleep_ms = 1_000 * length / get_sample_rate();
