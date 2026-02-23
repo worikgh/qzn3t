@@ -25,6 +25,19 @@ struct AudioBuffer {
 }
 
 impl AudioBuffer {
+    /// Constructor from data
+    #[allow(dead_code)]
+    pub fn new(data: Vec<Vec<f32>>) -> Result<Self, Qzn3tError> {
+        let channels = data.len();
+        let data = data.iter().map(|d| d.to_vec()).collect::<Vec<Vec<f32>>>();
+        let this = Self { channels, data };
+        if this.valid() {
+            Ok(this)
+        } else {
+            Err(Qzn3tError::InvalidAudioData)
+        }
+    }
+
     #[allow(dead_code)]
     pub fn frames(&self) -> FrameIterator<'_> {
         let num_channels = self.data.len();
@@ -39,7 +52,7 @@ impl AudioBuffer {
     }
 
     /// Check that all channels have the same number of samples and
-    /// the `channels` field is correctr
+    /// the `channels` field is correct
     #[allow(dead_code)]
     pub fn valid(&self) -> bool {
         if self.data.is_empty() {
@@ -124,5 +137,19 @@ mod tests {
         };
         let test = audio.valid();
         assert!(!test);
+    }
+
+    #[test]
+    fn constructor_valid() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let audio = AudioBuffer::new(data);
+        assert!(audio.is_ok());
+        assert!(audio.unwrap().valid());
+    }
+    #[test]
+    fn constructor_invalid() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0, 7.0]];
+        let audio = AudioBuffer::new(data);
+        assert!(matches!(audio, Err(Qzn3tError::InvalidAudioData)));
     }
 }
