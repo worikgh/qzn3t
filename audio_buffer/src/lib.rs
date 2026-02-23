@@ -1,6 +1,21 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
+use std::{error::Error, fmt::Display};
+#[derive(Debug)]
+enum Qzn3tError {
+    InvalidAudioData,
+}
+impl Display for Qzn3tError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
+        }
+    }
+}
+
+impl Error for Qzn3tError {}
+
 #[allow(dead_code)]
 struct AudioBuffer {
     data: Vec<Vec<f32>>,
