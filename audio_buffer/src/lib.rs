@@ -8,7 +8,7 @@ struct AudioBuffer {
 
 impl AudioBuffer {
     #[allow(dead_code)]
-    fn frames(&self) -> FrameIterator<'_> {
+    pub fn frames(&self) -> FrameIterator<'_> {
         let num_channels = self.data.len();
         let num_frames = self.data.first().map_or(0, |v| v.len());
 
@@ -22,7 +22,7 @@ impl AudioBuffer {
 }
 
 #[allow(dead_code)]
-struct FrameIterator<'a> {
+pub struct FrameIterator<'a> {
     data: &'a [Vec<f32>],
     index: usize,
     num_frames: usize,
