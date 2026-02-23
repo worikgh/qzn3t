@@ -19,6 +19,17 @@ impl AudioBuffer {
             buffer: vec![0.0; num_channels],
         }
     }
+
+    /// Check that all channels have the same number of samples
+    #[allow(dead_code)]
+    pub fn valid(&self) -> bool {
+        if self.data.is_empty() {
+            true
+        } else {
+            let s = self.data[0].len();
+            self.data.iter().all(|d| d.len() == s)
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -60,5 +71,19 @@ mod tests {
         while let Some(frame) = iter.next_frame() {
             assert_eq!(frame.len(), data.len());
         }
+    }
+
+    #[test]
+    fn valid() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let audio = AudioBuffer { data: data.clone() };
+        assert!(audio.valid());
+    }
+
+    #[test]
+    fn invalid() {
+        let data = vec![vec![1.0, 2.0], vec![4.0, 5.0, 6.0]];
+        let audio = AudioBuffer { data: data.clone() };
+        assert!(!audio.valid());
     }
 }
