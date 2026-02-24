@@ -3,4 +3,9 @@ name = "qzn3t_audio_buffer"
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[dependencies.uuid]
+version = "1.21"
+# Lets you generate random UUIDs
+features = [
+    "v6",
+]

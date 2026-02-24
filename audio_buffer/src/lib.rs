@@ -22,18 +22,27 @@ impl Error for Qzn3tError {}
 #[derive(PartialEq, Debug)]
 struct AudioBuffer {
     data: Vec<Vec<f32>>,
+
     /// Require this so there can be an empty buffer.  `usize` not
     /// `u32` as it is == `data.len()` if `data` is not empty
     channels: usize,
+
+    /// Identifier
+    id: Uuid,
 }
 
 impl AudioBuffer {
+    /// Utility to make a new ID
+    fn id() -> Uuid {
+        Uuid::new_v6(Timestamp::now(Context::new(0)), &[1, 2, 3, 4, 5, 6])
+    }
+
     /// Constructor from data
     #[allow(dead_code)]
     pub fn new(data: Vec<Vec<f32>>) -> Result<Self, Qzn3tError> {
         let channels = data.len();
-        let data = data.iter().map(|d| d.to_vec()).collect::<Vec<Vec<f32>>>();
-        let this = Self { channels, data };
+        let id = Self::id();
+        let this = Self { channels, data, id };
         if this.valid() {
             Ok(this)
         } else {
@@ -114,6 +123,7 @@ mod tests {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let audio = AudioBuffer {
             data: data.clone(),
+            id: AudioBuffer::id(),
             channels: 2,
         };
 
@@ -129,6 +139,7 @@ mod tests {
         let audio = AudioBuffer {
             data: data.clone(),
             channels: 2,
+            id: AudioBuffer::id(),
         };
         assert!(audio.valid());
     }
@@ -139,6 +150,7 @@ mod tests {
         let audio = AudioBuffer {
             data: data.clone(),
             channels: 3,
+            id: AudioBuffer::id(),
         };
         assert!(!audio.valid());
     }
@@ -149,6 +161,7 @@ mod tests {
         let audio = AudioBuffer {
             data: data.clone(),
             channels: 2,
+            id: AudioBuffer::id(),
         };
         let test = audio.valid();
         assert!(!test);
@@ -186,9 +199,10 @@ mod tests {
     #[test]
     fn equal() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let audio1 = AudioBuffer::new(data).unwrap();
+        let audio = AudioBuffer::new(data).unwrap();
+        assert_eq!(audio, audio);
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let audio2 = AudioBuffer::new(data).unwrap();
-        assert_eq!(audio1, audio2);
+        assert_ne!(audio2, audio); // AudioBuffer has an ID
     }
 }
