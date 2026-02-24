@@ -40,6 +40,7 @@ impl AudioBuffer {
         }
     }
 
+    /// Reading data
     #[allow(dead_code)]
     pub fn frames(&self) -> FrameIterator<'_> {
         let num_channels = self.data.len();
@@ -50,6 +51,17 @@ impl AudioBuffer {
             index: 0,
             num_frames,
             buffer: vec![0.0; num_channels],
+        }
+    }
+
+    /// Writing data.  A channel at a time
+    #[allow(dead_code)]
+    pub fn add_samples(&mut self, channel: usize, data: &[f32]) -> Result<(), Qzn3tError> {
+        if self.channels <= channel {
+            Err(Qzn3tError::InvalidChannel)
+        } else {
+            self.data[channel].extend(data);
+            Ok(())
         }
     }
 
@@ -153,5 +165,21 @@ mod tests {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0, 7.0]];
         let audio = AudioBuffer::new(data);
         assert!(matches!(audio, Err(Qzn3tError::InvalidAudioData)));
+    }
+    #[test]
+    fn add_samples() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let mut audio = AudioBuffer::new(data).unwrap();
+        audio.add_samples(0, &[3.5, 3.6]).unwrap();
+        assert!(!audio.valid());
+        audio.add_samples(1, &[6.5, 6.6]).unwrap();
+        assert!(audio.valid());
+    }
+    #[test]
+    fn add_samples_bad_channel() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let mut audio = AudioBuffer::new(data).unwrap();
+        let test = audio.add_samples(2, &[3.5, 3.6]);
+        assert!(matches!(test, Err(Qzn3tError::InvalidChannel)));
     }
 }
