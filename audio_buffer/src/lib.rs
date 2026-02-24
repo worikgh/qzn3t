@@ -5,11 +5,13 @@ use std::{error::Error, fmt::Display};
 #[derive(Debug)]
 enum Qzn3tError {
     InvalidAudioData,
+    InvalidChannel,
 }
 impl Display for Qzn3tError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
+            Qzn3tError::InvalidChannel => write!(f, "{self:?} invalid channel"),
         }
     }
 }
