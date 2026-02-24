@@ -19,6 +19,7 @@ impl Display for Qzn3tError {
 impl Error for Qzn3tError {}
 
 #[allow(dead_code)]
+#[derive(PartialEq, Debug)]
 struct AudioBuffer {
     data: Vec<Vec<f32>>,
     /// Require this so there can be an empty buffer.  `usize` not
@@ -181,5 +182,13 @@ mod tests {
         let mut audio = AudioBuffer::new(data).unwrap();
         let test = audio.add_samples(2, &[3.5, 3.6]);
         assert!(matches!(test, Err(Qzn3tError::InvalidChannel)));
+    }
+    #[test]
+    fn equal() {
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let audio1 = AudioBuffer::new(data).unwrap();
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let audio2 = AudioBuffer::new(data).unwrap();
+        assert_eq!(audio1, audio2);
     }
 }
