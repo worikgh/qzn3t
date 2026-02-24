@@ -5,7 +5,7 @@ use std::{error::Error, fmt::Display, fs::File, path::PathBuf};
 
 use uuid::{Context, Timestamp, Uuid};
 #[derive(Debug)]
-enum Qzn3tError {
+pub enum Qzn3tError {
     InvalidAudioData,
     InvalidChannel,
 }
@@ -22,7 +22,7 @@ impl Error for Qzn3tError {}
 
 #[allow(dead_code)]
 #[derive(PartialEq, Debug)]
-struct AudioBuffer {
+pub struct AudioBuffer {
     data: Vec<Vec<f32>>,
 
     /// Require this so there can be an empty buffer.  `usize` not
