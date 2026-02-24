@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
-use std::{error::Error, fmt::Display};
+use std::{error::Error, fmt::Display, fs::File, path::PathBuf};
+
+use uuid::{Context, Timestamp, Uuid};
 #[derive(Debug)]
 enum Qzn3tError {
     InvalidAudioData,
@@ -112,7 +114,17 @@ impl<'a> FrameIterator<'a> {
     }
 }
 
-// Usage:
+/// Manage the file backing for the AudioBuffer.
+#[allow(dead_code)]
+struct FileManager {
+    /// Every FileManager has an associated path.  It will have two
+    /// files associated: ``path.with_extension("raw") for the audio
+    /// data and `path.with_extension("json")` for the metadata
+    path: PathBuf,
+
+    /// Can hold a `File` handle here
+    handle: Option<File>,
+}
 
 #[cfg(test)]
 mod tests {
