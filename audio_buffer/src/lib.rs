@@ -175,6 +175,7 @@ impl AudioBuffer {
     /// the `channels` field is correct
     #[allow(dead_code)]
     pub fn valid(&self) -> bool {
+        assert_eq!(self.id.get_version_num(), 6);
         if self.data.is_empty() {
             self.channels > 0 // Only zero channels is invalid
         } else {
@@ -325,11 +326,6 @@ impl FileBacker {
         let md_path = FileBacker::get_metadata_path(&self.path);
         let audio_rx = self.audio_rx.take().unwrap();
 
-        // This is very reliable.  Unwrap OK
-        let metadata = serde_json::to_string_pretty(&metadata).unwrap();
-        fs::write(&md_path, metadata)
-            .map_err(|err| Qzn3tError::FileError(format!("Path: {md_path:?} Error: {err}")))?;
-
         let handle = spawn(move || -> Result<(), Qzn3tError> {
             let mut buffers: Vec<VecDeque<f32>> = vec![];
             for _ in 0..channels {
@@ -385,6 +381,10 @@ impl FileBacker {
             }
             Ok(())
         });
+        // This is very reliable.  Unwrap OK
+        let metadata = serde_json::to_string_pretty(&metadata).unwrap();
+        fs::write(&md_path, metadata)
+            .map_err(|err| Qzn3tError::FileError(format!("Path: {md_path:?} Error: {err}")))?;
 
         self.handle = Some(handle);
 
@@ -448,7 +448,6 @@ impl FileBacker {
         // Get the bytes
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
-        dbg!(buf.len());
 
         let f32sz = std::mem::size_of::<f32>();
         assert_eq!(f32sz, 4);
@@ -526,9 +525,22 @@ mod tests {
         let bytes: Vec<u8> = vec![0; 9];
         let test = AudioBuffer::from_bytes(&bytes, 2);
         assert!(test.is_err());
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
+
+        let bytes: Vec<u8> = vec![0; 12];
+        let test = AudioBuffer::from_bytes(&bytes, 2);
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
+
         let bytes: Vec<u8> = vec![0; 11];
         let test = AudioBuffer::from_bytes(&bytes, 3);
         assert!(test.is_err());
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
     }
 
     #[test]
@@ -657,6 +669,9 @@ mod tests {
         let mut audio = AudioBuffer::new(data).unwrap();
         let test = audio.add_samples(2, &[3.5, 3.6]);
         assert!(matches!(test, Err(Qzn3tError::InvalidChannel)));
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
     }
     #[test]
     fn audio_buffer_equal() {
@@ -730,6 +745,9 @@ mod tests {
         let path = PathBuf::new();
         let fm = FileBacker::new(&path);
         assert!(fm.handle.is_none());
+        assert!(fm.audio_rx.is_some());
+        assert_eq!(fm.path(), path);
+        assert!(fm.handle.is_none());
     }
 
     #[test]
@@ -782,16 +800,14 @@ mod tests {
         // synced
         let mut z = 0;
         let lim = 100;
-        dbg!(z);
         loop {
             thread::sleep(Duration::from_millis(10));
-            let p = FileBacker::get_raw_path(&path);
-            if p.is_file() {
-                break;
-            }
-            dbg!(z);
             z += 1;
             if z == lim {
+                break;
+            }
+            let p = FileBacker::get_raw_path(&path);
+            if p.is_file() {
                 break;
             }
         }
@@ -803,5 +819,132 @@ mod tests {
         };
         assert_eq!(data1, data2);
         assert_eq!(ab1, ab2);
+    }
+
+    #[test]
+    fn invalid_data_file() {
+        // Make some bad data and write it as a FileBacker file
+        let samples = [0.0f32, 0.1, 0.2, 0.3, 0.0, 0.2, 0.3];
+        let bytes = samples
+            .iter()
+            .flat_map(|f| f.to_ne_bytes())
+            .collect::<Vec<u8>>();
+        let path = temp_dir();
+        let path = path.join("invalid_data_file");
+        let raw_path = FileBacker::get_raw_path(&path);
+        let md_path = FileBacker::get_metadata_path(&path);
+        let metadata = Metadata {
+            channels: 2,
+            sample_rate: get_sample_rate(),
+        };
+        let metadata = serde_json::to_string_pretty(&metadata).unwrap();
+        fs::write(&md_path, metadata).unwrap();
+        let mut f = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&raw_path)
+            .unwrap();
+        f.write_all(&bytes).unwrap();
+
+        let mut fm = FileBacker::new(&path);
+        fm.initialise(2, InitialiseMode::NoTruncate).unwrap();
+
+        let audio_test = AudioBuffer::from_file(&path);
+        assert!(audio_test.is_err());
+        let test = audio_test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
+
+        // An extra byte
+        let samples = [0.0f32, 0.1, 0.2, 0.3, 0.0, 0.1, 0.2, 0.3];
+        let mut bytes = samples
+            .iter()
+            .flat_map(|f| f.to_ne_bytes())
+            .collect::<Vec<u8>>();
+        bytes.push(0);
+        f.seek(SeekFrom::Start(0)).unwrap();
+        f.set_len(0).unwrap();
+        f.write_all(&bytes).unwrap();
+        let mut fm = FileBacker::new(&path);
+        fm.initialise(2, InitialiseMode::NoTruncate).unwrap();
+
+        let audio_test = AudioBuffer::from_file(&path);
+        assert!(audio_test.is_err());
+        let test = audio_test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn valid_data_file() {
+        // Make some good data and write it as a FileBacker file
+        let samples = [0.0f32, 0.1, 0.2, 0.3, 0.0, 0.1, 0.2, 0.3];
+        let bytes = samples
+            .iter()
+            .flat_map(|f| f.to_ne_bytes())
+            .collect::<Vec<u8>>();
+        let path = temp_dir();
+        let path = path.join("valid_data_file");
+        let raw_path = FileBacker::get_raw_path(&path);
+        let md_path = FileBacker::get_metadata_path(&path);
+        let metadata = Metadata {
+            channels: 2,
+            sample_rate: get_sample_rate(),
+        };
+        let metadata = serde_json::to_string_pretty(&metadata).unwrap();
+        fs::write(&md_path, metadata).unwrap();
+        let mut f = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&raw_path)
+            .unwrap();
+        f.write_all(&bytes).unwrap();
+
+        let mut fm = FileBacker::new(&path);
+        fm.initialise(2, InitialiseMode::NoTruncate).unwrap();
+
+        let audio_test = AudioBuffer::from_file(&path);
+        assert!(audio_test.is_ok());
+        assert!(audio_test.unwrap().valid());
+
+        // Empty buffer is valid
+        let audio_buffer = AudioBuffer {
+            data: vec![],
+            channels: 2,
+            file_backer: None,
+            id: AudioBuffer::id(),
+        };
+        assert!(audio_buffer.valid());
+    }
+
+    #[test]
+    fn bad_json() {
+        let path = temp_dir().join("bad_json");
+        let md_path = FileBacker::get_metadata_path(&path);
+        let bad_json = "{bad_json".to_string();
+        fs::write(&md_path, bad_json).unwrap();
+        let test = FileBacker::read_metadata(&path);
+        assert!(test.is_err());
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn file_error() {
+        let path = PathBuf::from("/dev/null");
+        let test = FileBacker::read_metadata(&path);
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
+
+        let mut fb = FileBacker::new(&path);
+        let test = fb.initialise(2, InitialiseMode::NoTruncate);
+        assert!(matches!(test, Err(Qzn3tError::FileError(_))));
+        let test = test.unwrap_err();
+        let s = format!("{test}");
+        assert!(!s.is_empty());
     }
 }
