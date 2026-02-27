@@ -79,6 +79,16 @@ dependencies = [
 name = "qzn3t_audio_buffer"
 version = "0.1.0"
 dependencies = [
+ "qzn3terror",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "qzn3terror"
+version = "0.1.0"
+dependencies = [
  "serde",
  "serde_json",
  "uuid",

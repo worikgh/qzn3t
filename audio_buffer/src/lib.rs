@@ -1,56 +1,17 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
+use qzn3terror::Qzn3tError;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
-    error::Error,
-    fmt::Display,
     fs::{self, File, OpenOptions},
-    io::{self, Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::mpsc,
     thread::{JoinHandle, spawn},
 };
-
-use serde::{Deserialize, Serialize};
 use uuid::{Context, Timestamp, Uuid};
-#[derive(Debug)]
-pub enum Qzn3tError {
-    FileError(String),
-    InvalidAudioData,
-    InvalidChannel,
-    InvalidPath(PathBuf),
-    JsonError(String),
-    NumericError(String),
-    SendError(String),
-}
-impl From<io::Error> for Qzn3tError {
-    fn from(error: io::Error) -> Self {
-        Qzn3tError::FileError(error.to_string())
-    }
-}
-impl From<serde_json::Error> for Qzn3tError {
-    fn from(error: serde_json::Error) -> Self {
-        Qzn3tError::JsonError(error.to_string())
-    }
-}
-impl Display for Qzn3tError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Qzn3tError::FileError(err) => write!(f, "{self:?} {err}"),
-            Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
-            Qzn3tError::InvalidChannel => write!(f, "{self:?} invalid channel"),
-            Qzn3tError::InvalidPath(pb) => write!(f, "{self:?} Path: {pb:?}"),
-            Qzn3tError::JsonError(reason)
-            | Qzn3tError::NumericError(reason)
-            | Qzn3tError::SendError(reason) => {
-                write!(f, "{self:?} {reason}")
-            }
-        }
-    }
-}
-
-impl Error for Qzn3tError {}
 
 // Stubs for now as this will be moved to another crate when I get to
 // implementing the actual audio software
