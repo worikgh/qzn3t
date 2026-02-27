@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+cpal = { version = "0.17.3", features = ["jack"]}
 
 [[bin]]
 name = "recorder"
