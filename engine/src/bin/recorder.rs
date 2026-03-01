@@ -55,11 +55,8 @@ fn main() {
     let mut cache = vec![Vec::<f32>::new(); channels];
     audio_buffer.add_file_backing(&path).unwrap();
     let data_callback = move |data: &[f32], _info: &InputCallbackInfo| {
-        dbg!(data.len());
         let frames = data.len() / channels;
-        dbg!(cache.iter().map(|v| v.len()).collect::<Vec<usize>>());
-        _ = cache.iter_mut().map(|v| v.clear());
-        dbg!(cache.iter().map(|v| v.len()).collect::<Vec<usize>>());
+        cache.iter_mut().for_each(|v| v.clear());
         for frame in 0..frames {
             let base = frame * channels;
             for c in 0..channels {
