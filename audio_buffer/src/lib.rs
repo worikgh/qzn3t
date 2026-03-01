@@ -337,8 +337,10 @@ impl FileBacker {
                             }
                         }
                     }
-                    Err(err) => {
-                        dbg!(err);
+                    Err(_err) => {
+                        // if run_f {
+                        //     break;
+                        // }
                         break;
                     }
                 }
