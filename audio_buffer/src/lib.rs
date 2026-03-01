@@ -296,7 +296,8 @@ impl FileBacker {
             }
             let mut handle_raw = OpenOptions::new()
                 .create(true) // create if missing
-                .append(true) // open in append mode
+                .write(true) // open in append mode
+                .truncate(true)
                 .open(&raw_path)
                 .map_err(|_| Qzn3tError::InvalidPath(raw_path.clone()))?;
 
