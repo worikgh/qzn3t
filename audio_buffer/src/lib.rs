@@ -91,7 +91,9 @@ impl AudioBuffer {
         let mut fb = FileBacker::new(path);
         fb.initialise(self.channels(), InitialiseMode::Truncate)?;
         for (i, data) in self.data.iter().enumerate() {
-            fb.send(data, i)?;
+            if !data.is_empty() {
+                fb.send(data, i)?;
+            }
         }
         self.file_backer = Some(fb);
         Ok(())
