@@ -17,9 +17,9 @@ use qzn3t_engine::{
 
 fn main() {
     let engine = Engine::new();
+    println!("Host: {}", engine.host().id(),);
     let hosts = list_hosts().unwrap();
     let devices = list_devices_for_host(engine.host()).unwrap();
-    println!("Host: {}", engine.host().id(),);
     println!(
         "Hosts:\n\t{}",
         hosts
