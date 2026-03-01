@@ -1,90 +1,131 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
-use cpal::traits::{DeviceTrait, HostTrait};
+use std::fmt;
 
+use cpal::{
+    ChannelCount, Devices, Host, SupportedStreamConfig, SupportedStreamConfigRange,
+    available_hosts, default_host, host_from_id,
+    traits::{DeviceTrait, HostTrait},
+};
+use qzn3terror::Qzn3tError;
 
-pub fn enumerate() {
-    println!("Supported hosts:\n  {:?}", cpal::ALL_HOSTS);
-    let available_hosts = cpal::available_hosts();
-    println!("Available hosts:\n  {available_hosts:?}");
-    for host_id in available_hosts {
-	println!("{}", host_id.name());
-	let host = cpal::host_from_id(host_id).unwrap();
-
-	let default_in = host
-	    .default_input_device()
-	    .map(|dev| dev.id().unwrap())
-	    .map(|id| id.to_string());
-	let default_out = host
-	    .default_output_device()
-	    .map(|dev| dev.id().unwrap())
-	    .map(|id| id.to_string());
-	println!("  Default Input Device:\n    {default_in:?}");
-	println!("  Default Output Device:\n    {default_out:?}");
-
-	let devices = host.devices().unwrap();
-	println!("  Devices: ");
-	for (device_index, device) in devices.enumerate() {
-	    let id = device
-		.id()
-		.map_or("Unknown ID".to_string(), |id| id.to_string());
-	    if let Ok(desc) = device.description() {
-		println!("  {}. {id} ({})", device_index + 1, desc);
-	    } else {
-		println!("  {}. {id}", device_index + 1);
-	    }
-
-	    // Input configs
-	    if let Ok(conf) = device.default_input_config() {
-		println!("    Default input stream config:\n      {conf:?}");
-	    }
-	    let input_configs = match device.supported_input_configs() {
-		Ok(f) => f.collect(),
-		Err(e) => {
-		    println!("    Error getting supported input configs: {e:?}");
-		    Vec::new()
-		}
-	    };
-	    if !input_configs.is_empty() {
-		println!("    All supported input stream configs:");
-		for (config_index, config) in input_configs.into_iter().enumerate() {
-		    println!(
-			"      {}.{}. {:?}",
-			device_index + 1,
-			config_index + 1,
-			config
-		    );
-		}
-	    }
-
-	    // Output configs
-	    if let Ok(conf) = device.default_output_config() {
-		println!("    Default output stream config:\n      {conf:?}");
-	    }
-	    let output_configs = match device.supported_output_configs() {
-		Ok(f) => f.collect(),
-		Err(e) => {
-		    println!("    Error getting supported output configs: {e:?}");
-		    Vec::new()
-		}
-	    };
-	    if !output_configs.is_empty() {
-		println!("    All supported output stream configs:");
-		for (config_index, config) in output_configs.into_iter().enumerate() {
-		    println!(
-			"      {}.{}. {:?}",
-			device_index + 1,
-			config_index + 1,
-			config
-		    );
-		}
-	    }
-	}
-    }
+/// Error conversion
+pub fn list_hosts() -> Result<Vec<String>, Qzn3tError> {
+    let available_hosts: Vec<&str> = available_hosts().iter().map(|h| h.name()).collect();
+    Ok(available_hosts.iter().map(|h| h.to_string()).collect())
 }
 
+pub fn list_devices_for_host(host: &Host) -> Result<Devices, Qzn3tError> {
+    host.devices()
+        .map_err(|err| Qzn3tError::CpalError(err.to_string()))
+}
+
+pub fn device_report<T>(d: &T) -> String
+where
+    T: DeviceTrait,
+{
+    let supported_input_configs: Vec<SupportedStreamConfigRange> = match d.supported_input_configs()
+    {
+        Ok(sscfg) => sscfg.collect(),
+        Err(_) => vec![],
+    };
+    let input_cfg = supported_input_configs.iter().fold("".to_string(), |a, b| {
+        let a = format!("{a}\n\tChannels      {:2}", b.channels());
+        let a = format!("{a}\n\tSample Format {:2}", b.sample_format());
+        let a = format!("{a}\n\tBuffer Size   {:?}", b.buffer_size());
+        a
+    });
+    let supported_output_configs: Vec<SupportedStreamConfigRange> =
+        match d.supported_output_configs() {
+            Ok(sscfg) => sscfg.collect(),
+            Err(_) => vec![],
+        };
+    let output_cfg = supported_output_configs
+        .iter()
+        .fold("".to_string(), |a, b| {
+            let a = format!("{a}\n\tChannels      {:2}", b.channels());
+            let a = format!("{a}\n\tSample Format {:2}", b.sample_format());
+            let a = format!("{a}\n\tBuffer Size   {:?}", b.buffer_size());
+            let a = format!(
+                "{a}\n\tSample Rates  {}:{}",
+                b.min_sample_rate(),
+                b.max_sample_rate()
+            );
+            a
+        });
+    let description = match d.description() {
+        Err(_) => "".to_string(),
+        Ok(description) => {
+            format!("Dir: {}:{}", description.name(), description.direction(),)
+        }
+    };
+
+    format!(
+        "Device: {:?} {description}\nInput CFG{input_cfg}\nOutput CFG{output_cfg}",
+        d.id()
+    )
+}
+
+pub fn get_config_with_channels<T>(
+    device: &T,
+    channels: ChannelCount,
+) -> Result<SupportedStreamConfig, Qzn3tError>
+where
+    T: DeviceTrait,
+{
+    if let Ok(mut input_cfg) = device.supported_input_configs() {
+        match input_cfg.find(|cfg| cfg.channels() == channels) {
+            Some(cfgrange) => Ok(cfgrange.with_max_sample_rate()),
+            None => Err(Qzn3tError::CpalError(format!(
+                "No configuration available with {channels} channels"
+            ))),
+        }
+    } else {
+        Err(Qzn3tError::CpalError(
+            "No input configuration available".into(),
+        ))
+    }
+}
+pub struct Engine {
+    host: Host,
+}
+impl fmt::Debug for Engine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("")
+            .field(&format!("Host: {}", self.host.id()))
+            .finish()
+    }
+}
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Engine {
+    pub fn new() -> Self {
+        // Use Jack by default.  Otherwise whatever else is available
+        let host = if let Some(hid) = cpal::available_hosts()
+            .into_iter()
+            .find(|id| *id == cpal::HostId::Jack)
+        {
+            host_from_id(hid).unwrap()
+        } else {
+            default_host()
+        };
+        Self { host }
+    }
+    pub fn host(&self) -> &Host {
+        &self.host
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_engine() {
+        let test = Engine::new();
+        assert!(!format!("{test:?}").is_empty());
+    }
 }
