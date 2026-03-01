@@ -4,6 +4,7 @@ use std::{error::Error, io::{self}, path::PathBuf, fmt::Display};
 
 #[derive(Debug)]
 pub enum Qzn3tError {
+    CpalError(String),
     FileError(String),
     InvalidAudioData,
     InvalidChannel,
@@ -29,6 +30,7 @@ impl Display for Qzn3tError {
 	    Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
 	    Qzn3tError::InvalidChannel => write!(f, "{self:?} invalid channel"),
 	    Qzn3tError::InvalidPath(pb) => write!(f, "{self:?} Path: {pb:?}"),
+	    Qzn3tError::CpalError(reason) |
 	    Qzn3tError::JsonError(reason)
 	    | Qzn3tError::NumericError(reason)
 	    | Qzn3tError::SendError(reason) => {
