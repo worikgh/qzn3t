@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
-use std::fmt;
+use std::{fmt, path::Path, thread, time::Duration};
 
 use cpal::{
-    ChannelCount, Devices, Host, SupportedStreamConfig, SupportedStreamConfigRange,
-    available_hosts, default_host, host_from_id,
-    traits::{DeviceTrait, HostTrait},
+    ChannelCount, Devices, Host, InputCallbackInfo, SupportedStreamConfig,
+    SupportedStreamConfigRange, available_hosts, default_host, host_from_id,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
 };
+use qzn3t_audio_buffer::AudioBuffer;
 use qzn3terror::Qzn3tError;
 
 /// Error conversion
@@ -89,11 +90,14 @@ where
 }
 pub struct Engine {
     host: Host,
+    name_in: String,
+    name_out: String,
+    stream: cpal::Stream,
 }
 impl fmt::Debug for Engine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("")
-            .field(&format!("Host: {}", self.host.id()))
+            .field(&format!("Host: {}/{}", self.name_in, self.host.id()))
             .finish()
     }
 }

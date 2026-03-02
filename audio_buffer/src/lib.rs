@@ -61,10 +61,10 @@ impl AudioBuffer {
 
     /// Constructor from data
     #[allow(dead_code)]
-    pub fn new(data: Vec<Vec<f32>>) -> Result<Self, Qzn3tError> {
-        let channels = data.len();
+    pub fn new(channels: usize) -> Result<Self, Qzn3tError> {
         let id = Self::id();
         let file_backer = None;
+        let data = vec![vec![]; channels];
         let this = Self {
             channels,
             data,
@@ -78,10 +78,26 @@ impl AudioBuffer {
         }
     }
 
+    pub fn new_data(data: Vec<Vec<f32>>) -> Result<Self, Qzn3tError> {
+        let id = Self::id();
+        let file_backer = None;
+        let channels = data.len();
+        let this = Self {
+            channels,
+            data,
+            id,
+            file_backer,
+        };
+        if this.valid() {
+            Ok(this)
+        } else {
+            Err(Qzn3tError::InvalidAudioData)
+        }
+    }
     #[allow(dead_code)]
     pub fn from_file(path: &Path) -> Result<Self, Qzn3tError> {
         let init_data = FileBacker::get_data_from_file(path)?;
-        let mut this = AudioBuffer::new(init_data)?;
+        let mut this = AudioBuffer::new_data(init_data)?;
         this.restore_file_backing(path)?;
         Ok(this)
     }
@@ -140,7 +156,7 @@ impl AudioBuffer {
     pub fn valid(&self) -> bool {
         assert_eq!(self.id.get_version_num(), 6);
         if self.data.is_empty() {
-            self.channels > 0 // Only zero channels is invalid
+            true
         } else {
             let s = self.data[0].len();
             self.data.len() == self.channels && self.data.iter().all(|d| d.len() == s)
@@ -522,7 +538,7 @@ mod tests {
 
     #[test]
     fn audio_buffer_as_bytes_single_channel() {
-        let audio = AudioBuffer::new(vec![vec![1.0f32, 2.0f32, 3.0f32]]).unwrap();
+        let audio = AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32, 3.0f32]]).unwrap();
         let bytes = audio.as_bytes();
 
         // Should be 3 samples * 4 bytes per f32
@@ -539,7 +555,7 @@ mod tests {
     #[test]
     fn audio_buffer_as_bytes_multi_channel() {
         let audio_buffer =
-            AudioBuffer::new(vec![vec![1.0f32, 2.0f32], vec![3.0f32, 4.0f32]]).unwrap();
+            AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32], vec![3.0f32, 4.0f32]]).unwrap();
 
         let bytes = audio_buffer.as_bytes();
 
@@ -609,7 +625,7 @@ mod tests {
     #[test]
     fn audio_buffer_constructor_valid() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let audio = AudioBuffer::new(data.clone());
+        let audio = AudioBuffer::new_data(data.clone());
         assert!(audio.is_ok());
         assert_eq!(audio.as_ref().unwrap().channels(), data.len());
         assert!(audio.unwrap().valid());
@@ -617,13 +633,13 @@ mod tests {
     #[test]
     fn audio_buffer_constructor_invalid() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0, 7.0]];
-        let audio = AudioBuffer::new(data);
+        let audio = AudioBuffer::new_data(data);
         assert!(matches!(audio, Err(Qzn3tError::InvalidAudioData)));
     }
     #[test]
     fn audio_buffer_add_samples() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let mut audio = AudioBuffer::new(data).unwrap();
+        let mut audio = AudioBuffer::new_data(data).unwrap();
         audio.add_samples(0, &[3.5, 3.6]).unwrap();
         assert!(!audio.valid());
         audio.add_samples(1, &[6.5, 6.6]).unwrap();
@@ -632,7 +648,7 @@ mod tests {
     #[test]
     fn audio_buffer_add_samples_bad_channel() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let mut audio = AudioBuffer::new(data).unwrap();
+        let mut audio = AudioBuffer::new_data(data).unwrap();
         let test = audio.add_samples(2, &[3.5, 3.6]);
         assert!(matches!(test, Err(Qzn3tError::InvalidChannel)));
         let test = test.unwrap_err();
@@ -642,17 +658,17 @@ mod tests {
     #[test]
     fn audio_buffer_equal() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let audio = AudioBuffer::new(data).unwrap();
+        let audio = AudioBuffer::new_data(data).unwrap();
         assert_eq!(audio, audio);
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let audio2 = AudioBuffer::new(data).unwrap();
+        let audio2 = AudioBuffer::new_data(data).unwrap();
         assert_eq!(audio2, audio); // AudioBuffer has an ID but it is ignored for equality
         assert_ne!(audio.id, audio2.id);
     }
     #[test]
     fn audio_buffer_add_file_manager() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
-        let mut audio = AudioBuffer::new(data.clone()).unwrap();
+        let mut audio = AudioBuffer::new_data(data.clone()).unwrap();
         let path = temp_dir();
         let path = path.join("audio_buffer_add_file_manager");
         audio.add_file_backing(&path).unwrap();
@@ -680,8 +696,7 @@ mod tests {
 
     #[test]
     fn audio_buffer_add_with_file_manager() {
-        let data = vec![vec![], vec![]];
-        let mut audio = AudioBuffer::new(data.clone()).unwrap();
+        let mut audio = AudioBuffer::new(2).unwrap();
         let path = temp_dir();
         let path = path.join("audio_buffer_add_with_file_manager");
         audio.add_file_backing(&path).unwrap();
@@ -757,7 +772,7 @@ mod tests {
         let path = path.join("audio_buffer_file_round_trip");
         let data1 = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let ab1 = {
-            let mut audio = AudioBuffer::new(data1.clone()).unwrap();
+            let mut audio = AudioBuffer::new_data(data1.clone()).unwrap();
             audio.add_file_backing(&path).unwrap();
             audio
         };
@@ -779,7 +794,7 @@ mod tests {
         }
         let data2 = FileBacker::get_data_from_file(&path).unwrap();
         let ab2 = {
-            let mut audio = AudioBuffer::new(data2.clone()).unwrap();
+            let mut audio = AudioBuffer::new_data(data2.clone()).unwrap();
             audio.restore_file_backing(&path).unwrap();
             audio
         };
