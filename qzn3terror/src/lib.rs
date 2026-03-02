@@ -10,6 +10,7 @@ pub enum Qzn3tError {
     InvalidChannel,
     InvalidPath(PathBuf),
     JsonError(String),
+    NoDevice(String),
     NumericError(String),
     SendError(String),
 }
@@ -32,6 +33,7 @@ impl Display for Qzn3tError {
 	    Qzn3tError::InvalidPath(pb) => write!(f, "{self:?} Path: {pb:?}"),
 	    Qzn3tError::CpalError(reason) |
 	    Qzn3tError::JsonError(reason)
+	    | Qzn3tError::NoDevice(reason)
 	    | Qzn3tError::NumericError(reason)
 	    | Qzn3tError::SendError(reason) => {
 		write!(f, "{self:?} {reason}")
