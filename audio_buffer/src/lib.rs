@@ -328,36 +328,27 @@ impl FileBacker {
             };
             assert!(raw_path.is_file());
 
-            loop {
-                match audio_rx.recv() {
-                    Ok(AudioMsg {
-                        samples: data,
-                        channel,
-                    }) => {
-                        buffers[channel].extend(data);
-                        if channel == channels - 1 {
-                            // There is an assumption here that channel data will arrive sequentially
-                            let available = buffers.iter().map(VecDeque::len).min().unwrap_or(0);
-                            if available > 0 {
-                                let mut bytes: Vec<u8> = vec![];
-                                for _ in 0..available {
-                                    for buf in buffers.iter_mut() {
-                                        let sample = buf.pop_front().unwrap();
-                                        let sample_bytes = sample.to_ne_bytes();
-                                        bytes.extend_from_slice(&sample_bytes);
-                                    }
-                                }
-                                handle_raw
-                                    .write_all(&bytes)
-                                    .map_err(|err| Qzn3tError::FileError(format!("{err}")))?;
+            while let Ok(AudioMsg {
+                samples: data,
+                channel,
+            }) = audio_rx.recv()
+            {
+                buffers[channel].extend(data);
+                if channel == channels - 1 {
+                    // There is an assumption here that channel data will arrive sequentially
+                    let available = buffers.iter().map(VecDeque::len).min().unwrap_or(0);
+                    if available > 0 {
+                        let mut bytes: Vec<u8> = vec![];
+                        for _ in 0..available {
+                            for buf in buffers.iter_mut() {
+                                let sample = buf.pop_front().unwrap();
+                                let sample_bytes = sample.to_ne_bytes();
+                                bytes.extend_from_slice(&sample_bytes);
                             }
                         }
-                    }
-                    Err(_err) => {
-                        // if run_f {
-                        //     break;
-                        // }
-                        break;
+                        handle_raw
+                            .write_all(&bytes)
+                            .map_err(|err| Qzn3tError::FileError(format!("{err}")))?;
                     }
                 }
             }
