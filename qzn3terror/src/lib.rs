@@ -9,6 +9,7 @@ pub enum Qzn3tError {
     InvalidAudioData,
     InvalidChannel,
     InvalidPath(PathBuf),
+    JackClient(String),
     JsonError(String),
     NoDevice(String),
     NumericError(String),
@@ -24,6 +25,11 @@ impl From<serde_json::Error> for Qzn3tError {
 	Qzn3tError::JsonError(error.to_string())
     }
 }
+impl From<jack::Error> for Qzn3tError{
+    fn from(err: jack::Error) -> Self {
+	Qzn3tError::JackClient(format!("Jack Error: {err}"))
+    }
+}
 impl Display for Qzn3tError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 	match self {
@@ -34,6 +40,7 @@ impl Display for Qzn3tError {
 	    Qzn3tError::CpalError(reason) |
 	    Qzn3tError::JsonError(reason)
 	    | Qzn3tError::NoDevice(reason)
+	    | Qzn3tError::JackClient(reason)
 	    | Qzn3tError::NumericError(reason)
 	    | Qzn3tError::SendError(reason) => {
 		write!(f, "{self:?} {reason}")

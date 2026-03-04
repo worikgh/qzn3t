@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-cpal = { path = "../../../2026/cpal/", features = ["jack"]}
+jack = { path = "../../../2026/rust-jack/"}
 qzn3terror = {path="../qzn3terror/"}
 qzn3t_audio_buffer = {path = "../audio_buffer/"}
 
