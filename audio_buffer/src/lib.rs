@@ -3,6 +3,7 @@
 
 use qzn3terror::Qzn3tError;
 use serde::{Deserialize, Serialize};
+use std::fs::exists;
 use std::{
     collections::VecDeque,
     fs::{self, File, OpenOptions},
@@ -294,20 +295,53 @@ impl FileBacker {
         mpsc::channel::<AudioMsg>()
     }
 
-    /// Initialise  communications
-    fn initialise(&mut self, channels: usize, mode: InitialiseMode) -> Result<(), Qzn3tError> {
+    /// Start the thread that receives audio data on self.receiversaudio_rx
+    ///  and marshals it to save it to file.
+    ///
+    /// The `FileBacker` must be ready with a valid `path` and `audio_rx`
+    ///  initialised.
+    ///
+    /// `mode` specifies if the file is truncated.  `n_channels` specifies the
+    /// number of audio channels.
+    //
+    // The thread is started and the
+    fn initialise(&mut self, n_channels: usize, mode: InitialiseMode) -> Result<(), Qzn3tError> {
         let sample_rate = get_sample_rate();
         let metadata = Metadata {
-            channels,
+            channels: n_channels,
             sample_rate,
         };
         let raw_path = Self::get_raw_path(&self.path);
         let md_path = FileBacker::get_metadata_path(&self.path);
-        let audio_rx = self.audio_rx.take().unwrap();
+        match mode {
+            InitialiseMode::Truncate => {
+                File::create(&raw_path)?;
+                File::create(&md_path)?;
+            }
+            InitialiseMode::NoTruncate => {
+                if !exists(&raw_path)? {
+                    return Err(Qzn3tError::FileError(format!(
+                        "Path {raw_path:?} does not exist"
+                    )));
+                }
+                if !exists(&md_path)? {
+                    return Err(Qzn3tError::FileError(format!(
+                        "Path {md_path:?} does not exist"
+                    )));
+                }
+            }
+        };
+        let audio_rx = if let Some(audio_rx) = self.audio_rx.take() {
+            audio_rx
+        } else {
+            return Err(Qzn3tError::FileBackerNotReady(
+                "audio receivers not intialised".to_string(),
+            ));
+        };
 
         let handle = spawn(move || -> Result<(), Qzn3tError> {
             let mut buffers: Vec<VecDeque<f32>> = vec![];
-            for _ in 0..channels {
+            for _ in 0..n_channels {
                 buffers.push(VecDeque::new());
             }
             let mut handle_raw = OpenOptions::new()
@@ -334,9 +368,10 @@ impl FileBacker {
             }) = audio_rx.recv()
             {
                 buffers[channel].extend(data);
-                if channel == channels - 1 {
-                    // There is an assumption here that channel data will arrive sequentially
+                if channel == n_channels - 1 {
+                    // `available` is the minimum amount of data available for all channels.
                     let available = buffers.iter().map(VecDeque::len).min().unwrap_or(0);
+
                     if available > 0 {
                         let mut bytes: Vec<u8> = vec![];
                         for _ in 0..available {
