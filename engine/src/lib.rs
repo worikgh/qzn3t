@@ -55,6 +55,9 @@ impl Engine {
     /// A session defines input and output ports and the path to file backing
     pub fn start_session(&mut self, session: Session) -> Result<(), Qzn3tError> {
         self.shut_down()?; // If there is a session already end it
+        self.add_client(session.in_ports, session.out_ports)?;
+        self.audio_buffer = Some(AudioBuffer::new(session.in_ports.len())?);
+        self.start_saving(session.path)?;
         Ok(())
     }
 
@@ -97,6 +100,7 @@ impl Engine {
         }
         self.senders.clear();
         self.receivers.clear();
+        self.audio_buffer = None;
         Ok(())
     }
 
