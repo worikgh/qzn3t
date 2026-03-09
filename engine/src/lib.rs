@@ -10,9 +10,9 @@ use std::{
     fmt,
     path::Path,
     sync::{
-	Arc,
-	atomic::{AtomicBool, Ordering},
-	mpsc,
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
     },
 };
 
@@ -24,83 +24,113 @@ mod process_audio;
 pub struct Engine {
     /// The Jack Client
     client: Option<AsyncClient<Notifications, ProcessAudio>>,
+
     /// Audio data being sent into the engine
     receivers: Vec<mpsc::Receiver<f32>>,
+
     /// Audio data output from engine
     senders: Vec<mpsc::Sender<f32>>,
+
     /// "Power" switch.  When reset the client shuts down
     run_f: Arc<AtomicBool>,
+
     /// When `Engine` is active it will have an `AudioBuffer`
     audio_buffer: Option<AudioBuffer>,
 }
 impl Engine {
     /// The `Engine` constructor.
     pub fn new() -> Result<Self, Qzn3tError> {
-	// The "power switch".  Run flag...
-	let run_f = Arc::new(AtomicBool::new(true));
+        // The "power switch".  Run flag...
+        let run_f = Arc::new(AtomicBool::new(true));
 
-	Ok(Self {
-	    client: None,
-	    senders: vec![],
-	    receivers: vec![],
-	    run_f,
-	    audio_buffer: None,
-	})
+        Ok(Self {
+            client: None,
+            senders: vec![],
+            receivers: vec![],
+            run_f,
+            audio_buffer: None,
+        })
+    }
+
+    /// A session defines input and output ports and the path to file backing
+    pub fn start_session(&mut self, session: Session) -> Result<(), Qzn3tError> {
+        self.shut_down()?; // If there is a session already end it
+        Ok(())
     }
 
     /// Set up a new AsyncClient.
     #[allow(dead_code)]
-    fn add_client(&mut self, in_p: &[&str], out_p: &[&str]) -> Result<(), Qzn3tError> {
-	if let Some(c) = self.client.take() {
-	    c.deactivate()?;
-	}
-	let name = "qzn3t";
-	let (client, _status) = match Client::new(name, ClientOptions::NO_START_SERVER) {
-	    Ok(c) => c,
-	    Err(err) => {
-		let msg = format!("jack_rec read_port: Error creating client: {err}");
-		return Err(Qzn3tError::JackClient(msg));
-	    }
-	};
+    pub fn add_client(&mut self, in_p: &[&str], out_p: &[&str]) -> Result<(), Qzn3tError> {
+        if let Some(c) = self.client.take() {
+            c.deactivate()?;
+        }
+        let name = "qzn3t";
+        let (client, _status) = match Client::new(name, ClientOptions::NO_START_SERVER) {
+            Ok(c) => c,
+            Err(err) => {
+                let msg = format!("jack_rec read_port: Error creating client: {err}");
+                return Err(Qzn3tError::JackClient(msg));
+            }
+        };
 
-	let (process_audio, senders, receivers) =
-	    Self::create_process(&client, in_p, out_p, self.run_f.clone())?;
-	let async_client = match client.activate_async(Notifications, process_audio) {
-	    Ok(ac) => ac,
-	    Err(err) => {
-		return Err(Qzn3tError::JackClient(format!(
-		    "Failed to create asynchronous client for {name}.  {err}"
-		)));
-	    }
-	};
-	self.client = Some(async_client);
-	self.senders = senders;
-	self.receivers = receivers;
-	Ok(())
+        let (process_audio, senders, receivers) =
+            Self::create_process(&client, in_p, out_p, self.run_f.clone())?;
+        let async_client = match client.activate_async(Notifications, process_audio) {
+            Ok(ac) => ac,
+            Err(err) => {
+                return Err(Qzn3tError::JackClient(format!(
+                    "Failed to create asynchronous client for {name}.  {err}"
+                )));
+            }
+        };
+        self.client = Some(async_client);
+        self.senders = senders;
+        self.receivers = receivers;
+        Ok(())
+    }
+
+    /// Shut down the engine
+    #[allow(dead_code)]
+    pub fn shut_down(&mut self) -> Result<(), Qzn3tError> {
+        if let Some(c) = self.client.take() {
+            c.deactivate()?;
+        }
+        if let Some(audio_buffer) = self.audio_buffer.take() {
+            audio_buffer
+        }
+        self.senders.clear();
+        self.receivers.clear();
+        Ok(())
     }
 
     /// Start saving the audio data from the inputs set up
     #[allow(unused_variables)]
-    pub fn start_recording(&mut self, ch_count: usize, path: &Path) -> Result<(), Qzn3tError> {
-	// Get/set up the input device
-	unimplemented!();
+    pub fn start_saving(&mut self, path: &Path) -> Result<(), Qzn3tError> {
+        // Get/set up the input device
+        if self.receivers.is_empty() {
+            return Err(Qzn3tError::EngineNotReady);
+        }
+        let ch_count = self.receivers.len();
+        let mut audio_buffer = AudioBuffer::new(self.receivers.len())?;
+        audio_buffer.add_file_backing(path)?;
+        Ok(())
     }
 
-    // Getters
+    // Getter
     pub fn client(&self) -> Option<&Client> {
-	match &self.client {
-	    Some(c) => Some(c.as_client()),
-	    None => None,
-	}
+        match &self.client {
+            Some(c) => Some(c.as_client()),
+            None => None,
+        }
     }
 
     /// This is the name by which this engine's Jack client is known
     pub fn name(&self) -> Option<&str> {
-	if let Some(c) = self.client() {
-	    Some(c.name())
-	} else {
-	    None
-	}
+        if let Some(c) = self.client() {
+            Some(c.name())
+        } else {
+            None
+        }
     }
 }
 
@@ -110,47 +140,61 @@ impl Engine {
     #[allow(clippy::type_complexity)]
     #[allow(dead_code)]
     fn create_process(
-	client: &Client,
-	in_p: &[&str],
-	out_p: &[&str],
-	run_f: Arc<AtomicBool>,
+        client: &Client,
+        in_p: &[&str],
+        out_p: &[&str],
+        run_f: Arc<AtomicBool>,
     ) -> Result<
-	(
-	    ProcessAudio,
-	    Vec<mpsc::Sender<f32>>,
-	    Vec<mpsc::Receiver<f32>>,
-	),
-	Qzn3tError,
+        (
+            ProcessAudio,
+            Vec<mpsc::Sender<f32>>,
+            Vec<mpsc::Receiver<f32>>,
+        ),
+        Qzn3tError,
     > {
-	let mut ports_receivers = vec![];
-	let mut ports_senders = vec![];
-	let mut senders = vec![];
-	let mut receivers = vec![];
-	for p in in_p.iter() {
-	    let port = client.register_port(p, AudioIn::default())?;
-	    let (tx, rx) = mpsc::channel::<f32>();
-	    receivers.push(rx);
-	    ports_senders.push((port, tx));
-	}
-	for p in out_p.iter() {
-	    let port = client.register_port(p, AudioOut::default())?;
-	    let (tx, rx) = mpsc::channel::<f32>();
-	    senders.push(tx);
-	    ports_receivers.push((port, rx));
-	}
-	Ok((
-	    ProcessAudio::new(
-		run_f,
-		// Get data from/ send data to owner
-		ports_receivers,
-		ports_senders,
-	    ),
-	    // For owner to use to send/reveive data
-	    senders,
-	    receivers,
-	))
+        let mut ports_receivers = vec![];
+        let mut ports_senders = vec![];
+        let mut senders = vec![];
+        let mut receivers = vec![];
+        for p in in_p.iter() {
+            let port = client.register_port(p, AudioIn::default())?;
+            let (tx, rx) = mpsc::channel::<f32>();
+            receivers.push(rx);
+            ports_senders.push((port, tx));
+        }
+        for p in out_p.iter() {
+            let port = client.register_port(p, AudioOut::default())?;
+            let (tx, rx) = mpsc::channel::<f32>();
+            senders.push(tx);
+            ports_receivers.push((port, rx));
+        }
+        Ok((
+            ProcessAudio::new(
+                run_f,
+                // Get data from/send data to owner
+                ports_receivers,
+                ports_senders,
+            ),
+            // For owner to use to send/reveive data
+            senders,
+            receivers,
+        ))
     }
 }
 
 //-------------------
-// Jackd code: TODO: move this to its own unit
+// Session code: TODO: move this to its own unit
+pub struct Session<'a> {
+    in_ports: &'a [&'a str],
+    out_ports: &'a [&'a str],
+    path: &'a Path,
+}
+impl<'a> Session<'a> {
+    pub fn new(in_ports: &'a [&'a str], out_ports: &'a [&'a str], path: &'a Path) -> Self {
+        Self {
+            in_ports,
+            out_ports,
+            path,
+        }
+    }
+}

@@ -60,7 +60,6 @@ impl AudioBuffer {
         self.channels
     }
 
-    /// Constructor from data
     #[allow(dead_code)]
     pub fn new(channels: usize) -> Result<Self, Qzn3tError> {
         let id = Self::id();
@@ -95,6 +94,7 @@ impl AudioBuffer {
             Err(Qzn3tError::InvalidAudioData)
         }
     }
+
     #[allow(dead_code)]
     pub fn from_file(path: &Path) -> Result<Self, Qzn3tError> {
         let init_data = FileBacker::get_data_from_file(path)?;
@@ -260,11 +260,9 @@ struct FileBacker {
     /// `audio_rx` send audio to that thread which marshals the data
     /// and writes them to disc
     handle: Option<JoinHandle<Result<(), Qzn3tError>>>,
-    // /// Keep a File handle for the raw data.  It is in constant use.
-    // /// The metadata is read and written in one fell swoop
-    // /// infrequently and there is no need to kee pthe handle, just a
-    // /// path
-    // handle_raw: Option<File>,
+
+    /// Path to the file that contains the serialised `MetaData`
+    /// object
     path_metadata: Option<PathBuf>,
 
     /// Communitcations with the `AudioBuffer` this is backing

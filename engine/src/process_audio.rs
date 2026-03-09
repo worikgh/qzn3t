@@ -15,9 +15,11 @@ use std::sync::{
 #[derive(Debug)]
 pub struct ProcessAudio {
     run_f: Arc<AtomicBool>,
+
     /// Receive Audiop from the code that owns this `Engine` and send
     /// it out on Jack outputs
     ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
+
     /// Receive Audiop on Jack inputs and send it to the code that
     /// owns this `Engine`
     ports_senders: Vec<(jack::Port<jack::AudioIn>, mpsc::Sender<f32>)>,
