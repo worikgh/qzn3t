@@ -336,7 +336,7 @@ impl FileBacker {
                 "audio receivers not intialised".to_string(),
             ));
         };
-
+        // Thread to read data from `audio_rx` and marshal it into a file
         let handle = spawn(move || -> Result<(), Qzn3tError> {
             let mut buffers: Vec<VecDeque<f32>> = vec![];
             for _ in 0..n_channels {
@@ -382,6 +382,10 @@ impl FileBacker {
                         handle_raw
                             .write_all(&bytes)
                             .map_err(|err| Qzn3tError::FileError(format!("{err}")))?;
+                    }
+                    let max = buffers.iter().map(VecDeque::len).max().unwrap_or(0);
+                    if max > 0 {
+                        dbg!(max);
                     }
                 }
             }

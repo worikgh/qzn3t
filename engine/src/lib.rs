@@ -25,7 +25,7 @@ pub struct Engine {
     /// The Jack Client
     client: Option<AsyncClient<Notifications, ProcessAudio>>,
 
-    /// Audio data being sent into the engine
+    /// Audio data being sent into the engine.
     receivers: Vec<mpsc::Receiver<f32>>,
 
     /// Audio data output from engine
@@ -94,9 +94,6 @@ impl Engine {
     pub fn shut_down(&mut self) -> Result<(), Qzn3tError> {
         if let Some(c) = self.client.take() {
             c.deactivate()?;
-        }
-        if let Some(audio_buffer) = self.audio_buffer.take() {
-            audio_buffer
         }
         self.senders.clear();
         self.receivers.clear();
