@@ -68,24 +68,10 @@ impl Engine {
             c.deactivate()?;
         }
         let name = "qzn3t";
-        let (client, _status) = match Client::new(name, ClientOptions::NO_START_SERVER) {
-            Ok(c) => c,
-            Err(err) => {
-                let msg = format!("jack_rec read_port: Error creating client: {err}");
-                return Err(Qzn3tError::JackClient(msg));
-            }
-        };
-
+        let (client, _status) = Client::new(name, ClientOptions::NO_START_SERVER)?;
         let (process_audio, senders, receivers) =
             Self::create_process(&client, in_p, out_p, self.run_f.clone())?;
-        let async_client = match client.activate_async(Notifications, process_audio) {
-            Ok(ac) => ac,
-            Err(err) => {
-                return Err(Qzn3tError::JackClient(format!(
-                    "Failed to create asynchronous client for {name}.  {err}"
-                )));
-            }
-        };
+        let async_client = client.activate_async(Notifications, process_audio)?;
         self.client = Some(async_client);
         self.senders = senders;
         self.receivers = receivers;
