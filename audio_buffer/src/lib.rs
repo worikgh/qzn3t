@@ -96,6 +96,7 @@ impl AudioBuffer {
     }
 
     #[allow(dead_code)]
+    /// Create an `AudioBuffer` from data in a file
     pub fn from_file(path: &Path) -> Result<Self, Qzn3tError> {
         let init_data = FileBacker::get_data_from_file(path)?;
         let mut this = AudioBuffer::new_data(init_data)?;
@@ -242,6 +243,7 @@ struct Metadata {
 }
 
 /// Flags for initialising FileBacker
+#[derive(PartialEq, Eq)]
 enum InitialiseMode {
     Truncate,
     NoTruncate,
@@ -452,17 +454,16 @@ impl FileBacker {
             .read(true)
             .write(false)
             .create(false)
-            .open(rd_path)?;
+            .open(&rd_path)?;
         file.seek(SeekFrom::Start(0))?;
 
         // Get the bytes
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)?;
-
         let f32sz = std::mem::size_of::<f32>();
         assert_eq!(f32sz, 4);
 
-        // Ensure length is multiple of 4
+        // Ensure length is multiple of size_of(f32)
         if !buf.len().is_multiple_of(f32sz) {
             return Err(Qzn3tError::FileError(
                 "file length is not multiple of size of f32".to_string(),
@@ -495,7 +496,7 @@ impl FileBacker {
 
     fn read_metadata(path: &Path) -> Result<Metadata, Qzn3tError> {
         let md_path = FileBacker::get_metadata_path(path);
-        let mut md_f = File::open(md_path)?;
+        let mut md_f = File::open(&md_path)?;
         let mut md_s = "".to_string();
         md_f.read_to_string(&mut md_s).unwrap();
         let metadata: Metadata = serde_json::from_str(&md_s)?;
@@ -848,6 +849,7 @@ mod tests {
         };
         let metadata = serde_json::to_string_pretty(&metadata).unwrap();
         fs::write(&md_path, metadata).unwrap();
+
         let mut f = OpenOptions::new()
             .write(true)
             .create(true)
@@ -855,10 +857,10 @@ mod tests {
             .open(&raw_path)
             .unwrap();
         f.write_all(&bytes).unwrap();
+        f.flush().unwrap();
 
         let mut fm = FileBacker::new(&path);
         fm.initialise(2, InitialiseMode::NoTruncate).unwrap();
-
         let audio_test = AudioBuffer::from_file(&path);
         assert!(audio_test.is_err());
         let test = audio_test.unwrap_err();
@@ -877,7 +879,6 @@ mod tests {
         f.write_all(&bytes).unwrap();
         let mut fm = FileBacker::new(&path);
         fm.initialise(2, InitialiseMode::NoTruncate).unwrap();
-
         let audio_test = AudioBuffer::from_file(&path);
         assert!(audio_test.is_err());
         let test = audio_test.unwrap_err();

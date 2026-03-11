@@ -7,7 +7,7 @@ use std::{
     path::PathBuf,
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Qzn3tError {
     CpalError(String),
     EngineNotReady,
@@ -59,18 +59,3 @@ impl Display for Qzn3tError {
 }
 
 impl Error for Qzn3tError {}
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
