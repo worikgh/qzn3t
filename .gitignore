@@ -52,3 +52,4 @@ recorder/tests/data
 
 pitch-detection/examples/
 *.raw
+*.profraw
