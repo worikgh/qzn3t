@@ -71,11 +71,8 @@ impl AudioBuffer {
             id,
             file_backer,
         };
-        if this.valid() {
-            Ok(this)
-        } else {
-            Err(Qzn3tError::InvalidAudioData)
-        }
+
+        Ok(this)
     }
 
     pub fn new_data(data: Vec<Vec<f32>>) -> Result<Self, Qzn3tError> {
