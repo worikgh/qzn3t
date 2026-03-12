@@ -4,6 +4,7 @@
 use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
 #[allow(unused_imports)]
 use qzn3t_audio_buffer::AudioBuffer;
+use qzn3t_audio_buffer::get_frame_sz;
 use qzn3terror::Qzn3tError;
 #[allow(unused_imports)]
 use std::{
@@ -100,6 +101,7 @@ impl Engine {
         let ch_count = self.receivers.len();
         let mut audio_buffer = AudioBuffer::new(self.receivers.len())?;
         audio_buffer.add_file_backing(path)?;
+        let _ = get_frame_sz();
         Ok(())
     }
 
