@@ -59,12 +59,17 @@ impl Engine {
         })
     }
 
-    /// A session defines input and output ports and the path to file backing
+    /// A session defines input and output ports, the path to file
+    /// backing and the mode of the session: recording or playing
+    /// audio.
     pub fn start_session(&mut self, session: Session) -> Result<(), Qzn3tError> {
         self.shut_down()?; // If there is a session already end it
         self.add_client(session.in_ports, session.out_ports)?;
         self.audio_buffer = Some(AudioBuffer::new(session.in_ports.len())?);
-        self.start_saving(session.path)?;
+        match session.mode {
+            SessionMode::Playing => (), // TODO!!
+            SessionMode::Recording => self.add_path(session.path)?,
+        };
         Ok(())
     }
 
@@ -190,17 +195,28 @@ impl Engine {
 
 //-------------------
 // Session code: TODO: move this to its own unit
+pub enum SessionMode {
+    Playing,
+    Recording,
+}
 pub struct Session<'a> {
     in_ports: &'a [&'a str],
     out_ports: &'a [&'a str],
     path: &'a Path,
+    mode: SessionMode,
 }
 impl<'a> Session<'a> {
-    pub fn new(in_ports: &'a [&'a str], out_ports: &'a [&'a str], path: &'a Path) -> Self {
+    pub fn new(
+        in_ports: &'a [&'a str],
+        out_ports: &'a [&'a str],
+        path: &'a Path,
+        mode: SessionMode,
+    ) -> Self {
         Self {
             in_ports,
             out_ports,
             path,
+            mode,
         }
     }
 }
@@ -242,7 +258,12 @@ mod tests {
         assert!(engine.name().is_none());
         assert!(engine.audio_buffer.is_none());
 
-        let session = Session::new(&["input_port"], &["output_port"], Path::new("output.wav"));
+        let session = Session::new(
+            &["input_port"],
+            &["output_port"],
+            Path::new("output.wav"),
+            SessionMode::Recording,
+        );
 
         let result = engine.start_session(session);
         assert!(result.is_ok()); // The session should start without error
@@ -254,7 +275,12 @@ mod tests {
     #[test]
     fn shut_down() {
         let mut engine = Engine::new().expect("Failed to create Engine");
-        let session = Session::new(&["input_port"], &["output_port"], Path::new("output.wav"));
+        let session = Session::new(
+            &["input_port"],
+            &["output_port"],
+            Path::new("output.wav"),
+            SessionMode::Recording,
+        );
         engine
             .start_session(session)
             .expect("Failed to start session");
@@ -272,16 +298,24 @@ mod tests {
         let mut engine = Engine::new().expect("Failed to create Engine");
         let path = Path::new("output.wav");
 
-        let result = engine.start_saving(path);
+        let result = engine.add_path(path);
         assert!(result.is_err()); // Should return an error since receivers are empty
-        assert_eq!(result.unwrap_err(), Qzn3tError::EngineNotReady); // Check for specific error
+        assert_eq!(
+            result.unwrap_err(),
+            Qzn3tError::EngineNotReady("No receivers to get audio on".into())
+        ); // Check for specific error
     } //
 
     #[test]
     fn add_client() {
         let mut engine = Engine::new().expect("Failed to create Engine");
         assert!(engine.client().is_none());
-        let session = Session::new(&["input_port"], &["output_port"], Path::new("output.wav"));
+        let session = Session::new(
+            &["input_port"],
+            &["output_port"],
+            Path::new("output.wav"),
+            SessionMode::Recording,
+        );
 
         engine
             .start_session(session)
