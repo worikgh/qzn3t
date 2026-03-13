@@ -15,6 +15,7 @@ use std::sync::{
 #[derive(Debug)]
 pub struct ProcessAudio {
     run_f: Arc<AtomicBool>,
+    pause: Arc<AtomicBool>,
 
     /// Receive Audiop from the code that owns this `Engine` and send
     /// it out on Jack outputs
@@ -28,11 +29,13 @@ pub struct ProcessAudio {
 impl ProcessAudio {
     pub fn new(
         run_f: Arc<AtomicBool>,
+        pause: Arc<AtomicBool>,
         ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
         ports_senders: Vec<(jack::Port<jack::AudioIn>, mpsc::Sender<f32>)>,
     ) -> Self {
         Self {
             run_f,
+            pause,
             ports_receivers,
             ports_senders,
         }
@@ -45,6 +48,10 @@ impl jack::ProcessHandler for ProcessAudio {
     /// available on the input jack ports send them out on the sender
     /// channels
     fn process(&mut self, _c: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        if self.pause.load(Ordering::Relaxed) {
+            return jack::Control::Continue;
+        }
+
         for (port, receiver) in self.ports_receivers.iter_mut() {
             let out = port.as_mut_slice(ps);
             for s in out.iter_mut() {

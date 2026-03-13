@@ -35,20 +35,27 @@ pub struct Engine {
     /// "Power" switch.  When reset the client shuts down
     run_f: Arc<AtomicBool>,
 
+    /// The "pause button".  When set no recording or playing back
+    /// happens.  When reset it does
+    pause: Arc<AtomicBool>,
+
     /// When `Engine` is active it will have an `AudioBuffer`
     audio_buffer: Option<AudioBuffer>,
 }
 impl Engine {
     /// The `Engine` constructor.
     pub fn new() -> Result<Self, Qzn3tError> {
-        // The "power switch".  Run flag...
+        // The "power switch" and "pause button".  Start with "power
+        // on" and "paused"
         let run_f = Arc::new(AtomicBool::new(true));
+        let pause = Arc::new(AtomicBool::new(true));
 
         Ok(Self {
             client: None,
             senders: vec![],
             receivers: vec![],
             run_f,
+            pause,
             audio_buffer: None,
         })
     }
@@ -71,7 +78,7 @@ impl Engine {
         let name = "qzn3t";
         let (client, _status) = Client::new(name, ClientOptions::NO_START_SERVER)?;
         let (process_audio, senders, receivers) =
-            Self::create_process(&client, in_p, out_p, self.run_f.clone())?;
+            Self::create_process(&client, in_p, out_p, self.run_f.clone(), self.pause.clone())?;
         let async_client = client.activate_async(Notifications, process_audio)?;
         self.client = Some(async_client);
         self.senders = senders;
@@ -89,6 +96,16 @@ impl Engine {
         self.receivers.clear();
         self.audio_buffer = None;
         Ok(())
+    }
+
+    /// Pause the engine
+    pub fn pause(&mut self) {
+        self.pause.store(true, Ordering::Relaxed);
+    }
+
+    /// Restart (unpause) the engine
+    pub fn unpause(&mut self) {
+        self.pause.store(false, Ordering::Relaxed);
     }
 
     /// Start saving the audio data from the inputs set up
@@ -133,6 +150,7 @@ impl Engine {
         in_p: &[&str],
         out_p: &[&str],
         run_f: Arc<AtomicBool>,
+        pause: Arc<AtomicBool>,
     ) -> Result<
         (
             ProcessAudio,
@@ -160,6 +178,7 @@ impl Engine {
         Ok((
             ProcessAudio::new(
                 run_f,
+                pause,
                 // Get data from/send data to owner
                 ports_receivers,
                 ports_senders,
