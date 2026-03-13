@@ -552,6 +552,17 @@ mod tests {
     }
 
     #[test]
+    fn audio_buffer_file_backing_bad_path() {
+        // Some goot data
+        let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let mut audio = AudioBuffer::new_data(data.clone()).unwrap();
+        // A bad path
+        let path: PathBuf = "/dev/null".into();
+        let path = path.join("audio_buffer_file_backing_bad_path");
+        assert!(audio.add_file_backing(&path).is_err());
+    }
+
+    #[test]
     fn audio_buffer_as_bytes_empty() {
         let audio = AudioBuffer {
             data: vec![],
