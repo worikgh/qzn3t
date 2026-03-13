@@ -61,12 +61,13 @@ impl AudioBuffer {
     }
 
     #[allow(dead_code)]
-    pub fn new(channels: usize) -> Result<Self, Qzn3tError> {
+    /// Constructor for a buffer with `n_channels` audio channels
+    pub fn new(n_channels: usize) -> Result<Self, Qzn3tError> {
         let id = Self::id();
         let file_backer = None;
-        let data = vec![vec![]; channels];
+        let data = vec![vec![]; n_channels];
         let this = Self {
-            channels,
+            channels: n_channels,
             data,
             id,
             file_backer,
@@ -75,6 +76,7 @@ impl AudioBuffer {
         Ok(this)
     }
 
+    /// Constructor from data.
     pub fn new_data(data: Vec<Vec<f32>>) -> Result<Self, Qzn3tError> {
         let id = Self::id();
         let file_backer = None;
@@ -102,6 +104,9 @@ impl AudioBuffer {
     }
 
     #[allow(dead_code)]
+    /// Attach a new `FileBacker` object to buffer and update it with
+    /// buffer contents deleting any data previously in the underlying
+    /// disc data
     pub fn add_file_backing(&mut self, path: &Path) -> Result<(), Qzn3tError> {
         let mut fb = FileBacker::new(path);
         fb.initialise(self.channels(), InitialiseMode::Truncate)?;
@@ -114,6 +119,8 @@ impl AudioBuffer {
         Ok(())
     }
 
+    /// Attach a `FileBacker` object to the buffer.  Do not change or
+    /// edit the underlying disc data
     pub fn restore_file_backing(&mut self, path: &Path) -> Result<(), Qzn3tError> {
         let mut fb = FileBacker::new(path);
         fb.initialise(self.channels(), InitialiseMode::NoTruncate)?;
@@ -208,6 +215,7 @@ impl AudioBuffer {
 }
 
 #[allow(dead_code)]
+/// Iterate over the data in an `AudioBuffer`
 pub struct FrameIterator<'a> {
     data: &'a [Vec<f32>],
     index: usize,
@@ -667,12 +675,14 @@ mod tests {
         assert_eq!(audio.as_ref().unwrap().channels(), data.len());
         assert!(audio.unwrap().valid());
     }
+
     #[test]
     fn audio_buffer_constructor_invalid() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0, 7.0]];
         let audio = AudioBuffer::new_data(data);
         assert!(matches!(audio, Err(Qzn3tError::InvalidAudioData)));
     }
+
     #[test]
     fn audio_buffer_add_samples() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
@@ -682,6 +692,7 @@ mod tests {
         audio.add_samples(1, &[6.5, 6.6]).unwrap();
         assert!(audio.valid());
     }
+
     #[test]
     fn audio_buffer_add_samples_bad_channel() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
@@ -692,6 +703,7 @@ mod tests {
         let s = format!("{test}");
         assert!(!s.is_empty());
     }
+
     #[test]
     fn audio_buffer_equal() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
@@ -702,6 +714,7 @@ mod tests {
         assert_eq!(audio2, audio); // AudioBuffer has an ID but it is ignored for equality
         assert_ne!(audio.id, audio2.id);
     }
+
     #[test]
     fn audio_buffer_add_file_manager() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
@@ -777,6 +790,7 @@ mod tests {
         assert!(test.is_ok());
         assert!(!test.unwrap());
     }
+
     #[test]
     fn file_backer_good_path() {
         let path = temp_dir();
@@ -787,6 +801,7 @@ mod tests {
         assert!(test.is_ok());
         assert!(test.unwrap());
     }
+
     #[test]
     fn file_backer_invalid_path() {
         let path = PathBuf::from("/qqqq");

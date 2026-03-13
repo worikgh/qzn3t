@@ -4,7 +4,6 @@
 use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
 #[allow(unused_imports)]
 use qzn3t_audio_buffer::AudioBuffer;
-use qzn3t_audio_buffer::get_frame_sz;
 use qzn3terror::Qzn3tError;
 #[allow(unused_imports)]
 use std::{
@@ -108,9 +107,9 @@ impl Engine {
         self.pause.store(false, Ordering::Relaxed);
     }
 
-    /// Start saving the audio data from the inputs set up
+    /// Set up the file backing for the audio buffer
     #[allow(unused_variables)]
-    pub fn start_saving(&mut self, path: &Path) -> Result<(), Qzn3tError> {
+    pub fn add_path(&mut self, path: &Path) -> Result<(), Qzn3tError> {
         // Get/set up the input device
         if self.receivers.is_empty() {
             return Err(Qzn3tError::EngineNotReady);
@@ -118,7 +117,6 @@ impl Engine {
         let ch_count = self.receivers.len();
         let mut audio_buffer = AudioBuffer::new(self.receivers.len())?;
         audio_buffer.add_file_backing(path)?;
-        let _ = get_frame_sz();
         Ok(())
     }
 
@@ -179,9 +177,9 @@ impl Engine {
             ProcessAudio::new(
                 run_f,
                 pause,
-                // Get data from/send data to owner
-                ports_receivers,
+                // Send data to or get data from the owner
                 ports_senders,
+                ports_receivers,
             ),
             // For owner to use to send/reveive data
             senders,

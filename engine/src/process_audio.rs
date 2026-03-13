@@ -30,8 +30,8 @@ impl ProcessAudio {
     pub fn new(
         run_f: Arc<AtomicBool>,
         pause: Arc<AtomicBool>,
-        ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
         ports_senders: Vec<(jack::Port<jack::AudioIn>, mpsc::Sender<f32>)>,
+        ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
     ) -> Self {
         Self {
             run_f,
