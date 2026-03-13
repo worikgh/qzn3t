@@ -117,7 +117,9 @@ impl Engine {
     pub fn add_path(&mut self, path: &Path) -> Result<(), Qzn3tError> {
         // Get/set up the input device
         if self.receivers.is_empty() {
-            return Err(Qzn3tError::EngineNotReady);
+            return Err(Qzn3tError::EngineNotReady(
+                "No receivers to get audio on".into(),
+            ));
         }
         let ch_count = self.receivers.len();
         let mut audio_buffer = AudioBuffer::new(self.receivers.len())?;

@@ -9,8 +9,9 @@ use std::{
 
 #[derive(Debug, PartialEq)]
 pub enum Qzn3tError {
+    ChannelOutOfBound(usize),
     CpalError(String),
-    EngineNotReady,
+    EngineNotReady(String),
     FileBackerNotReady(String),
     FileError(String),
     InvalidAudioData,
@@ -20,6 +21,7 @@ pub enum Qzn3tError {
     JsonError(String),
     NoDevice(String),
     NumericError(String),
+    SampleIndexOutOfBound(usize),
     SendError(String),
 }
 impl From<io::Error> for Qzn3tError {
@@ -41,12 +43,16 @@ impl Display for Qzn3tError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Qzn3tError::FileError(err) => write!(f, "{self:?} {err}"),
-            Qzn3tError::EngineNotReady => write!(f, "{self:?} the engine is not initialised"),
+            Qzn3tError::ChannelOutOfBound(c) | Qzn3tError::SampleIndexOutOfBound(c) => {
+                write!(f, "{self:?} {c}")
+            }
+
             Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
             Qzn3tError::InvalidChannel => write!(f, "{self:?} invalid channel"),
             Qzn3tError::InvalidPath(pb) => write!(f, "{self:?} Path: {pb:?}"),
             Qzn3tError::JsonError(reason)
             | Qzn3tError::CpalError(reason)
+            | Qzn3tError::EngineNotReady(reason)
             | Qzn3tError::JackClient(reason)
             | Qzn3tError::FileBackerNotReady(reason)
             | Qzn3tError::NoDevice(reason)
