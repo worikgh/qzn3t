@@ -5,6 +5,7 @@ use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
 #[allow(unused_imports)]
 use qzn3t_audio_buffer::AudioBuffer;
 use qzn3terror::Qzn3tError;
+use std::time::{Duration, Instant};
 #[allow(unused_imports)]
 use std::{
     fmt,
@@ -40,6 +41,9 @@ pub struct Engine {
 
     /// When `Engine` is active it will have an `AudioBuffer`
     audio_buffer: Option<AudioBuffer>,
+
+    /// Base time for this engine
+    base_time: Instant,
 }
 impl Engine {
     /// The `Engine` constructor.
@@ -56,6 +60,7 @@ impl Engine {
             run_f,
             pause,
             audio_buffer: None,
+            base_time: Instant::now(),
         })
     }
 
@@ -71,6 +76,11 @@ impl Engine {
             SessionMode::Recording => self.add_path(session.path)?,
         };
         Ok(())
+    }
+
+    /// The source of time for the engine
+    pub fn age(&self) -> Duration {
+        self.base_time.elapsed()
     }
 
     /// Set up a new AsyncClient.
@@ -235,6 +245,13 @@ mod tests {
         assert!(engine.senders.is_empty()); // Senders should be empty
     }
 
+    #[test]
+    fn age() {
+        let engine = Engine::new().expect("Failed to create Engine");
+        let d1 = engine.age();
+        let d2 = engine.age();
+        assert!(d2.saturating_sub(d1).as_nanos() > 0);
+    }
     #[test]
     fn client() {
         let engine = Engine::new().unwrap();

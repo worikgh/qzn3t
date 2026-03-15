@@ -7,7 +7,7 @@ use qzn3terror::Qzn3tError;
 use std::fs;
 #[allow(unused_imports)]
 use std::io::Write;
-use std::path::Path;
+use std::{path::Path, time::Instant};
 use uuid::{Context, Timestamp, Uuid};
 
 mod file_backer;
@@ -28,6 +28,8 @@ pub fn get_frame_sz() -> usize {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct AudioBuffer {
+    created: Instant,
+
     data: Vec<Vec<f32>>,
 
     /// Require this so there can be an empty buffer.  `usize` not
@@ -69,6 +71,7 @@ impl AudioBuffer {
             data,
             id,
             file_backer,
+            created: Instant::now(),
         };
 
         Ok(this)
@@ -84,6 +87,7 @@ impl AudioBuffer {
             data,
             id,
             file_backer,
+            created: Instant::now(),
         };
         if this.valid() {
             Ok(this)
@@ -306,6 +310,7 @@ mod tests {
             channels: 1,
             id: AudioBuffer::id(),
             file_backer: None,
+            created: Instant::now(),
         };
         assert!(audio.as_bytes().is_empty());
     }
@@ -351,6 +356,7 @@ mod tests {
             data: data.clone(),
             id: AudioBuffer::id(),
             channels: 2,
+            created: Instant::now(),
         };
 
         let mut iter = audio.frames();
@@ -367,6 +373,7 @@ mod tests {
             data: data.clone(),
             channels: 2,
             id: AudioBuffer::id(),
+            created: Instant::now(),
         };
         assert!(audio.valid());
     }
@@ -379,6 +386,7 @@ mod tests {
             data: data.clone(),
             channels: 3,
             id: AudioBuffer::id(),
+            created: Instant::now(),
         };
         assert!(!audio.valid());
     }
@@ -391,6 +399,7 @@ mod tests {
             data: data.clone(),
             channels: 2,
             id: AudioBuffer::id(),
+            created: Instant::now(),
         };
         let test = audio.valid();
         assert!(!test);
@@ -630,6 +639,7 @@ mod tests {
             channels: 2,
             file_backer: None,
             id: AudioBuffer::id(),
+            created: Instant::now(),
         };
         assert!(audio_buffer.valid());
     }
