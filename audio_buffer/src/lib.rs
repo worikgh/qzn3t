@@ -30,6 +30,8 @@ pub fn get_frame_sz() -> usize {
 pub struct AudioBuffer {
     created: Instant,
 
+    sample_rate: usize,
+
     data: Vec<Vec<f32>>,
 
     /// Require this so there can be an empty buffer.  `usize` not
@@ -72,6 +74,7 @@ impl AudioBuffer {
             id,
             file_backer,
             created: Instant::now(),
+            sample_rate: 48_000,
         };
 
         Ok(this)
@@ -83,6 +86,7 @@ impl AudioBuffer {
         let file_backer = None;
         let channels = data.len();
         let this = Self {
+            sample_rate: 48_000,
             channels,
             data,
             id,
@@ -306,6 +310,7 @@ mod tests {
     #[test]
     fn audio_buffer_as_bytes_empty() {
         let audio = AudioBuffer {
+            sample_rate: 48_000,
             data: vec![],
             channels: 1,
             id: AudioBuffer::id(),
@@ -352,6 +357,7 @@ mod tests {
     fn audio_buffer_usage() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let audio = AudioBuffer {
+            sample_rate: 48_000,
             file_backer: None,
             data: data.clone(),
             id: AudioBuffer::id(),
@@ -369,6 +375,7 @@ mod tests {
     fn audio_buffer_valid() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let audio = AudioBuffer {
+            sample_rate: 48_000,
             file_backer: None,
             data: data.clone(),
             channels: 2,
@@ -382,6 +389,7 @@ mod tests {
     fn audio_buffer_invalid_channels() {
         let data = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
         let audio = AudioBuffer {
+            sample_rate: 48_000,
             file_backer: None,
             data: data.clone(),
             channels: 3,
@@ -395,6 +403,7 @@ mod tests {
     fn audio_buffer_invalid() {
         let data = vec![vec![1.0, 2.0], vec![4.0, 5.0, 6.0]];
         let audio = AudioBuffer {
+            sample_rate: 48_000,
             file_backer: None,
             data: data.clone(),
             channels: 2,
@@ -635,6 +644,7 @@ mod tests {
 
         // Empty buffer is valid
         let audio_buffer = AudioBuffer {
+            sample_rate: 48_000,
             data: vec![],
             channels: 2,
             file_backer: None,
