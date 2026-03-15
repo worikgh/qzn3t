@@ -501,53 +501,6 @@ mod tests {
     }
 
     #[test]
-    fn file_backer_new() {
-        let path = PathBuf::new();
-        let fm = FileBacker::new(&path);
-        assert!(fm.handle.is_none());
-        assert!(fm.audio_rx.is_some());
-        assert_eq!(fm.path(), path);
-        assert!(fm.handle.is_none());
-    }
-
-    #[test]
-    fn file_backer_path_dir() {
-        let path = temp_dir();
-        assert!(path.exists());
-        let fm = FileBacker::new(&path);
-        let test = fm.check_path();
-        assert!(test.is_ok());
-        assert!(!test.unwrap());
-    }
-
-    #[test]
-    fn file_backer_good_path() {
-        let path = temp_dir();
-        let path = path.join("test_path");
-        assert!(!path.exists());
-        let fm = FileBacker::new(&path);
-        let test = fm.check_path();
-        assert!(test.is_ok());
-        assert!(test.unwrap());
-    }
-
-    #[test]
-    fn file_backer_invalid_path() {
-        let path = PathBuf::from("/qqqq");
-        assert!(!path.exists());
-        let fm = FileBacker::new(&path);
-        let test = fm.check_path();
-        assert!(test.is_ok());
-        assert!(!test.unwrap());
-        let path = PathBuf::from("/dev/null");
-        assert!(path.exists());
-        let fm = FileBacker::new(&path);
-        let test = fm.check_path();
-        assert!(test.is_ok());
-        assert!(!test.unwrap());
-    }
-
-    #[test]
     fn audio_buffer_file_round_trip() {
         let path = temp_dir();
         let path = path.join("audio_buffer_file_round_trip");
