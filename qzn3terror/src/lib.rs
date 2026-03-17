@@ -16,6 +16,7 @@ pub enum Qzn3tError {
     FileError(String),
     InvalidAudioData,
     InvalidChannel,
+    InvalidIndex,
     InvalidPath(PathBuf),
     JackClient(String),
     JsonError(String),
@@ -49,6 +50,7 @@ impl Display for Qzn3tError {
 
             Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
             Qzn3tError::InvalidChannel => write!(f, "{self:?} invalid channel"),
+            Qzn3tError::InvalidIndex => write!(f, "{self:?} invalid index"),
             Qzn3tError::InvalidPath(pb) => write!(f, "{self:?} Path: {pb:?}"),
             Qzn3tError::JsonError(reason)
             | Qzn3tError::CpalError(reason)
