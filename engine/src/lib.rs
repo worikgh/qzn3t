@@ -45,7 +45,8 @@ pub struct Engine {
     pause: Arc<AtomicBool>,
 
     /// When `Engine` is active it will have an `AudioBuffer`
-    audio_buffer: Option<AudioBuffer>,
+    audio_buffer_play: Option<AudioBuffer>,
+    audio_buffer_record: Option<AudioBuffer>,
 
     /// Base time for this engine
     base_time: Instant,
@@ -64,7 +65,8 @@ impl Engine {
             receivers: vec![],
             run_f,
             pause,
-            audio_buffer: None,
+            audio_buffer_play: None,
+            audio_buffer_record: None,
             base_time: Instant::now(),
             mode: None,
         })
@@ -76,9 +78,10 @@ impl Engine {
     pub fn start_session(&mut self, session: Session) -> Result<(), Qzn3tError> {
         self.shut_down()?; // If there is a session already end it
         self.add_client(session.in_ports, session.out_ports)?;
-        self.audio_buffer = Some(AudioBuffer::new(session.in_ports.len())?);
+        self.audio_buffer_play = Some(AudioBuffer::new(session.in_ports.len())?);
         match session.mode {
-            SessionMode::Playing => (), // TODO!!
+            SessionMode::FullDuplex => (), // TODO!!
+            SessionMode::Playing => (),    // TODO!!
             SessionMode::Recording => self.add_path(session.path)?,
         };
         Ok(())
@@ -112,7 +115,7 @@ impl Engine {
         }
         self.senders.clear();
         self.receivers.clear();
-        self.audio_buffer = None;
+        self.audio_buffer_play = None;
         Ok(())
     }
 
@@ -134,7 +137,7 @@ impl Engine {
                 "No receivers to get audio on".into(),
             ));
         }
-        let ch_count = self.receivers.len();
+
         let mut audio_buffer = AudioBuffer::new(self.receivers.len())?;
         audio_buffer.add_file_backing(path)?;
         Ok(())
@@ -387,6 +390,20 @@ impl<'a> Session<'a> {
         }
     }
 }
+
+/// Passed to `Engine`
+#[derive(Debug)]
+#[allow(unused)]
+enum EngineCommand {
+    Play,
+    Record,
+    FullDuplex,
+}
+#[derive(Debug)]
+#[allow(unused)]
+struct EngineCtl {
+    cmd: EngineCommand,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,7 +447,7 @@ mod tests {
         assert!(engine.senders.is_empty());
         assert!(engine.run_f.load(Ordering::Relaxed));
         assert!(engine.name().is_none());
-        assert!(engine.audio_buffer.is_none());
+        assert!(engine.audio_buffer_play.is_none());
 
         let session = Session::new(
             &["input_port"],
@@ -464,7 +481,7 @@ mod tests {
         assert!(engine.client.is_none()); // Client should be None after shutdown
         assert!(engine.receivers.is_empty()); // Ensure receivers are cleared
         assert!(engine.senders.is_empty()); // Ensure senders are cleared
-        assert!(engine.audio_buffer.is_none()); // Verify audio buffer is cleared
+        assert!(engine.audio_buffer_play.is_none()); // Verify audio buffer is cleared
     }
 
     #[test]
