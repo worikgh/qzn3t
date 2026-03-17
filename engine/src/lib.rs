@@ -2,13 +2,12 @@
 // License: GPL-3.0
 
 use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
-#[allow(unused_imports)]
+
 use qzn3t_audio_buffer::AudioBuffer;
+use qzn3t_audio_buffer::get_sample_rate;
 use qzn3terror::Qzn3tError;
-use std::time::{Duration, Instant};
-#[allow(unused_imports)]
+
 use std::{
-    fmt,
     path::Path,
     sync::{
         Arc,
@@ -16,12 +15,16 @@ use std::{
         mpsc,
     },
 };
+use std::{
+    sync::mpsc::TryRecvError,
+    thread::{self, JoinHandle, spawn},
+    time::{Duration, Instant},
+};
 
 use crate::process_audio::{Notifications, ProcessAudio};
 mod process_audio;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct Engine {
     /// The Jack Client
     client: Option<AsyncClient<Notifications, ProcessAudio>>,
@@ -84,7 +87,6 @@ impl Engine {
     }
 
     /// Set up a new AsyncClient.
-    #[allow(dead_code)]
     pub fn add_client(&mut self, in_p: &[&str], out_p: &[&str]) -> Result<(), Qzn3tError> {
         if let Some(c) = self.client.take() {
             c.deactivate()?;
@@ -101,7 +103,6 @@ impl Engine {
     }
 
     /// Shut down the engine
-    #[allow(dead_code)]
     pub fn shut_down(&mut self) -> Result<(), Qzn3tError> {
         if let Some(c) = self.client.take() {
             c.deactivate()?;
@@ -123,7 +124,6 @@ impl Engine {
     }
 
     /// Set up the file backing for the audio buffer
-    #[allow(unused_variables)]
     pub fn add_path(&mut self, path: &Path) -> Result<(), Qzn3tError> {
         // Get/set up the input device
         if self.receivers.is_empty() {
@@ -153,13 +153,164 @@ impl Engine {
             None
         }
     }
+
+    /// Main event loop.  This does not do any setup.
+    ///
+    /// The number of input channels in `self.receivers` and the
+    /// number of output channels in `self.sendes` are related to the
+    /// channels in `self.audio_buffer_play` and
+    /// `self.audio_buffer_record` and the mode in [`self.mode`].
+    pub fn run(mut self) -> Result<JoinHandle<Result<(), Qzn3tError>>, Qzn3tError> {
+        // Preconditions I/O and audio buffers
+        match self.mode {
+            Some(SessionMode::Playing) => {
+                assert_eq!(
+                    self.senders.len(),
+                    self.audio_buffer_play.as_ref().unwrap().channels()
+                );
+                assert!(!self.senders.is_empty());
+            }
+            Some(SessionMode::FullDuplex) => {
+                assert_eq!(
+                    self.senders.len(),
+                    self.audio_buffer_play.as_ref().unwrap().channels() + self.receivers.len()
+                );
+                assert!(!self.receivers.is_empty());
+            }
+            Some(SessionMode::Recording) => {
+                assert_eq!(
+                    self.receivers.len(),
+                    self.audio_buffer_record.as_ref().unwrap().channels()
+                );
+                assert!(!self.receivers.is_empty());
+            }
+            None => (),
+        };
+
+        // Timing for the loop, in nano-seconds and samples
+        const NANO_SEC_LOOP: u128 = 10_000_000;
+        let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128 / 1_000_000_000) as usize;
+        assert_eq!(
+            samples_per_loop as u128 * 1_000_000_000 / get_sample_rate() as u128,
+            NANO_SEC_LOOP,
+            "The sampling rate does not divide nicely"
+        );
+        let ret = spawn(move || -> Result<(), Qzn3tError> {
+            // For maintaining timeing in the loop
+            let mut now = Instant::now();
+
+            // the index used to play back audio
+            let mut play_idx = 0usize;
+
+            // In case of full duplex keep track of the what has been recorded but not yet played back
+            let mut fd_idx = 0;
+
+            // Dodging the borrow checker get lengths of
+            // self.receivers and self.receivers here before mutably
+            // borrowed in the closure below
+            let receivers_len = self.receivers.len();
+
+            loop {
+                // Closure to do recording for full-duplex or recording modes
+                let mut record = || -> Result<bool, Qzn3tError> {
+                    for (c, r) in self.receivers.iter_mut().enumerate() {
+                        match r.try_recv() {
+                            Ok(s) => self
+                                .audio_buffer_record
+                                .as_mut()
+                                .unwrap()
+                                .add_samples(c, &[s])?,
+                            Err(err) => match err {
+                                TryRecvError::Empty => continue,
+                                TryRecvError::Disconnected => return Ok(false),
+                            },
+                        };
+                    }
+                    Ok(true)
+                };
+                let senders_cnt_play: usize; // The number of senders used for playing recorded audio
+
+                match self.mode {
+                    Some(SessionMode::Playing) => {
+                        senders_cnt_play = self.senders.len();
+
+                        let next_idx = play_idx + samples_per_loop;
+                        while play_idx < self.audio_buffer_play.as_ref().unwrap().len()
+                            && play_idx < next_idx
+                        {
+                            for (c, s) in self.senders.iter_mut().enumerate().take(senders_cnt_play)
+                            {
+                                let sample = self
+                                    .audio_buffer_play
+                                    .as_ref()
+                                    .unwrap()
+                                    .get_sample_play(c, play_idx)?;
+                                if let Err(err) = s.send(sample) {
+                                    panic!("{err}");
+                                }
+                            }
+                        }
+                        play_idx = next_idx;
+                    }
+                    Some(SessionMode::Recording) => {
+                        if !record()? {
+                            break;
+                        }
+                    }
+                    Some(SessionMode::FullDuplex) => {
+                        let senders_cnt_fd = receivers_len;
+                        // Do the recording first
+                        if !record()? {
+                            break;
+                        }
+
+                        // Play back what was just recorded from the buffer
+                        for idx in fd_idx..self.audio_buffer_record.as_ref().unwrap().len() {
+                            // The senders to use for full-duplex play
+                            // back are after the senders for normal
+                            // playback
+                            let len = self.senders.len();
+                            let (_, last_n) = self.senders.split_at_mut(len - senders_cnt_fd);
+                            for (c, s) in last_n.iter_mut().enumerate() {
+                                let sample = self
+                                    .audio_buffer_record
+                                    .as_ref()
+                                    .unwrap()
+                                    .get_sample_play(c, idx)?;
+                                if let Err(err) = s.send(sample) {
+                                    panic!("{err}");
+                                }
+                            }
+                        }
+                    }
+                    None => (),
+                };
+
+                fd_idx = self.audio_buffer_record.as_ref().unwrap().len();
+
+                let elapsed = now.elapsed();
+                if elapsed.as_nanos() < NANO_SEC_LOOP {
+                    thread::sleep(Duration::from_nanos_u128(
+                        NANO_SEC_LOOP - elapsed.as_nanos(),
+                    ));
+                } else {
+                    eprintln!(
+                        "Xrun: {:?}",
+                        Duration::from_nanos_u128(elapsed.as_nanos() - NANO_SEC_LOOP)
+                    );
+                }
+                now = Instant::now();
+            }
+            Ok(())
+        });
+        Ok(ret)
+    }
 }
 
 /// Private methods
 impl Engine {
     /// Set up the Process structure for Jack
     #[allow(clippy::type_complexity)]
-    #[allow(dead_code)]
     fn create_process(
         client: &Client,
         in_p: &[&str],
