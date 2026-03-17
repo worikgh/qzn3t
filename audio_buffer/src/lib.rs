@@ -162,6 +162,16 @@ impl AudioBuffer {
         }
     }
 
+    /// Getting a sample one at a time: TODO Replace this with an iterator
+    pub fn get_sample_play(&self, channel: usize, idx: usize) -> Result<f32, Qzn3tError> {
+        if channel > self.channels {
+            Err(Qzn3tError::InvalidChannel)
+        } else if idx > self.len() {
+            Err(Qzn3tError::InvalidIndex)
+        } else {
+            Ok(self.data[channel][idx])
+        }
+    }
     /// Check that all channels have the same number of samples and
     /// the `channels` field is correct
     #[allow(dead_code)]
@@ -172,6 +182,22 @@ impl AudioBuffer {
         } else {
             let s = self.data[0].len();
             self.data.len() == self.channels && self.data.iter().all(|d| d.len() == s)
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        if self.data.is_empty() {
+            true
+        } else {
+            self.data[0].is_empty()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        if self.data.is_empty() {
+            0
+        } else {
+            self.data[0].len()
         }
     }
 
