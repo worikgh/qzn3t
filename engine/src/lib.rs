@@ -32,6 +32,8 @@ pub struct Engine {
     /// Audio data being sent into the engine.
     receivers: Vec<mpsc::Receiver<f32>>,
 
+    mode: Option<SessionMode>,
+
     /// Audio data output from engine
     senders: Vec<mpsc::Sender<f32>>,
 
@@ -64,6 +66,7 @@ impl Engine {
             pause,
             audio_buffer: None,
             base_time: Instant::now(),
+            mode: None,
         })
     }
 
@@ -356,11 +359,12 @@ impl Engine {
     }
 }
 
-//-------------------
 // Session code: TODO: move this to its own unit
+#[derive(Debug, PartialEq, Eq)]
 pub enum SessionMode {
     Playing,
     Recording,
+    FullDuplex,
 }
 pub struct Session<'a> {
     in_ports: &'a [&'a str],
