@@ -221,11 +221,14 @@ impl Engine {
                 let mut record = || -> Result<bool, Qzn3tError> {
                     for (c, r) in self.receivers.iter_mut().enumerate() {
                         match r.try_recv() {
-                            Ok(s) => self
-                                .audio_buffer_record
-                                .as_mut()
-                                .unwrap()
-                                .add_samples(c, &[s])?,
+                            Ok(s) => {
+                                self.audio_buffer_record
+                                    .as_mut()
+                                    .unwrap()
+                                    .add_samples(c, &[s])?;
+                                // TODO: If full-duplex then send
+                                // sample to full-duplex outputs
+                            }
                             Err(err) => match err {
                                 TryRecvError::Empty => continue,
                                 TryRecvError::Disconnected => return Ok(false),
@@ -264,6 +267,8 @@ impl Engine {
                         }
                     }
                     Some(SessionMode::FullDuplex) => {
+                        // TODO: Deprecate this.  Simpler to play it
+                        // directly from `record` closure
                         let senders_cnt_fd = receivers_len;
                         // Do the recording first
                         if !record()? {
