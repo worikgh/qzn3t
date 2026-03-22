@@ -7,6 +7,7 @@ use qzn3t_audio_buffer::AudioBuffer;
 use qzn3t_audio_buffer::get_sample_rate;
 use qzn3terror::Qzn3tError;
 
+use std::path::PathBuf;
 use std::{
     path::Path,
     sync::{
@@ -394,6 +395,15 @@ impl<'a> Session<'a> {
             mode,
         }
     }
+
+    pub fn default_stereo_play(path: &'a Path) -> Session<'a> {
+        Self {
+            in_ports: &[],
+            out_ports: &["system:playback_1", "system:playback_2"],
+            path,
+            mode: SessionMode::Playing,
+        }
+    }
 }
 
 /// Passed to `Engine`
@@ -520,5 +530,18 @@ mod tests {
         assert!(engine.name().is_some());
         assert!(result.is_ok()); // It should add the client without errors
         assert!(engine.client().is_some());
+    }
+
+    #[test]
+    fn session_default_stereo_play() {
+        let path = PathBuf::new();
+        let session = Session::default_stereo_play(&path);
+        assert_eq!(
+            &["system:playback_1", "system:playback_2"],
+            session.out_ports
+        );
+        assert!(session.in_ports.is_empty());
+        assert_eq!(SessionMode::Playing, session.mode);
+        assert_eq!(&path, session.path);
     }
 }
