@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
+use jack::PortFlags;
 use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
 
 use qzn3t_audio_buffer::AudioBuffer;
@@ -315,6 +316,20 @@ impl Engine {
             }
             Ok(())
         });
+        Ok(ret)
+    }
+
+    /// List all the names of all Jack ports the engine  is using
+    pub fn all_ports(&self) -> Result<Vec<String>, Qzn3tError> {
+        let ret = if let Some(client) = self.client() {
+            client.ports(
+                Some(format!("{}:", client.name()).as_str()),
+                None,
+                PortFlags::empty(),
+            )
+        } else {
+            vec![]
+        };
         Ok(ret)
     }
 }
