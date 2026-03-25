@@ -155,6 +155,8 @@ dependencies = [
  "jack",
  "qzn3t_audio_buffer",
  "qzn3terror",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

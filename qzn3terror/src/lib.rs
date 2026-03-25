@@ -16,10 +16,13 @@ pub enum Qzn3tError {
     FileError(String),
     InvalidAudioData,
     InvalidChannel,
+    InvalidChannelCount(usize, usize),
+    InvalidSessionMode,
     InvalidIndex,
     InvalidPath(PathBuf),
     JackClient(String),
     JsonError(String),
+    NoAudioBuffer,
     NoDevice(String),
     NumericError(String),
     SampleIndexOutOfBound(usize),
@@ -47,11 +50,16 @@ impl Display for Qzn3tError {
             Qzn3tError::ChannelOutOfBound(c) | Qzn3tError::SampleIndexOutOfBound(c) => {
                 write!(f, "{self:?} {c}")
             }
-
-            Qzn3tError::InvalidAudioData => write!(f, "{self:?} invalid audio data"),
-            Qzn3tError::InvalidChannel => write!(f, "{self:?} invalid channel"),
-            Qzn3tError::InvalidIndex => write!(f, "{self:?} invalid index"),
+            Qzn3tError::InvalidChannelCount(supplied, required) => write!(
+                f,
+                "{self:?} Invalid channel count.  Required {required} Supplied: {supplied}"
+            ),
             Qzn3tError::InvalidPath(pb) => write!(f, "{self:?} Path: {pb:?}"),
+            Qzn3tError::InvalidAudioData
+            | Qzn3tError::InvalidChannel
+            | Qzn3tError::InvalidIndex
+            | Qzn3tError::NoAudioBuffer
+            | Qzn3tError::InvalidSessionMode => write!(f, "{self:?}"),
             Qzn3tError::JsonError(reason)
             | Qzn3tError::CpalError(reason)
             | Qzn3tError::EngineNotReady(reason)

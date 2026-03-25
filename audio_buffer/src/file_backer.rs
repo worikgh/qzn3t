@@ -278,6 +278,7 @@ impl FileBacker {
         Ok(ret)
     }
 
+    /// Return meatadata from a path stem `path`
     pub fn read_metadata(path: &Path) -> Result<Metadata, Qzn3tError> {
         let md_path = FileBacker::get_metadata_path(path);
         let mut md_f = File::open(&md_path)?;
