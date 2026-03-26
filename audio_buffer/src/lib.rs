@@ -127,7 +127,10 @@ impl AudioBuffer {
 
     /// Attach a `FileBacker` object to the buffer.  Do not change or
     /// edit the underlying disc data
-    pub fn restore_file_backing(&mut self, path: &Path) -> Result<(), Qzn3tError> {
+    pub fn restore_file_backing(
+        &mut self,
+        path: &Path,
+    ) -> Result<(), Qzn3tError> {
         let mut fb = FileBacker::new(path);
         fb.initialise(self.channels(), InitialiseMode::NoTruncate)?;
         self.file_backer = Some(fb);
@@ -162,7 +165,11 @@ impl AudioBuffer {
     }
     /// Writing data.  A channel at a time
     #[allow(dead_code)]
-    pub fn add_samples(&mut self, channel: usize, data: &[f32]) -> Result<(), Qzn3tError> {
+    pub fn add_samples(
+        &mut self,
+        channel: usize,
+        data: &[f32],
+    ) -> Result<(), Qzn3tError> {
         if channel < self.channels {
             self.data[channel].extend(data);
             if let Some(fb) = self.file_backer.as_ref() {
@@ -175,7 +182,11 @@ impl AudioBuffer {
     }
 
     /// Getting a sample one at a time: TODO Replace this with an iterator
-    pub fn get_sample_play(&self, channel: usize, idx: usize) -> Result<f32, Qzn3tError> {
+    pub fn get_sample_play(
+        &self,
+        channel: usize,
+        idx: usize,
+    ) -> Result<f32, Qzn3tError> {
         if channel > self.channels {
             Err(Qzn3tError::InvalidChannel)
         } else if idx > self.len() {
@@ -193,7 +204,8 @@ impl AudioBuffer {
             true
         } else {
             let s = self.data[0].len();
-            self.data.len() == self.channels && self.data.iter().all(|d| d.len() == s)
+            self.data.len() == self.channels
+                && self.data.iter().all(|d| d.len() == s)
         }
     }
 
@@ -226,7 +238,10 @@ impl AudioBuffer {
 
     #[allow(dead_code)]
     /// Convert binary data into format for `data` element.
-    fn from_bytes(bytes: &[u8], channels: usize) -> Result<Vec<Vec<f32>>, Qzn3tError> {
+    fn from_bytes(
+        bytes: &[u8],
+        channels: usize,
+    ) -> Result<Vec<Vec<f32>>, Qzn3tError> {
         let f32sz = std::mem::size_of::<f32>();
         if !bytes.len().is_multiple_of(f32sz) {
             return Err(Qzn3tError::NumericError(
@@ -423,7 +438,8 @@ mod tests {
 
     #[test]
     fn audio_buffer_as_bytes_single_channel() {
-        let audio = AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32, 3.0f32]]).unwrap();
+        let audio =
+            AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32, 3.0f32]]).unwrap();
         let bytes = audio.as_bytes();
 
         // Should be 3 samples * 4 bytes per f32
@@ -439,8 +455,11 @@ mod tests {
 
     #[test]
     fn audio_buffer_as_bytes_multi_channel() {
-        let audio_buffer =
-            AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32], vec![3.0f32, 4.0f32]]).unwrap();
+        let audio_buffer = AudioBuffer::new_data(vec![
+            vec![1.0f32, 2.0f32],
+            vec![3.0f32, 4.0f32],
+        ])
+        .unwrap();
 
         let bytes = audio_buffer.as_bytes();
 
@@ -449,7 +468,9 @@ mod tests {
         // Verify flattened order
         let floats: Vec<f32> = bytes
             .chunks_exact(std::mem::size_of::<f32>())
-            .map(|chunk| f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .map(|chunk| {
+                f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])
+            })
             .collect();
         assert_eq!(floats, vec![1.0f32, 2.0f32, 3.0f32, 4.0f32]);
     }

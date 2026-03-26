@@ -67,7 +67,11 @@ impl jack::ProcessHandler for ProcessAudio {
     /// no audio available send 0_f32.  Audio Input: Any data
     /// available on the input jack ports send them out on the sender
     /// channels
-    fn process(&mut self, _c: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+    fn process(
+        &mut self,
+        _c: &jack::Client,
+        ps: &jack::ProcessScope,
+    ) -> jack::Control {
         self.set_f.store(true, Ordering::Relaxed);
         self.running_f.store(true, Ordering::Relaxed);
         if self.pause.load(Ordering::Relaxed) {
@@ -125,8 +129,15 @@ impl jack::NotificationHandler for Notifications {
     fn freewheel(&mut self, _: &jack::Client, _is_freewheel_enabled: bool) {
         eprintln!("DBG NotificationHandler freewheel {_is_freewheel_enabled}");
     }
-    fn client_registration(&mut self, _: &jack::Client, _name: &str, _is_registered: bool) {
-        eprintln!("DBG NotificationHandler client_registration: {_name}/{_is_registered}");
+    fn client_registration(
+        &mut self,
+        _: &jack::Client,
+        _name: &str,
+        _is_registered: bool,
+    ) {
+        eprintln!(
+            "DBG NotificationHandler client_registration: {_name}/{_is_registered}"
+        );
     }
     fn port_registration(
         &mut self,
@@ -134,7 +145,9 @@ impl jack::NotificationHandler for Notifications {
         _port_id: jack::PortId,
         _is_registered: bool,
     ) {
-        eprintln!("DBG NotificationHandler port_registration: {_port_id}/{_is_registered}");
+        eprintln!(
+            "DBG NotificationHandler port_registration: {_port_id}/{_is_registered}"
+        );
     }
     fn port_rename(
         &mut self,
@@ -143,7 +156,9 @@ impl jack::NotificationHandler for Notifications {
         _old_name: &str,
         _new_name: &str,
     ) -> jack::Control {
-        eprintln!("DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}");
+        eprintln!(
+            "DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}"
+        );
         jack::Control::Continue
     }
     fn ports_connected(
@@ -167,7 +182,11 @@ impl jack::NotificationHandler for Notifications {
         jack::Control::Continue
     }
 
-    fn sample_rate(&mut self, _: &jack::Client, _srate: jack::Frames) -> jack::Control {
+    fn sample_rate(
+        &mut self,
+        _: &jack::Client,
+        _srate: jack::Frames,
+    ) -> jack::Control {
         jack::Control::Continue
     }
 }

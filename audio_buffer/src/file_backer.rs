@@ -154,7 +154,8 @@ impl FileBacker {
                 buffers[channel].extend(data);
                 if channel == n_channels - 1 {
                     // `available` is the minimum amount of data available for all channels.
-                    let available = buffers.iter().map(VecDeque::len).min().unwrap_or(0);
+                    let available =
+                        buffers.iter().map(VecDeque::len).min().unwrap_or(0);
 
                     if available > 0 {
                         let mut bytes: Vec<u8> = vec![];
@@ -165,11 +166,12 @@ impl FileBacker {
                                 bytes.extend_from_slice(&sample_bytes);
                             }
                         }
-                        handle_raw
-                            .write_all(&bytes)
-                            .map_err(|err| Qzn3tError::FileError(format!("{err}")))?;
+                        handle_raw.write_all(&bytes).map_err(|err| {
+                            Qzn3tError::FileError(format!("{err}"))
+                        })?;
                     }
-                    let max = buffers.iter().map(VecDeque::len).max().unwrap_or(0);
+                    let max =
+                        buffers.iter().map(VecDeque::len).max().unwrap_or(0);
                     if max > 0 {
                         dbg!(max);
                     }
@@ -179,8 +181,9 @@ impl FileBacker {
         });
         // This is very reliable.  Unwrap OK
         let metadata = serde_json::to_string_pretty(&metadata).unwrap();
-        fs::write(&md_path, metadata)
-            .map_err(|err| Qzn3tError::FileError(format!("Path: {md_path:?} Error: {err}")))?;
+        fs::write(&md_path, metadata).map_err(|err| {
+            Qzn3tError::FileError(format!("Path: {md_path:?} Error: {err}"))
+        })?;
 
         self.handle = Some(handle);
 
@@ -188,7 +191,11 @@ impl FileBacker {
     }
 
     /// Send data to the thread that manages the disc file
-    pub fn send(&self, samples: &[f32], channel: usize) -> Result<(), Qzn3tError> {
+    pub fn send(
+        &self,
+        samples: &[f32],
+        channel: usize,
+    ) -> Result<(), Qzn3tError> {
         self.audio_tx
             .send(AudioMsg {
                 samples: samples.to_vec(),
@@ -206,10 +213,9 @@ impl FileBacker {
             return Ok(false);
         }
         // Get parent directory
-        let parent = self
-            .path
-            .parent()
-            .ok_or_else(|| Qzn3tError::FileError(format!("{:?} has no parent", self.path)))?;
+        let parent = self.path.parent().ok_or_else(|| {
+            Qzn3tError::FileError(format!("{:?} has no parent", self.path))
+        })?;
 
         // Test if parent is writable by trying to create a temp file
         let temp = parent.join(format!(".tmp_{}", std::process::id()));
@@ -230,7 +236,9 @@ impl FileBacker {
         self.path.clone()
     }
 
-    pub fn get_data_from_file(path: &Path) -> Result<Vec<Vec<f32>>, Qzn3tError> {
+    pub fn get_data_from_file(
+        path: &Path,
+    ) -> Result<Vec<Vec<f32>>, Qzn3tError> {
         let metadata = FileBacker::read_metadata(path)?;
         let channels = metadata.channels;
         let rd_path = FileBacker::get_raw_path(path);

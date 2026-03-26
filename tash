@@ -1,0 +1,513 @@
+[1mdiff --git a/audio_buffer/src/file_backer.rs b/audio_buffer/src/file_backer.rs[m
+[1mindex eb11c5b..dc483fb 100644[m
+[1m--- a/audio_buffer/src/file_backer.rs[m
+[1m+++ b/audio_buffer/src/file_backer.rs[m
+[36m@@ -154,7 +154,8 @@[m [mimpl FileBacker {[m
+                 buffers[channel].extend(data);[m
+                 if channel == n_channels - 1 {[m
+                     // `available` is the minimum amount of data available for all channels.[m
+[31m-                    let available = buffers.iter().map(VecDeque::len).min().unwrap_or(0);[m
+[32m+[m[32m                    let available =[m
+[32m+[m[32m                        buffers.iter().map(VecDeque::len).min().unwrap_or(0);[m
+ [m
+                     if available > 0 {[m
+                         let mut bytes: Vec<u8> = vec![];[m
+[36m@@ -165,11 +166,12 @@[m [mimpl FileBacker {[m
+                                 bytes.extend_from_slice(&sample_bytes);[m
+                             }[m
+                         }[m
+[31m-                        handle_raw[m
+[31m-                            .write_all(&bytes)[m
+[31m-                            .map_err(|err| Qzn3tError::FileError(format!("{err}")))?;[m
+[32m+[m[32m                        handle_raw.write_all(&bytes).map_err(|err| {[m
+[32m+[m[32m                            Qzn3tError::FileError(format!("{err}"))[m
+[32m+[m[32m                        })?;[m
+                     }[m
+[31m-                    let max = buffers.iter().map(VecDeque::len).max().unwrap_or(0);[m
+[32m+[m[32m                    let max =[m
+[32m+[m[32m                        buffers.iter().map(VecDeque::len).max().unwrap_or(0);[m
+                     if max > 0 {[m
+                         dbg!(max);[m
+                     }[m
+[36m@@ -179,8 +181,9 @@[m [mimpl FileBacker {[m
+         });[m
+         // This is very reliable.  Unwrap OK[m
+         let metadata = serde_json::to_string_pretty(&metadata).unwrap();[m
+[31m-        fs::write(&md_path, metadata)[m
+[31m-            .map_err(|err| Qzn3tError::FileError(format!("Path: {md_path:?} Error: {err}")))?;[m
+[32m+[m[32m        fs::write(&md_path, metadata).map_err(|err| {[m
+[32m+[m[32m            Qzn3tError::FileError(format!("Path: {md_path:?} Error: {err}"))[m
+[32m+[m[32m        })?;[m
+ [m
+         self.handle = Some(handle);[m
+ [m
+[36m@@ -188,7 +191,11 @@[m [mimpl FileBacker {[m
+     }[m
+ [m
+     /// Send data to the thread that manages the disc file[m
+[31m-    pub fn send(&self, samples: &[f32], channel: usize) -> Result<(), Qzn3tError> {[m
+[32m+[m[32m    pub fn send([m
+[32m+[m[32m        &self,[m
+[32m+[m[32m        samples: &[f32],[m
+[32m+[m[32m        channel: usize,[m
+[32m+[m[32m    ) -> Result<(), Qzn3tError> {[m
+         self.audio_tx[m
+             .send(AudioMsg {[m
+                 samples: samples.to_vec(),[m
+[36m@@ -206,10 +213,9 @@[m [mimpl FileBacker {[m
+             return Ok(false);[m
+         }[m
+         // Get parent directory[m
+[31m-        let parent = self[m
+[31m-            .path[m
+[31m-            .parent()[m
+[31m-            .ok_or_else(|| Qzn3tError::FileError(format!("{:?} has no parent", self.path)))?;[m
+[32m+[m[32m        let parent = self.path.parent().ok_or_else(|| {[m
+[32m+[m[32m            Qzn3tError::FileError(format!("{:?} has no parent", self.path))[m
+[32m+[m[32m        })?;[m
+ [m
+         // Test if parent is writable by trying to create a temp file[m
+         let temp = parent.join(format!(".tmp_{}", std::process::id()));[m
+[36m@@ -230,7 +236,9 @@[m [mimpl FileBacker {[m
+         self.path.clone()[m
+     }[m
+ [m
+[31m-    pub fn get_data_from_file(path: &Path) -> Result<Vec<Vec<f32>>, Qzn3tError> {[m
+[32m+[m[32m    pub fn get_data_from_file([m
+[32m+[m[32m        path: &Path,[m
+[32m+[m[32m    ) -> Result<Vec<Vec<f32>>, Qzn3tError> {[m
+         let metadata = FileBacker::read_metadata(path)?;[m
+         let channels = metadata.channels;[m
+         let rd_path = FileBacker::get_raw_path(path);[m
+[1mdiff --git a/audio_buffer/src/lib.rs b/audio_buffer/src/lib.rs[m
+[1mindex 7895050..5107ee7 100644[m
+[1m--- a/audio_buffer/src/lib.rs[m
+[1m+++ b/audio_buffer/src/lib.rs[m
+[36m@@ -127,7 +127,10 @@[m [mimpl AudioBuffer {[m
+ [m
+     /// Attach a `FileBacker` object to the buffer.  Do not change or[m
+     /// edit the underlying disc data[m
+[31m-    pub fn restore_file_backing(&mut self, path: &Path) -> Result<(), Qzn3tError> {[m
+[32m+[m[32m    pub fn restore_file_backing([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        path: &Path,[m
+[32m+[m[32m    ) -> Result<(), Qzn3tError> {[m
+         let mut fb = FileBacker::new(path);[m
+         fb.initialise(self.channels(), InitialiseMode::NoTruncate)?;[m
+         self.file_backer = Some(fb);[m
+[36m@@ -162,7 +165,11 @@[m [mimpl AudioBuffer {[m
+     }[m
+     /// Writing data.  A channel at a time[m
+     #[allow(dead_code)][m
+[31m-    pub fn add_samples(&mut self, channel: usize, data: &[f32]) -> Result<(), Qzn3tError> {[m
+[32m+[m[32m    pub fn add_samples([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        channel: usize,[m
+[32m+[m[32m        data: &[f32],[m
+[32m+[m[32m    ) -> Result<(), Qzn3tError> {[m
+         if channel < self.channels {[m
+             self.data[channel].extend(data);[m
+             if let Some(fb) = self.file_backer.as_ref() {[m
+[36m@@ -175,7 +182,11 @@[m [mimpl AudioBuffer {[m
+     }[m
+ [m
+     /// Getting a sample one at a time: TODO Replace this with an iterator[m
+[31m-    pub fn get_sample_play(&self, channel: usize, idx: usize) -> Result<f32, Qzn3tError> {[m
+[32m+[m[32m    pub fn get_sample_play([m
+[32m+[m[32m        &self,[m
+[32m+[m[32m        channel: usize,[m
+[32m+[m[32m        idx: usize,[m
+[32m+[m[32m    ) -> Result<f32, Qzn3tError> {[m
+         if channel > self.channels {[m
+             Err(Qzn3tError::InvalidChannel)[m
+         } else if idx > self.len() {[m
+[36m@@ -193,7 +204,8 @@[m [mimpl AudioBuffer {[m
+             true[m
+         } else {[m
+             let s = self.data[0].len();[m
+[31m-            self.data.len() == self.channels && self.data.iter().all(|d| d.len() == s)[m
+[32m+[m[32m            self.data.len() == self.channels[m
+[32m+[m[32m                && self.data.iter().all(|d| d.len() == s)[m
+         }[m
+     }[m
+ [m
+[36m@@ -226,7 +238,10 @@[m [mimpl AudioBuffer {[m
+ [m
+     #[allow(dead_code)][m
+     /// Convert binary data into format for `data` element.[m
+[31m-    fn from_bytes(bytes: &[u8], channels: usize) -> Result<Vec<Vec<f32>>, Qzn3tError> {[m
+[32m+[m[32m    fn from_bytes([m
+[32m+[m[32m        bytes: &[u8],[m
+[32m+[m[32m        channels: usize,[m
+[32m+[m[32m    ) -> Result<Vec<Vec<f32>>, Qzn3tError> {[m
+         let f32sz = std::mem::size_of::<f32>();[m
+         if !bytes.len().is_multiple_of(f32sz) {[m
+             return Err(Qzn3tError::NumericError([m
+[36m@@ -423,7 +438,8 @@[m [mmod tests {[m
+ [m
+     #[test][m
+     fn audio_buffer_as_bytes_single_channel() {[m
+[31m-        let audio = AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32, 3.0f32]]).unwrap();[m
+[32m+[m[32m        let audio =[m
+[32m+[m[32m            AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32, 3.0f32]]).unwrap();[m
+         let bytes = audio.as_bytes();[m
+ [m
+         // Should be 3 samples * 4 bytes per f32[m
+[36m@@ -439,8 +455,11 @@[m [mmod tests {[m
+ [m
+     #[test][m
+     fn audio_buffer_as_bytes_multi_channel() {[m
+[31m-        let audio_buffer =[m
+[31m-            AudioBuffer::new_data(vec![vec![1.0f32, 2.0f32], vec![3.0f32, 4.0f32]]).unwrap();[m
+[32m+[m[32m        let audio_buffer = AudioBuffer::new_data(vec![[m
+[32m+[m[32m            vec![1.0f32, 2.0f32],[m
+[32m+[m[32m            vec![3.0f32, 4.0f32],[m
+[32m+[m[32m        ])[m
+[32m+[m[32m        .unwrap();[m
+ [m
+         let bytes = audio_buffer.as_bytes();[m
+ [m
+[36m@@ -449,7 +468,9 @@[m [mmod tests {[m
+         // Verify flattened order[m
+         let floats: Vec<f32> = bytes[m
+             .chunks_exact(std::mem::size_of::<f32>())[m
+[31m-            .map(|chunk| f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))[m
+[32m+[m[32m            .map(|chunk| {[m
+[32m+[m[32m                f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])[m
+[32m+[m[32m            })[m
+             .collect();[m
+         assert_eq!(floats, vec![1.0f32, 2.0f32, 3.0f32, 4.0f32]);[m
+     }[m
+[1mdiff --git a/engine/src/lib.rs b/engine/src/lib.rs[m
+[1mindex 52cc8d8..f8767fc 100644[m
+[1m--- a/engine/src/lib.rs[m
+[1m+++ b/engine/src/lib.rs[m
+[36m@@ -88,10 +88,14 @@[m [mimpl Engine {[m
+     /// A session defines input and output ports, the path to file[m
+     /// backing and the mode of the session: recording or playing[m
+     /// audio.[m
+[31m-    pub fn start_session(&mut self, session: Session) -> Result<(), Qzn3tError> {[m
+[32m+[m[32m    pub fn start_session([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        session: Session,[m
+[32m+[m[32m    ) -> Result<(), Qzn3tError> {[m
+         self.shut_down()?; // If there is a session already end it[m
+         self.add_client(session.in_ports, session.out_ports)?;[m
+[31m-        self.audio_buffer_play = Some(AudioBuffer::new(session.in_ports.len())?);[m
+[32m+[m[32m        self.audio_buffer_play =[m
+[32m+[m[32m            Some(AudioBuffer::new(session.in_ports.len())?);[m
+         self.mode = Some(session.mode);[m
+         while !self.set_f.load(Ordering::Relaxed) {[m
+             thread::sleep(Duration::from_millis(3));[m
+[36m@@ -111,12 +115,17 @@[m [mimpl Engine {[m
+     }[m
+ [m
+     /// Set up a new AsyncClient.[m
+[31m-    pub fn add_client(&mut self, in_p: &[&str], out_p: &[&str]) -> Result<(), Qzn3tError> {[m
+[32m+[m[32m    pub fn add_client([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        in_p: &[&str],[m
+[32m+[m[32m        out_p: &[&str],[m
+[32m+[m[32m    ) -> Result<(), Qzn3tError> {[m
+         if let Some(c) = self.client.take() {[m
+             c.deactivate()?;[m
+         }[m
+         let name = "qzn3t";[m
+[31m-        let (client, _status) = Client::new(name, ClientOptions::NO_START_SERVER)?;[m
+[32m+[m[32m        let (client, _status) =[m
+[32m+[m[32m            Client::new(name, ClientOptions::NO_START_SERVER)?;[m
+         let (process_audio, senders, receivers) = Self::create_process([m
+             &client,[m
+             in_p,[m
+[36m@@ -126,7 +135,8 @@[m [mimpl Engine {[m
+             self.set_f.clone(),[m
+             self.pause.clone(),[m
+         )?;[m
+[31m-        let async_client = client.activate_async(Notifications, process_audio)?;[m
+[32m+[m[32m        let async_client =[m
+[32m+[m[32m            client.activate_async(Notifications, process_audio)?;[m
+         self.client = Some(async_client);[m
+         self.senders = senders;[m
+         self.receivers = receivers;[m
+[36m@@ -214,7 +224,8 @@[m [mimpl Engine {[m
+             Some(SessionMode::FullDuplex) => {[m
+                 assert_eq!([m
+                     self.senders.len(),[m
+[31m-                    self.audio_buffer_play.as_ref().unwrap().channels() + self.receivers.len()[m
+[32m+[m[32m                    self.audio_buffer_play.as_ref().unwrap().channels()[m
+[32m+[m[32m                        + self.receivers.len()[m
+                 );[m
+                 assert!(!self.receivers.is_empty());[m
+                 assert_eq!([m
+[36m@@ -235,9 +246,11 @@[m [mimpl Engine {[m
+ [m
+         // Timing for the loop, in nano-seconds and samples[m
+         const NANO_SEC_LOOP: u128 = 10_000_000;[m
+[31m-        let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128 / 1_000_000_000) as usize;[m
+[32m+[m[32m        let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128[m
+[32m+[m[32m            / 1_000_000_000) as usize;[m
+         assert_eq!([m
+[31m-            samples_per_loop as u128 * 1_000_000_000 / get_sample_rate() as u128,[m
+[32m+[m[32m            samples_per_loop as u128 * 1_000_000_000[m
+[32m+[m[32m                / get_sample_rate() as u128,[m
+             NANO_SEC_LOOP,[m
+             "The sampling rate does not divide nicely"[m
+         );[m
+[36m@@ -280,14 +293,17 @@[m [mimpl Engine {[m
+ [m
+             match self.mode {[m
+                 Some(SessionMode::Playing) => {[m
+[31m-                    let mut frame_iterator = self.audio_buffer_play.as_ref().unwrap().frames();[m
+[32m+[m[32m                    let mut frame_iterator =[m
+[32m+[m[32m                        self.audio_buffer_play.as_ref().unwrap().frames();[m
+                     while let Some(frame) = frame_iterator.next_frame() {[m
+                         play_idx += 1;[m
+                         assert_eq!(self.senders.len(), frame.len());[m
+                         for (i, s) in self.senders.iter().enumerate() {[m
+                             let sample = frame[i];[m
+                             if let Err(err) = s.send(sample) {[m
+[31m-                                eprintln!("Break from main loop due to send error: {err}");[m
+[32m+[m[32m                                eprintln!([m
+[32m+[m[32m                                    "Break from main loop due to send error: {err}"[m
+[32m+[m[32m                                );[m
+                                 break 'MAIN_LOOP;[m
+                             }[m
+                         }[m
+[36m@@ -296,7 +312,9 @@[m [mimpl Engine {[m
+                     // Check if buffer all played, and quit if so:[m
+                     // TODO This can probably uncnditionally break,[m
+                     // and I can do away with `play_idx`[m
+[31m-                    if play_idx == self.audio_buffer_play.as_ref().unwrap().len() {[m
+[32m+[m[32m                    if play_idx[m
+[32m+[m[32m                        == self.audio_buffer_play.as_ref().unwrap().len()[m
+[32m+[m[32m                    {[m
+                         break 'MAIN_LOOP;[m
+                     }[m
+                 }[m
+[36m@@ -315,12 +333,15 @@[m [mimpl Engine {[m
+                     }[m
+ [m
+                     // Play back what was just recorded from the buffer[m
+[31m-                    for idx in fd_idx..self.audio_buffer_record.as_ref().unwrap().len() {[m
+[32m+[m[32m                    for idx in[m
+[32m+[m[32m                        fd_idx..self.audio_buffer_record.as_ref().unwrap().len()[m
+[32m+[m[32m                    {[m
+                         // The senders to use for full-duplex play[m
+                         // back are after the senders for normal[m
+                         // playback[m
+                         let len = self.senders.len();[m
+[31m-                        let (_, last_n) = self.senders.split_at_mut(len - senders_cnt_fd);[m
+[32m+[m[32m                        let (_, last_n) =[m
+[32m+[m[32m                            self.senders.split_at_mut(len - senders_cnt_fd);[m
+                         for (c, s) in last_n.iter_mut().enumerate() {[m
+                             let sample = self[m
+                                 .audio_buffer_record[m
+[36m@@ -345,7 +366,9 @@[m [mimpl Engine {[m
+             } else {[m
+                 eprintln!([m
+                     "Xrun: {:?}",[m
+[31m-                    Duration::from_nanos_u128(elapsed.as_nanos() - NANO_SEC_LOOP)[m
+[32m+[m[32m                    Duration::from_nanos_u128([m
+[32m+[m[32m                        elapsed.as_nanos() - NANO_SEC_LOOP[m
+[32m+[m[32m                    )[m
+                 );[m
+             }[m
+             now = Instant::now();[m
+[36m@@ -386,13 +409,19 @@[m [mimpl Engine {[m
+         let c = match mode {[m
+             SessionMode::Playing => self.receivers.len(),[m
+             SessionMode::Recording => self.senders.len(),[m
+[31m-            SessionMode::FullDuplex => return Err(Qzn3tError::InvalidSessionMode),[m
+[32m+[m[32m            SessionMode::FullDuplex => {[m
+[32m+[m[32m                return Err(Qzn3tError::InvalidSessionMode);[m
+[32m+[m[32m            }[m
+         };[m
+         let audio_buffer = AudioBuffer::from_file(path)?;[m
+         if audio_buffer.channels() == c {[m
+             match mode {[m
+[31m-                SessionMode::Playing => self.audio_buffer_play = Some(audio_buffer),[m
+[31m-                SessionMode::Recording => self.audio_buffer_record = Some(audio_buffer),[m
+[32m+[m[32m                SessionMode::Playing => {[m
+[32m+[m[32m                    self.audio_buffer_play = Some(audio_buffer)[m
+[32m+[m[32m                }[m
+[32m+[m[32m                SessionMode::Recording => {[m
+[32m+[m[32m                    self.audio_buffer_record = Some(audio_buffer)[m
+[32m+[m[32m                }[m
+                 SessionMode::FullDuplex => unreachable!(),[m
+             };[m
+ [m
+[36m@@ -626,20 +655,23 @@[m [mmod tests {[m
+         let path = path.join("add_audio_buffer_path");[m
+ [m
+         // TODO! Move this to FileBacker[m
+[31m-        let write_metadata = |metadata: Metadata, path: &Path| -> Result<(), Qzn3tError> {[m
+[31m-            let path = FileBacker::get_metadata_path(path);[m
+[31m-            let mut file = File::create(path)?;[m
+[31m-            let json = serde_json::to_string_pretty(&metadata).expect("serialize failed");[m
+[31m-            file.write_all(json.as_bytes())?;[m
+[31m-            Ok(())[m
+[31m-        };[m
+[32m+[m[32m        let write_metadata =[m
+[32m+[m[32m            |metadata: Metadata, path: &Path| -> Result<(), Qzn3tError> {[m
+[32m+[m[32m                let path = FileBacker::get_metadata_path(path);[m
+[32m+[m[32m                let mut file = File::create(path)?;[m
+[32m+[m[32m                let json = serde_json::to_string_pretty(&metadata)[m
+[32m+[m[32m                    .expect("serialize failed");[m
+[32m+[m[32m                file.write_all(json.as_bytes())?;[m
+[32m+[m[32m                Ok(())[m
+[32m+[m[32m            };[m
+ [m
+         // Prepare the audio data.  two channels, five samles per channel[m
+         // let audio_data = vec![vec![0.0f32;5];, vec![0.0f32;5]];[m
+         let raw_data = [0.0f32; 10];[m
+ [m
+         {[m
+[31m-            let bytes: Vec<u8> = raw_data.iter().flat_map(|d| d.to_ne_bytes()).collect();[m
+[32m+[m[32m            let bytes: Vec<u8> =[m
+[32m+[m[32m                raw_data.iter().flat_map(|d| d.to_ne_bytes()).collect();[m
+             let path = FileBacker::get_raw_path(&path);[m
+             let mut f = OpenOptions::new()[m
+                 .create(true)[m
+[36m@@ -655,7 +687,8 @@[m [mmod tests {[m
+             channels: 2,[m
+             sample_rate: 48_000, // Not relevant[m
+         };[m
+[31m-        write_metadata(metadata, &FileBacker::get_metadata_path(&path)).unwrap();[m
+[32m+[m[32m        write_metadata(metadata, &FileBacker::get_metadata_path(&path))[m
+[32m+[m[32m            .unwrap();[m
+         {[m
+             // Test to succeed[m
+ [m
+[1mdiff --git a/engine/src/process_audio.rs b/engine/src/process_audio.rs[m
+[1mindex 6bc9aee..9df86c7 100644[m
+[1m--- a/engine/src/process_audio.rs[m
+[1m+++ b/engine/src/process_audio.rs[m
+[36m@@ -67,7 +67,11 @@[m [mimpl jack::ProcessHandler for ProcessAudio {[m
+     /// no audio available send 0_f32.  Audio Input: Any data[m
+     /// available on the input jack ports send them out on the sender[m
+     /// channels[m
+[31m-    fn process(&mut self, _c: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {[m
+[32m+[m[32m    fn process([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        _c: &jack::Client,[m
+[32m+[m[32m        ps: &jack::ProcessScope,[m
+[32m+[m[32m    ) -> jack::Control {[m
+         self.set_f.store(true, Ordering::Relaxed);[m
+         self.running_f.store(true, Ordering::Relaxed);[m
+         if self.pause.load(Ordering::Relaxed) {[m
+[36m@@ -125,8 +129,15 @@[m [mimpl jack::NotificationHandler for Notifications {[m
+     fn freewheel(&mut self, _: &jack::Client, _is_freewheel_enabled: bool) {[m
+         eprintln!("DBG NotificationHandler freewheel {_is_freewheel_enabled}");[m
+     }[m
+[31m-    fn client_registration(&mut self, _: &jack::Client, _name: &str, _is_registered: bool) {[m
+[31m-        eprintln!("DBG NotificationHandler client_registration: {_name}/{_is_registered}");[m
+[32m+[m[32m    fn client_registration([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        _: &jack::Client,[m
+[32m+[m[32m        _name: &str,[m
+[32m+[m[32m        _is_registered: bool,[m
+[32m+[m[32m    ) {[m
+[32m+[m[32m        eprintln!([m
+[32m+[m[32m            "DBG NotificationHandler client_registration: {_name}/{_is_registered}"[m
+[32m+[m[32m        );[m
+     }[m
+     fn port_registration([m
+         &mut self,[m
+[36m@@ -134,7 +145,9 @@[m [mimpl jack::NotificationHandler for Notifications {[m
+         _port_id: jack::PortId,[m
+         _is_registered: bool,[m
+     ) {[m
+[31m-        eprintln!("DBG NotificationHandler port_registration: {_port_id}/{_is_registered}");[m
+[32m+[m[32m        eprintln!([m
+[32m+[m[32m            "DBG NotificationHandler port_registration: {_port_id}/{_is_registered}"[m
+[32m+[m[32m        );[m
+     }[m
+     fn port_rename([m
+         &mut self,[m
+[36m@@ -143,7 +156,9 @@[m [mimpl jack::NotificationHandler for Notifications {[m
+         _old_name: &str,[m
+         _new_name: &str,[m
+     ) -> jack::Control {[m
+[31m-        eprintln!("DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}");[m
+[32m+[m[32m        eprintln!([m
+[32m+[m[32m            "DBG NotificationHandler port_rename: {_port_id} {_old_name} -> {_new_name}"[m
+[32m+[m[32m        );[m
+         jack::Control::Continue[m
+     }[m
+     fn ports_connected([m
+[36m@@ -167,7 +182,11 @@[m [mimpl jack::NotificationHandler for Notifications {[m
+         jack::Control::Continue[m
+     }[m
+ [m
+[31m-    fn sample_rate(&mut self, _: &jack::Client, _srate: jack::Frames) -> jack::Control {[m
+[32m+[m[32m    fn sample_rate([m
+[32m+[m[32m        &mut self,[m
+[32m+[m[32m        _: &jack::Client,[m
+[32m+[m[32m        _srate: jack::Frames,[m
+[32m+[m[32m    ) -> jack::Control {[m
+         jack::Control::Continue[m
+     }[m
+ }[m
+[1mdiff --git a/engine/tests/integration_tests.rs b/engine/tests/integration_tests.rs[m
+[1mindex 07e806d..5a8ba08 100644[m
+[1m--- a/engine/tests/integration_tests.rs[m
+[1m+++ b/engine/tests/integration_tests.rs[m
+[36m@@ -3,8 +3,8 @@[m
+ [m
+ //! Test Qzn3t in the whole.[m
+ use jack::{[m
+[31m-    AsyncClient, AudioIn, AudioOut, Client, ClientOptions, Control, NotificationHandler, Port,[m
+[31m-    PortFlags, ProcessHandler,[m
+[32m+[m[32m    AsyncClient, AudioIn, AudioOut, Client, ClientOptions, Control,[m
+[32m+[m[32m    NotificationHandler, Port, PortFlags, ProcessHandler,[m
+ };[m
+ use qzn3t_audio_buffer::{AudioBuffer, get_sample_rate};[m
+ use qzn3t_engine::{Engine, Session, SessionMode};[m
+[36m@@ -48,8 +48,11 @@[m [mstruct JackSink {[m
+ }[m
+ impl JackSink {[m
+     fn new(channels: usize) -> Self {[m
+[31m-        let (client, _s) =[m
+[31m-            Client::new("qzn3t_integration_test", ClientOptions::NO_START_SERVER).unwrap();[m
+[32m+[m[32m        let (client, _s) = Client::new([m
+[32m+[m[32m            "qzn3t_integration_test",[m
+[32m+[m[32m            ClientOptions::NO_START_SERVER,[m
+[32m+[m[32m        )[m
+[32m+[m[32m        .unwrap();[m
+         assert!(!client.name().is_empty());[m
+         let output = Arc::new(Mutex::new(AudioBuffer::new(channels).unwrap()));[m
+         let in_ports: Vec<Port<AudioIn>> = (0..channels)[m
+[36m@@ -127,7 +130,8 @@[m [mfn play_audio() {[m
+     let out_ports_strings: Vec<String> = (0..sink_port_names.len())[m
+         .map(|i| format!("out_{i}"))[m
+         .collect();[m
+[31m-    let out_ports_str: Vec<&str> = out_ports_strings.iter().map(|i| i.as_str()).collect();[m
+[32m+[m[32m    let out_ports_str: Vec<&str> =[m
+[32m+[m[32m        out_ports_strings.iter().map(|i| i.as_str()).collect();[m
+ [m
+     let p = dst_dir(); //.join("play_audio");[m
+     if !p.exists() {[m
+[36m@@ -151,7 +155,8 @@[m [mfn play_audio() {[m
+ [m
+     // Add some test data to play[m
+     let test_data = test_signal_linear_rising(data_len);[m
+[31m-    let audio_buffer = AudioBuffer::new_data(vec![test_data.clone(); channels]).unwrap();[m
+[32m+[m[32m    let audio_buffer =[m
+[32m+[m[32m        AudioBuffer::new_data(vec![test_data.clone(); channels]).unwrap();[m
+     let _audio_len = audio_buffer.len();[m
+     engine.add_audio_buffer_play(audio_buffer);[m
+ [m
+[1mdiff --git a/qzn3terror/src/lib.rs b/qzn3terror/src/lib.rs[m
+[1mindex ad83084..002d064 100644[m
+[1m--- a/qzn3terror/src/lib.rs[m
+[1m+++ b/qzn3terror/src/lib.rs[m
+[36m@@ -47,7 +47,8 @@[m [mimpl Display for Qzn3tError {[m
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {[m
+         match self {[m
+             Qzn3tError::FileError(err) => write!(f, "{self:?} {err}"),[m
+[31m-            Qzn3tError::ChannelOutOfBound(c) | Qzn3tError::SampleIndexOutOfBound(c) => {[m
+[32m+[m[32m            Qzn3tError::ChannelOutOfBound(c)[m
+[32m+[m[32m            | Qzn3tError::SampleIndexOutOfBound(c) => {[m
+                 write!(f, "{self:?} {c}")[m
+             }[m
+             Qzn3tError::InvalidChannelCount(supplied, required) => write!([m

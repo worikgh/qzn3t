@@ -47,7 +47,8 @@ impl Display for Qzn3tError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Qzn3tError::FileError(err) => write!(f, "{self:?} {err}"),
-            Qzn3tError::ChannelOutOfBound(c) | Qzn3tError::SampleIndexOutOfBound(c) => {
+            Qzn3tError::ChannelOutOfBound(c)
+            | Qzn3tError::SampleIndexOutOfBound(c) => {
                 write!(f, "{self:?} {c}")
             }
             Qzn3tError::InvalidChannelCount(supplied, required) => write!(

@@ -3,8 +3,8 @@
 
 //! Test Qzn3t in the whole.
 use jack::{
-    AsyncClient, AudioIn, AudioOut, Client, ClientOptions, Control, NotificationHandler, Port,
-    PortFlags, ProcessHandler,
+    AsyncClient, AudioIn, AudioOut, Client, ClientOptions, Control,
+    NotificationHandler, Port, PortFlags, ProcessHandler,
 };
 use qzn3t_audio_buffer::{AudioBuffer, get_sample_rate};
 use qzn3t_engine::{Engine, Session, SessionMode};
@@ -48,8 +48,11 @@ struct JackSink {
 }
 impl JackSink {
     fn new(channels: usize) -> Self {
-        let (client, _s) =
-            Client::new("qzn3t_integration_test", ClientOptions::NO_START_SERVER).unwrap();
+        let (client, _s) = Client::new(
+            "qzn3t_integration_test",
+            ClientOptions::NO_START_SERVER,
+        )
+        .unwrap();
         assert!(!client.name().is_empty());
         let output = Arc::new(Mutex::new(AudioBuffer::new(channels).unwrap()));
         let in_ports: Vec<Port<AudioIn>> = (0..channels)
@@ -127,7 +130,8 @@ fn play_audio() {
     let out_ports_strings: Vec<String> = (0..sink_port_names.len())
         .map(|i| format!("out_{i}"))
         .collect();
-    let out_ports_str: Vec<&str> = out_ports_strings.iter().map(|i| i.as_str()).collect();
+    let out_ports_str: Vec<&str> =
+        out_ports_strings.iter().map(|i| i.as_str()).collect();
 
     let p = dst_dir(); //.join("play_audio");
     if !p.exists() {
@@ -151,7 +155,8 @@ fn play_audio() {
 
     // Add some test data to play
     let test_data = test_signal_linear_rising(data_len);
-    let audio_buffer = AudioBuffer::new_data(vec![test_data.clone(); channels]).unwrap();
+    let audio_buffer =
+        AudioBuffer::new_data(vec![test_data.clone(); channels]).unwrap();
     let _audio_len = audio_buffer.len();
     engine.add_audio_buffer_play(audio_buffer);
 

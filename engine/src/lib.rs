@@ -88,10 +88,14 @@ impl Engine {
     /// A session defines input and output ports, the path to file
     /// backing and the mode of the session: recording or playing
     /// audio.
-    pub fn start_session(&mut self, session: Session) -> Result<(), Qzn3tError> {
+    pub fn start_session(
+        &mut self,
+        session: Session,
+    ) -> Result<(), Qzn3tError> {
         self.shut_down()?; // If there is a session already end it
         self.add_client(session.in_ports, session.out_ports)?;
-        self.audio_buffer_play = Some(AudioBuffer::new(session.in_ports.len())?);
+        self.audio_buffer_play =
+            Some(AudioBuffer::new(session.in_ports.len())?);
         self.mode = Some(session.mode);
         while !self.set_f.load(Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(3));
@@ -111,12 +115,17 @@ impl Engine {
     }
 
     /// Set up a new AsyncClient.
-    pub fn add_client(&mut self, in_p: &[&str], out_p: &[&str]) -> Result<(), Qzn3tError> {
+    pub fn add_client(
+        &mut self,
+        in_p: &[&str],
+        out_p: &[&str],
+    ) -> Result<(), Qzn3tError> {
         if let Some(c) = self.client.take() {
             c.deactivate()?;
         }
         let name = "qzn3t";
-        let (client, _status) = Client::new(name, ClientOptions::NO_START_SERVER)?;
+        let (client, _status) =
+            Client::new(name, ClientOptions::NO_START_SERVER)?;
         let (process_audio, senders, receivers) = Self::create_process(
             &client,
             in_p,
@@ -126,7 +135,8 @@ impl Engine {
             self.set_f.clone(),
             self.pause.clone(),
         )?;
-        let async_client = client.activate_async(Notifications, process_audio)?;
+        let async_client =
+            client.activate_async(Notifications, process_audio)?;
         self.client = Some(async_client);
         self.senders = senders;
         self.receivers = receivers;
@@ -214,7 +224,8 @@ impl Engine {
             Some(SessionMode::FullDuplex) => {
                 assert_eq!(
                     self.senders.len(),
-                    self.audio_buffer_play.as_ref().unwrap().channels() + self.receivers.len()
+                    self.audio_buffer_play.as_ref().unwrap().channels()
+                        + self.receivers.len()
                 );
                 assert!(!self.receivers.is_empty());
                 assert_eq!(
@@ -235,9 +246,11 @@ impl Engine {
 
         // Timing for the loop, in nano-seconds and samples
         const NANO_SEC_LOOP: u128 = 10_000_000;
-        let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128 / 1_000_000_000) as usize;
+        let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128
+            / 1_000_000_000) as usize;
         assert_eq!(
-            samples_per_loop as u128 * 1_000_000_000 / get_sample_rate() as u128,
+            samples_per_loop as u128 * 1_000_000_000
+                / get_sample_rate() as u128,
             NANO_SEC_LOOP,
             "The sampling rate does not divide nicely"
         );
@@ -280,14 +293,17 @@ impl Engine {
 
             match self.mode {
                 Some(SessionMode::Playing) => {
-                    let mut frame_iterator = self.audio_buffer_play.as_ref().unwrap().frames();
+                    let mut frame_iterator =
+                        self.audio_buffer_play.as_ref().unwrap().frames();
                     while let Some(frame) = frame_iterator.next_frame() {
                         play_idx += 1;
                         assert_eq!(self.senders.len(), frame.len());
                         for (i, s) in self.senders.iter().enumerate() {
                             let sample = frame[i];
                             if let Err(err) = s.send(sample) {
-                                eprintln!("Break from main loop due to send error: {err}");
+                                eprintln!(
+                                    "Break from main loop due to send error: {err}"
+                                );
                                 break 'MAIN_LOOP;
                             }
                         }
@@ -296,7 +312,9 @@ impl Engine {
                     // Check if buffer all played, and quit if so:
                     // TODO This can probably uncnditionally break,
                     // and I can do away with `play_idx`
-                    if play_idx == self.audio_buffer_play.as_ref().unwrap().len() {
+                    if play_idx
+                        == self.audio_buffer_play.as_ref().unwrap().len()
+                    {
                         break 'MAIN_LOOP;
                     }
                 }
@@ -315,12 +333,15 @@ impl Engine {
                     }
 
                     // Play back what was just recorded from the buffer
-                    for idx in fd_idx..self.audio_buffer_record.as_ref().unwrap().len() {
+                    for idx in
+                        fd_idx..self.audio_buffer_record.as_ref().unwrap().len()
+                    {
                         // The senders to use for full-duplex play
                         // back are after the senders for normal
                         // playback
                         let len = self.senders.len();
-                        let (_, last_n) = self.senders.split_at_mut(len - senders_cnt_fd);
+                        let (_, last_n) =
+                            self.senders.split_at_mut(len - senders_cnt_fd);
                         for (c, s) in last_n.iter_mut().enumerate() {
                             let sample = self
                                 .audio_buffer_record
@@ -345,7 +366,9 @@ impl Engine {
             } else {
                 eprintln!(
                     "Xrun: {:?}",
-                    Duration::from_nanos_u128(elapsed.as_nanos() - NANO_SEC_LOOP)
+                    Duration::from_nanos_u128(
+                        elapsed.as_nanos() - NANO_SEC_LOOP
+                    )
                 );
             }
             now = Instant::now();
@@ -386,13 +409,19 @@ impl Engine {
         let c = match mode {
             SessionMode::Playing => self.receivers.len(),
             SessionMode::Recording => self.senders.len(),
-            SessionMode::FullDuplex => return Err(Qzn3tError::InvalidSessionMode),
+            SessionMode::FullDuplex => {
+                return Err(Qzn3tError::InvalidSessionMode);
+            }
         };
         let audio_buffer = AudioBuffer::from_file(path)?;
         if audio_buffer.channels() == c {
             match mode {
-                SessionMode::Playing => self.audio_buffer_play = Some(audio_buffer),
-                SessionMode::Recording => self.audio_buffer_record = Some(audio_buffer),
+                SessionMode::Playing => {
+                    self.audio_buffer_play = Some(audio_buffer)
+                }
+                SessionMode::Recording => {
+                    self.audio_buffer_record = Some(audio_buffer)
+                }
                 SessionMode::FullDuplex => unreachable!(),
             };
 
@@ -626,20 +655,23 @@ mod tests {
         let path = path.join("add_audio_buffer_path");
 
         // TODO! Move this to FileBacker
-        let write_metadata = |metadata: Metadata, path: &Path| -> Result<(), Qzn3tError> {
-            let path = FileBacker::get_metadata_path(path);
-            let mut file = File::create(path)?;
-            let json = serde_json::to_string_pretty(&metadata).expect("serialize failed");
-            file.write_all(json.as_bytes())?;
-            Ok(())
-        };
+        let write_metadata =
+            |metadata: Metadata, path: &Path| -> Result<(), Qzn3tError> {
+                let path = FileBacker::get_metadata_path(path);
+                let mut file = File::create(path)?;
+                let json = serde_json::to_string_pretty(&metadata)
+                    .expect("serialize failed");
+                file.write_all(json.as_bytes())?;
+                Ok(())
+            };
 
         // Prepare the audio data.  two channels, five samles per channel
         // let audio_data = vec![vec![0.0f32;5];, vec![0.0f32;5]];
         let raw_data = [0.0f32; 10];
 
         {
-            let bytes: Vec<u8> = raw_data.iter().flat_map(|d| d.to_ne_bytes()).collect();
+            let bytes: Vec<u8> =
+                raw_data.iter().flat_map(|d| d.to_ne_bytes()).collect();
             let path = FileBacker::get_raw_path(&path);
             let mut f = OpenOptions::new()
                 .create(true)
@@ -655,7 +687,8 @@ mod tests {
             channels: 2,
             sample_rate: 48_000, // Not relevant
         };
-        write_metadata(metadata, &FileBacker::get_metadata_path(&path)).unwrap();
+        write_metadata(metadata, &FileBacker::get_metadata_path(&path))
+            .unwrap();
         {
             // Test to succeed
 
