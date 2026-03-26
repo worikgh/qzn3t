@@ -101,10 +101,11 @@ fn test_signal_linear_falling(sample_cnt: usize) -> Vec<f32> {
 fn play_audio() {
     let sample_rate: usize = get_sample_rate() as usize;
     let channels = 3;
-    // let data_len = sample_rate; // One second of data
-    // `data_len` of 10_500 and above fails.  The critical point is between 10_500 and 9_750
-    let data_len = 9_750;
-
+    // let data_len = sample_rate; // The top limit is 1024
+    let data_len = 10_025;
+    // let data_len = 1_025; // Fails
+    // let data_len = 1_023; // Succeeds
+    // let data_len = 10;
     // The sink for data
     let jack_sink = JackSink::new(channels);
     assert!(!jack_sink.client.as_client().name().is_empty());
@@ -157,16 +158,20 @@ fn play_audio() {
     // Run...
     // let handle = engine.run().unwrap();
     engine.run().unwrap();
-    thread::sleep(Duration::from_millis(
-        (1_000 * data_len / sample_rate) as u64,
-    ));
-    thread::sleep(Duration::from_millis(
-        (1_000 * data_len / sample_rate) as u64,
-    ));
+    engine.finished_playing();
+    while engine.is_running() {
+        // TODO: Have a timeout incase process crashes without
+        // resetting the flag (belts and braces)
+        dbg!("Sleep");
+        thread::sleep(Duration::from_millis(300));
+    }
+
     {
         assert_eq!(jack_sink.output.lock().unwrap().channels(), channels);
         {
-            // Check if `test_data` is in all output channels starting at the same place
+            // Check if `test_data` is in all output channels starting
+            // at the same place.  Return that place in an option if
+            // available
             let ab = jack_sink.output.lock().unwrap();
             assert!(ab.len() > test_data.len());
             let test_cl = |haystack: &[f32], needle: &[f32]| -> Option<usize> {
@@ -175,7 +180,7 @@ fn play_audio() {
                 }
                 'OUTER: for i in 0..(haystack.len() - needle.len()) {
                     for j in 0..needle.len() {
-                        if (haystack[i + j] - needle[j]).abs() < f32::EPSILON {
+                        if (haystack[i + j] - needle[j]).abs() > f32::EPSILON {
                             continue 'OUTER;
                         }
                     }
@@ -184,6 +189,8 @@ fn play_audio() {
                 }
                 None
             };
+
+            // Examine what the jack sink got
             let mut indexes = vec![];
             for c in 0..channels {
                 let channel_data = ab.get_channel(c).unwrap();
@@ -194,7 +201,6 @@ fn play_audio() {
                     panic!("Channel {c} does not contain test_data");
                 }
             }
-            //
             assert!(indexes[1..].iter().all(|u| *u == indexes[0]));
         }
     }

@@ -6,10 +6,13 @@
 //! ports
 
 // use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions, Port, PortFlags, Unowned};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-    mpsc,
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
 };
 
 #[derive(Debug)]
@@ -26,6 +29,10 @@ pub struct ProcessAudio {
     /// Receive Audiop on Jack inputs and send it to the code that
     /// owns this `Engine`
     ports_senders: Vec<(jack::Port<jack::AudioIn>, mpsc::Sender<f32>)>,
+
+    /// Keep track of connected reveivers so can quit when they are all
+    /// disconnected
+    receiver_state: HashMap<String, bool>,
 }
 
 impl ProcessAudio {
@@ -37,6 +44,11 @@ impl ProcessAudio {
         ports_senders: Vec<(jack::Port<jack::AudioIn>, mpsc::Sender<f32>)>,
         ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
     ) -> Self {
+        let mut receiver_state = HashMap::new();
+        for (port, _) in ports_receivers.iter() {
+            let n = port.name().expect("No name for a port");
+            receiver_state.insert(n, true);
+        }
         Self {
             run_f,
             set_f,
@@ -44,9 +56,11 @@ impl ProcessAudio {
             pause,
             ports_receivers,
             ports_senders,
+            receiver_state,
         }
     }
 }
+
 impl jack::ProcessHandler for ProcessAudio {
     /// Full duplex audio.  Audio Output: If there are audio data in
     /// the receiver channels send it out on the associated port, if
@@ -60,15 +74,21 @@ impl jack::ProcessHandler for ProcessAudio {
             return jack::Control::Continue;
         }
         for (port, receiver) in self.ports_receivers.iter_mut() {
+            let port_name = port.name().expect("No name for port");
             let out = port.as_mut_slice(ps);
             for s in out.iter_mut() {
                 *s = match receiver.try_recv() {
                     Ok(s) => s,
                     Err(mpsc::TryRecvError::Empty) => 0.0,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        eprintln!("jack_rec. Error: Disconnected audio channel");
-                        self.running_f.store(false, Ordering::Relaxed);
-                        return jack::Control::Quit;
+                        self.receiver_state.insert(port_name.clone(), false);
+                        let quit = !self.receiver_state.iter().any(|(_, s)| *s);
+                        if quit {
+                            self.running_f.store(false, Ordering::Relaxed);
+                            return jack::Control::Quit;
+                        } else {
+                            0.0
+                        }
                     }
                 };
             }

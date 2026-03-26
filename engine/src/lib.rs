@@ -104,6 +104,12 @@ impl Engine {
         self.base_time.elapsed()
     }
 
+    /// Stop sending data to the client for playing, gracefully wait
+    /// for it to end... TODO: What to do about recording?
+    pub fn finished_playing(&mut self) {
+        self.senders.clear();
+    }
+
     /// Set up a new AsyncClient.
     pub fn add_client(&mut self, in_p: &[&str], out_p: &[&str]) -> Result<(), Qzn3tError> {
         if let Some(c) = self.client.take() {
@@ -147,8 +153,13 @@ impl Engine {
     pub fn unpause(&mut self) {
         self.pause.store(false, Ordering::Relaxed);
     }
+
     pub fn is_paused(&self) -> bool {
         self.pause.load(Ordering::Relaxed)
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running_f.load(Ordering::Relaxed)
     }
 
     /// Set up the file backing for the audio buffer
@@ -190,7 +201,7 @@ impl Engine {
     /// channels in `self.audio_buffer_play` and
     /// `self.audio_buffer_record` and the mode in [`self.mode`].
     // pub fn run(mut self) -> Result<JoinHandle<Result<(), Qzn3tError>>, Qzn3tError> {
-    pub fn run(mut self) -> Result<(), Qzn3tError> {
+    pub fn run(&mut self) -> Result<(), Qzn3tError> {
         // Preconditions I/O and audio buffers
         match self.mode {
             Some(SessionMode::Playing) => {
@@ -286,7 +297,6 @@ impl Engine {
 
                     // Check if buffer all played, and quit if so
                     if play_idx == self.audio_buffer_play.as_ref().unwrap().len() {
-                        self.run_f.store(false, Ordering::Relaxed);
                         break 'MAIN_LOOP;
                     }
                 }
@@ -339,11 +349,6 @@ impl Engine {
                 );
             }
             now = Instant::now();
-        }
-        while self.running_f.load(Ordering::Relaxed) {
-            // TODO: Have a timeout incase process crashes without
-            // resetting the flag (belts and braces)
-            thread::sleep(Duration::from_millis(300));
         }
         Ok(())
     }
