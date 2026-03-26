@@ -280,11 +280,9 @@ impl Engine {
 
             match self.mode {
                 Some(SessionMode::Playing) => {
-                    let mut fi = self.audio_buffer_play.as_ref().unwrap().frames();
-                    while play_idx < self.audio_buffer_play.as_ref().unwrap().len()
-                        && let Some(frame) = fi.next_frame()
-                    {
-                        play_idx += frame.len() / play_channel_cnt;
+                    let mut frame_iterator = self.audio_buffer_play.as_ref().unwrap().frames();
+                    while let Some(frame) = frame_iterator.next_frame() {
+                        play_idx += 1;
                         assert_eq!(self.senders.len(), frame.len());
                         for (i, s) in self.senders.iter().enumerate() {
                             let sample = frame[i];
@@ -295,7 +293,9 @@ impl Engine {
                         }
                     }
 
-                    // Check if buffer all played, and quit if so
+                    // Check if buffer all played, and quit if so:
+                    // TODO This can probably uncnditionally break,
+                    // and I can do away with `play_idx`
                     if play_idx == self.audio_buffer_play.as_ref().unwrap().len() {
                         break 'MAIN_LOOP;
                     }
