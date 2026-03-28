@@ -27,13 +27,13 @@ struct JackProcessSink {
 }
 impl ProcessHandler for JackProcessSink {
     fn process(&mut self, _: &Client, ps: &jack::ProcessScope) -> Control {
-	for (c, port) in self.in_ports.iter().enumerate() {
-	    let in_a_p = port.as_slice(ps);
+        for (c, port) in self.in_ports.iter().enumerate() {
+            let in_a_p = port.as_slice(ps);
 
-	    let mut output = self.output.lock().unwrap();
-	    (*output).add_samples(c, in_a_p).unwrap();
-	}
-	Control::Continue
+            let mut output = self.output.lock().unwrap();
+            (*output).add_samples(c, in_a_p).unwrap();
+        }
+        Control::Continue
     }
 }
 pub struct Notifications;
@@ -48,32 +48,32 @@ struct JackSink {
 }
 impl JackSink {
     fn new(channels: usize) -> Self {
-	let (client, _s) = Client::new(
-	    "qzn3t_integration_test",
-	    ClientOptions::NO_START_SERVER,
-	)
-	.unwrap();
-	assert!(!client.name().is_empty());
-	let output = Arc::new(Mutex::new(AudioBuffer::new(channels).unwrap()));
-	let in_ports: Vec<Port<AudioIn>> = (0..channels)
-	    .map(|i| {
-		client
-		    .register_port(&format!("in_{i}"), AudioIn::default())
-		    .unwrap()
-	    })
-	    .collect();
+        let (client, _s) = Client::new(
+            "qzn3t_integration_test",
+            ClientOptions::NO_START_SERVER,
+        )
+        .unwrap();
+        assert!(!client.name().is_empty());
+        let output = Arc::new(Mutex::new(AudioBuffer::new(channels).unwrap()));
+        let in_ports: Vec<Port<AudioIn>> = (0..channels)
+            .map(|i| {
+                client
+                    .register_port(&format!("in_{i}"), AudioIn::default())
+                    .unwrap()
+            })
+            .collect();
 
-	let jack_process = JackProcessSink {
-	    // input: vec![vec![]; channels],
-	    output: output.clone(),
-	    in_ports,
-	    out_ports: vec![],
-	};
-	let ac = client.activate_async(Notifications, jack_process).unwrap();
-	Self {
-	    client: ac,
-	    output: output.clone(),
-	}
+        let jack_process = JackProcessSink {
+            // input: vec![vec![]; channels],
+            output: output.clone(),
+            in_ports,
+            out_ports: vec![],
+        };
+        let ac = client.activate_async(Notifications, jack_process).unwrap();
+        Self {
+            client: ac,
+            output: output.clone(),
+        }
     }
 }
 
@@ -86,8 +86,8 @@ fn dst_dir() -> PathBuf {
 /// `sample_cnt` samples
 fn test_signal_linear_rising(sample_cnt: usize) -> Vec<f32> {
     (0..sample_cnt)
-	.map(|idx| -1.0 + 2.0 * idx as f32 / sample_cnt as f32)
-	.collect()
+        .map(|idx| -1.0 + 2.0 * idx as f32 / sample_cnt as f32)
+        .collect()
 }
 
 /// Test data consisting of linear data from 1.0 to -1.0 using
@@ -225,28 +225,28 @@ fn play_audio() {
     assert!(!jack_sink.client.as_client().name().is_empty());
 
     let sink_port_names = jack_sink
-	.client
-	.as_client()
-	.ports(
-	    Some(jack_sink.client.as_client().name()),
-	    None,
-	    PortFlags::empty(),
-	)
-	.iter()
-	.map(|p| p.to_string())
-	.collect::<Vec<String>>();
+        .client
+        .as_client()
+        .ports(
+            Some(jack_sink.client.as_client().name()),
+            None,
+            PortFlags::empty(),
+        )
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<String>>();
 
     let mut engine = Engine::new().unwrap();
 
     let out_ports_strings: Vec<String> = (0..sink_port_names.len())
-	.map(|i| format!("out_{i}"))
-	.collect();
+        .map(|i| format!("out_{i}"))
+        .collect();
     let out_ports_str: Vec<&str> =
-	out_ports_strings.iter().map(|i| i.as_str()).collect();
+        out_ports_strings.iter().map(|i| i.as_str()).collect();
 
     let p = dst_dir();
     if !p.exists() {
-	create_dir_all(&p).unwrap();
+        create_dir_all(&p).unwrap();
     }
     assert!(p.is_dir());
     let p = p.join("play_audio");
@@ -257,66 +257,66 @@ fn play_audio() {
 
     assert_eq!(source_port_names.len(), sink_port_names.len());
     {
-	let client = engine.client().unwrap();
-	for (source, sink) in
-	    source_port_names.iter().zip(sink_port_names.iter())
-	{
-	    client.connect_ports_by_name(source, sink).unwrap();
-	}
+        let client = engine.client().unwrap();
+        for (source, sink) in
+            source_port_names.iter().zip(sink_port_names.iter())
+        {
+            client.connect_ports_by_name(source, sink).unwrap();
+        }
     }
     // Add some test data to play
     let test_data = test_signal_linear_rising(data_len);
     let audio_buffer =
-	AudioBuffer::new_data(vec![test_data.clone(); channels]).unwrap();
+        AudioBuffer::new_data(vec![test_data.clone(); channels]).unwrap();
 
     // Run...
     engine.unpause();
     let play_session = PlaySession {
-	audio_buffer,
-	senders: engine.senders.clone(),
+        audio_buffer,
+        senders: engine.senders.clone(),
     };
     let handle = engine.play_loop(play_session);
     while !handle.is_finished() {
-	// TODO: Have a timeout incase process crashes without
-	// resetting the flag (belts and braces)
-	dbg!("Sleep");
-	thread::sleep(Duration::from_millis(300));
+        // TODO: Have a timeout incase process crashes without
+        // resetting the flag (belts and braces)
+        dbg!("Sleep");
+        thread::sleep(Duration::from_millis(300));
     }
     let play_status = handle.join().unwrap();
     dbg!(play_status);
     {
-	assert_eq!(jack_sink.output.lock().unwrap().channels(), channels);
-	{
-	    // Check if `test_data` is in all output channels starting
-	    // at the same place.  Return that place in an option if
-	    // available
-	    let ab = jack_sink.output.lock().unwrap();
-	    let test_cl = |one: &[f32], another: &[f32]| -> bool {
-		// Remove all zeros.  This destroys the integrity of
-		// audio, but strips leading and trailing zeros, and
-		// the results should then be identical.  Of course if
-		// the two differ by zeros inserted into one f the
-		// tracks this will not detect that.
-		let one = one
-		    .iter()
-		    .filter(|&f| f.abs() > 0.0)
-		    .collect::<Vec<&f32>>();
-		let another = another
-		    .iter()
-		    .filter(|&f| f.abs() > 0.0)
-		    .collect::<Vec<&f32>>();
-		!one.iter()
-		    .zip(another.iter())
-		    .any(|(&a, &b)| (a - b).abs() > f32::EPSILON)
-	    };
+        assert_eq!(jack_sink.output.lock().unwrap().channels(), channels);
+        {
+            // Check if `test_data` is in all output channels starting
+            // at the same place.  Return that place in an option if
+            // available
+            let ab = jack_sink.output.lock().unwrap();
+            let test_cl = |one: &[f32], another: &[f32]| -> bool {
+                // Remove all zeros.  This destroys the integrity of
+                // audio, but strips leading and trailing zeros, and
+                // the results should then be identical.  Of course if
+                // the two differ by zeros inserted into one f the
+                // tracks this will not detect that.
+                let one = one
+                    .iter()
+                    .filter(|&f| f.abs() > 0.0)
+                    .collect::<Vec<&f32>>();
+                let another = another
+                    .iter()
+                    .filter(|&f| f.abs() > 0.0)
+                    .collect::<Vec<&f32>>();
+                !one.iter()
+                    .zip(another.iter())
+                    .any(|(&a, &b)| (a - b).abs() > f32::EPSILON)
+            };
 
-	    // Examine what the jack sink got
-	    for c in 0..channels {
-		let channel_data = ab.get_channel(c).unwrap();
-		if !test_cl(&channel_data, &test_data) {
-		    panic!("Channel {c} not same as test_data");
-		}
-	    }
-	}
+            // Examine what the jack sink got
+            for c in 0..channels {
+                let channel_data = ab.get_channel(c).unwrap();
+                if !test_cl(&channel_data, &test_data) {
+                    panic!("Channel {c} not same as test_data");
+                }
+            }
+        }
     }
 }
