@@ -4,7 +4,10 @@
 //! Structures required for playing audio, and the ancillary code to
 //! create and assess them
 
-use std::sync::mpsc;
+use std::{
+    sync::mpsc::{self, SendError},
+    time::Duration,
+};
 
 use qzn3t_audio_buffer::AudioBuffer;
 
@@ -12,8 +15,8 @@ use qzn3t_audio_buffer::AudioBuffer;
 #[derive(Debug)]
 #[allow(unused)]
 pub struct PlaySession {
-    audio_buffer: AudioBuffer,
-    senders: Vec<mpsc::Sender<f32>>,
+    pub audio_buffer: AudioBuffer,
+    pub senders: Vec<mpsc::Sender<f32>>,
 }
 
 impl PlaySession {
@@ -40,6 +43,7 @@ impl PlaySession {
 #[allow(unused)]
 pub struct PlaySessionResult {
     pub status: PlaySessionStatus,
+    pub elapsed: Duration,
 }
 
 /// The result of the play session. TODO: Am I sure I do not want to
@@ -53,4 +57,8 @@ pub enum PlaySessionStatus {
     /// The first argument is the sample rate, the second samples per
     /// loop
     SampleRateNotMultipleOfSamplesPerLoop(u32, usize),
+
+    /// Sending data from the inner loop, over a `mpsc::Sender<f32>`
+    /// failed
+    SendFailed(SendError<f32>),
 }

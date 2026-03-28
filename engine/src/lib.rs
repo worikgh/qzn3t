@@ -10,6 +10,7 @@ use qzn3terror::Qzn3tError;
 
 #[allow(unused)] // Should not need this, it is used
 use std::io::Write;
+use std::thread::{JoinHandle, spawn};
 use std::{
     path::Path,
     sync::{
@@ -24,7 +25,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::play_session::{PlaySession, PlaySessionResult, PlaySessionStatus};
 use crate::process_audio::{Notifications, ProcessAudio};
+pub mod play_session;
 mod process_audio;
 
 #[derive(Debug)]
@@ -38,7 +41,7 @@ pub struct Engine {
     receivers: Vec<mpsc::Receiver<f32>>,
 
     /// Audio data output from engine (recording)
-    senders: Vec<mpsc::Sender<f32>>,
+    pub senders: Vec<mpsc::Sender<f32>>,
 
     /// "Power" switch.  When reset the client shuts down
     run_f: Arc<AtomicBool>,
@@ -204,6 +207,85 @@ impl Engine {
         }
     }
 
+    /// Play some audio.
+    ///
+    /// Preconditions:
+    /// * Engine is running (unpaused)
+    /// * `play_session` holds all data needed to play the audio
+    pub fn play_loop(
+        &self,
+        play_session: PlaySession,
+    ) -> JoinHandle<PlaySessionResult> {
+        assert!(play_session.is_valid());
+        assert!(!self.is_paused());
+
+        spawn(move || -> PlaySessionResult {
+            // Timing for the loop, in nano-seconds and samples
+            const NANO_SEC_LOOP: u128 = 10_000_000;
+            let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128
+                / 1_000_000_000) as usize;
+
+            // TODO: Fix this case rather than returning early
+            if samples_per_loop as u128 * 1_000_000_000
+                / get_sample_rate() as u128
+                != NANO_SEC_LOOP
+            {
+                let status =
+                    PlaySessionStatus::SampleRateNotMultipleOfSamplesPerLoop(
+                        get_sample_rate(),
+                        samples_per_loop,
+                    );
+                let elapsed = Duration::from_nanos(0);
+                return PlaySessionResult { status, elapsed };
+            }
+
+            let mut frame_iterator = play_session.audio_buffer.frames();
+            let start = Instant::now();
+            'MAIN_LOOP: loop {
+                let top = Instant::now();
+                for _ in 0..samples_per_loop {
+                    match frame_iterator.next_frame() {
+                        Some(frame) => {
+                            for (i, s) in
+                                play_session.senders.iter().enumerate()
+                            {
+                                let sample = frame[i];
+                                if let Err(err) = s.send(sample) {
+                                    let elapsed = start.elapsed();
+                                    let status =
+                                        PlaySessionStatus::SendFailed(err);
+                                    return PlaySessionResult {
+                                        status,
+                                        elapsed,
+                                    };
+                                }
+                            }
+                        }
+                        None => break 'MAIN_LOOP,
+                    };
+                }
+
+                // Keep to real-time constraints
+                let loop_elapsed = top.elapsed();
+                if loop_elapsed.as_nanos() < NANO_SEC_LOOP {
+                    thread::sleep(Duration::from_nanos_u128(
+                        NANO_SEC_LOOP - loop_elapsed.as_nanos(),
+                    ));
+                } else {
+                    eprintln!(
+                        "Xrun: {:?}ns",
+                        Duration::from_nanos_u128(
+                            loop_elapsed.as_nanos() - NANO_SEC_LOOP
+                        )
+                    );
+                }
+            }
+            let elapsed = start.elapsed();
+            let status = PlaySessionStatus::Finished;
+            PlaySessionResult { status, elapsed }
+        })
+    }
+
     /// Main event loop.  This does not do any setup.
     ///
     /// The number of input channels in `self.receivers` and the
@@ -268,7 +350,6 @@ impl Engine {
         // Dodging the borrow checker get length of self.receivers
         // here before mutably borrowed in the closure below
         let receivers_len = self.receivers.len();
-        let play_channel_cnt = self.senders.len();
         'MAIN_LOOP: loop {
             // Closure to do recording for full-duplex or recording modes
             let mut record = || -> Result<bool, Qzn3tError> {
