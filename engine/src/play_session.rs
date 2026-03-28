@@ -108,7 +108,7 @@ impl Stepper for Player {
                 samples_to_play
             } else {
                 ret = StepResult::Complete;
-                self.audio_buffer.len() - self.position
+                (self.audio_buffer.len() - 1) - self.position
             };
 
         for (c, s) in self.senders.iter().enumerate() {
@@ -123,7 +123,6 @@ impl Stepper for Player {
                 }
             }
         }
-        dbg!(samples_to_play);
         self.position += samples_to_play;
         Ok(ret)
     }

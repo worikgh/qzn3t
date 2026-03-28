@@ -73,6 +73,19 @@ impl JackSink {
             output: output.clone(),
         }
     }
+
+    fn port_names(&self) -> Vec<String> {
+        self.client
+            .as_client()
+            .ports(
+                Some(self.client.as_client().name()),
+                None,
+                PortFlags::empty(),
+            )
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<String>>()
+    }
 }
 
 /// A directory for storing files in
@@ -88,6 +101,11 @@ fn test_signal_linear_rising(sample_cnt: usize) -> Vec<f32> {
         .collect()
 }
 
+#[allow(unused)]
+fn test_signal_sine(sample_cnt: usize) -> Vec<f32> {
+    (0..sample_cnt).map(|n| (n as f32).sin()).collect()
+}
+
 /// Test data consisting of linear data from 1.0 to -1.0 using
 /// `sample_cnt` samples
 #[allow(unused)]
@@ -97,57 +115,42 @@ fn test_signal_linear_falling(sample_cnt: usize) -> Vec<f32> {
     ret
 }
 
+fn make_test_file(name: &str) -> PathBuf {
+    let p = dst_dir();
+    if !p.exists() {
+        create_dir_all(&p).unwrap();
+    }
+    assert!(p.is_dir());
+    p.join(name)
+}
+
 #[test]
 fn play_by_step() {
-    let data_len = 10;
-    // let data_len = 1_025;
+    // let data_len = 10;
+    let data_len = 48_025;
     let jack_sink = JackSink::new(1);
     assert!(!jack_sink.client.as_client().name().is_empty());
 
-    let sink_port_names = jack_sink
-        .client
-        .as_client()
-        .ports(
-            Some(jack_sink.client.as_client().name()),
-            None,
-            PortFlags::empty(),
-        )
-        .iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<String>>();
-
-    let test_data = test_signal_linear_rising(data_len);
-    let audio_buffer = AudioBuffer::new_data(vec![test_data.clone()]).unwrap();
-
+    let sink_port_names = jack_sink.port_names();
     let out_ports_strings: Vec<String> = (0..sink_port_names.len())
         .map(|i| format!("out_{i}"))
         .collect();
     let out_ports_str: Vec<&str> =
         out_ports_strings.iter().map(|i| i.as_str()).collect();
 
-    let p = dst_dir();
-    if !p.exists() {
-        create_dir_all(&p).unwrap();
-    }
-    assert!(p.is_dir());
-    let p = p.join("play_audio");
+    let p = make_test_file("play_by_step");
     let session = Session::new(&[], &out_ports_str, &p);
-
     let mut engine = Engine::new().unwrap();
-    let player = engine.get_player(audio_buffer);
-    engine.add_stepper(Box::new(player));
     engine.start_session(session).unwrap();
-    let source_port_names = engine.all_ports().unwrap();
 
-    {
-        let client = engine.get_client().unwrap();
-        for (source, sink) in
-            source_port_names.iter().zip(sink_port_names.iter())
-        {
-            client.connect_ports_by_name(source, sink).unwrap();
-        }
-    }
+    // Set up playing process and audio data
+    let test_data = test_signal_sine(data_len);
+    let player = engine
+        .get_player(AudioBuffer::new_data(vec![test_data.clone()]).unwrap());
+    engine.add_stepper(Box::new(player));
+    engine.connect_outputs(&sink_port_names).unwrap();
     engine.run().unwrap();
+
     {
         // Check if `test_data` is in all output channels. TODO:
         // Test with different data in the channels

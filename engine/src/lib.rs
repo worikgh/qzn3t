@@ -171,7 +171,6 @@ impl Engine {
 
         // For maintaining timing in the loop
         let mut now = Instant::now();
-
         loop {
             if self.stepper.as_mut().unwrap().step()? == StepResult::Complete {
                 break;
@@ -195,20 +194,21 @@ impl Engine {
         Ok(())
     }
 
-    /// List all the names of all Jack ports the engine  is using
-    pub fn all_ports(&self) -> Result<Vec<String>, Qzn3tError> {
-        let ret = if let Some(client) = self.get_client() {
-            client.ports(
-                Some(format!("{}:", client.name()).as_str()),
-                None,
-                PortFlags::empty(),
-            )
-        } else {
-            vec![]
-        };
-        Ok(ret)
+    /// Make connections to engine
+    pub fn connect_outputs(
+        &self,
+        dst_ports: &Vec<String>,
+    ) -> Result<(), Qzn3tError> {
+        let source_port_names = self.all_ports().unwrap();
+        assert_eq!(dst_ports.len(), source_port_names.len());
+        for (source, sink) in source_port_names.iter().zip(dst_ports.iter()) {
+            self.get_client()
+                .unwrap()
+                .connect_ports_by_name(source, sink)
+                .unwrap();
+        }
+        Ok(())
     }
-
     /// Steppers.
     pub fn get_player(&self, audio_buffer: AudioBuffer) -> Player {
         Player::new(audio_buffer, self.senders.clone())
@@ -264,6 +264,20 @@ impl Engine {
             process, // For owner to use to send/reveive data
             senders, receivers,
         ))
+    }
+
+    /// List all the names of all Jack ports the engine  is using
+    fn all_ports(&self) -> Result<Vec<String>, Qzn3tError> {
+        let ret = if let Some(client) = self.get_client() {
+            client.ports(
+                Some(format!("{}:", client.name()).as_str()),
+                None,
+                PortFlags::empty(),
+            )
+        } else {
+            vec![]
+        };
+        Ok(ret)
     }
 }
 
