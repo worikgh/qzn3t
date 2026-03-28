@@ -19,7 +19,6 @@ fn main() {
         "{}/recorded.raw",
         env::var("CARGO_MANIFEST_DIR").unwrap()
     ));
-    engine.unpause();
     println!("<enter> to stop:");
     let mut buf = String::new();
     std::io::stdin().read_line(&mut buf).unwrap();

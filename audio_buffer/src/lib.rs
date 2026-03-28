@@ -151,6 +151,22 @@ impl AudioBuffer {
         }
     }
 
+    /// Get a slice from a channel
+    pub fn get_slice(
+        &self,
+        channel: usize,
+        start: usize,
+        len: usize,
+    ) -> Result<&[f32], Qzn3tError> {
+        if channel >= self.data.len() {
+            Err(Qzn3tError::InvalidChannel)
+        } else if start + len >= self.data[channel].len() {
+            Err(Qzn3tError::InvalidIndex)
+        } else {
+            Ok(&self.data[channel][start..(start + len)])
+        }
+    }
+
     /// Read a channel into a vector
     pub fn get_channel(&self, channel: usize) -> Result<Vec<f32>, Qzn3tError> {
         if channel > self.channels() {

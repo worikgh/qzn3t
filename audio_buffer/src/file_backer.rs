@@ -201,7 +201,7 @@ impl FileBacker {
                 samples: samples.to_vec(),
                 channel,
             })
-            .map_err(|seend_err| Qzn3tError::SendError(format!("{seend_err}")))
+            .map_err(|send_err| Qzn3tError::SendError(format!("{send_err}")))
     }
 
     /// The member `path` must be a file path and point into a
