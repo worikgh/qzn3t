@@ -105,7 +105,7 @@ fn test_signal_linear_rising(sample_cnt: usize) -> Vec<f32> {
 
 #[allow(unused)]
 fn test_signal_sine(sample_cnt: usize) -> Vec<f32> {
-    (0..(2 * sample_cnt))
+    (0..sample_cnt)
         .map(|n| {
             let n = 2.0 * f32::consts::PI * n as f32 / sample_cnt as f32 - 1.0;
             n.sin()
@@ -154,11 +154,13 @@ fn play_by_step() {
     // let data_len = 10;
     let data_len = 48_025;
 
-    let test_data_0 = test_signal_triangle(data_len);
+    let test_data_0 = test_signal_sine(data_len);
     let test_data_1 = test_signal_triangle(data_len);
-    let audio_data =
-        AudioBuffer::new_data(vec![test_data_0.clone(), test_data_1.clone()])
-            .unwrap();
+    let test_data = vec![test_data_0.clone(), test_data_1.clone()];
+    let audio_data = match AudioBuffer::new_data(test_data.clone()) {
+        Ok(ab) => ab,
+        Err(err) => panic!("{err}"),
+    };
     let channels = audio_data.channels();
 
     let jack_sink = JackSink::new(audio_data.channels());
@@ -205,7 +207,8 @@ fn play_by_step() {
         // Examine what the jack sink got
         for c in 0..channels {
             let channel_data = ab.get_channel(c).unwrap();
-            if !test_cl(&channel_data, &test_data_0) {
+            let test_data = test_data[c].clone();
+            if !test_cl(&channel_data, &test_data) {
                 panic!("Channel {c} not same as test_data");
             }
         }
