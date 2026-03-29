@@ -9,7 +9,9 @@ use jack::{
 use qzn3t_audio_buffer::AudioBuffer;
 use qzn3t_engine::{Engine, Session};
 use std::{
-    fs::create_dir_all,
+    f32,
+    fs::{OpenOptions, create_dir_all},
+    io::Write,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -103,7 +105,30 @@ fn test_signal_linear_rising(sample_cnt: usize) -> Vec<f32> {
 
 #[allow(unused)]
 fn test_signal_sine(sample_cnt: usize) -> Vec<f32> {
-    (0..sample_cnt).map(|n| (n as f32).sin()).collect()
+    (0..(2 * sample_cnt))
+        .map(|n| {
+            let n = 2.0 * f32::consts::PI * n as f32 / sample_cnt as f32 - 1.0;
+            n.sin()
+        })
+        .collect()
+}
+
+#[allow(unused)]
+fn test_signal_triangle(sample_cnt: usize) -> Vec<f32> {
+    let modlp = sample_cnt / 4;
+    let ret: Vec<f32> = (0..sample_cnt)
+        .map(|n| 2.0 * (n % modlp) as f32 / modlp as f32 - 1.0)
+        .collect();
+
+    let s = ret.iter().fold("".to_string(), |a, b| format!("{a}{b}\n"));
+    let mut f = OpenOptions::new()
+        .truncate(true)
+        .create(true)
+        .write(true)
+        .open("/tmp/foobar")
+        .unwrap();
+    f.write_all(s.as_bytes()).unwrap();
+    ret
 }
 
 /// Test data consisting of linear data from 1.0 to -1.0 using
@@ -128,7 +153,15 @@ fn make_test_file(name: &str) -> PathBuf {
 fn play_by_step() {
     // let data_len = 10;
     let data_len = 48_025;
-    let jack_sink = JackSink::new(1);
+
+    let test_data_0 = test_signal_triangle(data_len);
+    let test_data_1 = test_signal_triangle(data_len);
+    let audio_data =
+        AudioBuffer::new_data(vec![test_data_0.clone(), test_data_1.clone()])
+            .unwrap();
+    let channels = audio_data.channels();
+
+    let jack_sink = JackSink::new(audio_data.channels());
     assert!(!jack_sink.client.as_client().name().is_empty());
 
     let sink_port_names = jack_sink.port_names();
@@ -143,10 +176,7 @@ fn play_by_step() {
     let mut engine = Engine::new().unwrap();
     engine.start_session(session).unwrap();
 
-    // Set up playing process and audio data
-    let test_data = test_signal_sine(data_len);
-    let player = engine
-        .get_player(AudioBuffer::new_data(vec![test_data.clone()]).unwrap());
+    let player = engine.get_player(audio_data);
     engine.add_stepper(Box::new(player));
     engine.connect_outputs(&sink_port_names).unwrap();
     engine.run().unwrap();
@@ -173,9 +203,9 @@ fn play_by_step() {
         };
 
         // Examine what the jack sink got
-        for c in 0..1 {
+        for c in 0..channels {
             let channel_data = ab.get_channel(c).unwrap();
-            if !test_cl(&channel_data, &test_data) {
+            if !test_cl(&channel_data, &test_data_0) {
                 panic!("Channel {c} not same as test_data");
             }
         }
