@@ -197,7 +197,7 @@ impl Engine {
     /// Make connections to engine
     pub fn connect_outputs(
         &self,
-        dst_ports: &Vec<String>,
+        dst_ports: &[String],
     ) -> Result<(), Qzn3tError> {
         let source_port_names = self.all_ports().unwrap();
         assert_eq!(dst_ports.len(), source_port_names.len());
