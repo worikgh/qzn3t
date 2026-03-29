@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Worik Turei Stanton
 // License: GPL-3.0
 
-use crate::play_session::Player;
+use crate::player::Player;
 use crate::stepper::{StepResult, Stepper};
 use jack::PortFlags;
 use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
@@ -24,7 +24,7 @@ use std::{
 };
 
 use crate::process_audio::{Notifications, ProcessAudio};
-pub mod play_session;
+pub mod player;
 mod process_audio;
 
 pub struct Engine {
