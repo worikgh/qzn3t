@@ -14,6 +14,7 @@ use std::{
     io::Write,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 
 /// For a Jack client that receives audio data on its `in_ports` and
@@ -152,10 +153,11 @@ fn make_test_file(name: &str) -> PathBuf {
 #[test]
 fn play_by_step() {
     // let data_len = 10;
-    let data_len = 48_025;
+    // let data_len = 48_025;
+    let data_len = 48_000;
 
-    let test_data_0 = test_signal_sine(data_len);
-    let test_data_1 = test_signal_triangle(data_len);
+    let test_data_0 = test_signal_linear_falling(data_len);
+    let test_data_1 = test_signal_linear_rising(data_len);
     let test_data = vec![test_data_0.clone(), test_data_1.clone()];
     let audio_data = match AudioBuffer::new_data(test_data.clone()) {
         Ok(ab) => ab,
@@ -165,6 +167,7 @@ fn play_by_step() {
 
     let jack_sink = JackSink::new(audio_data.channels());
     assert!(!jack_sink.client.as_client().name().is_empty());
+    let sample_rate = jack_sink.client.as_client().sample_rate();
 
     let sink_port_names = jack_sink.port_names();
     let out_ports_strings: Vec<String> = (0..sink_port_names.len())
@@ -178,15 +181,21 @@ fn play_by_step() {
     let mut engine = Engine::new().unwrap();
     engine.start_session(session).unwrap();
 
+    let before = Instant::now();
+
     let player = engine.get_player(audio_data);
     engine.add_stepper(Box::new(player));
+
     engine.connect_outputs(&sink_port_names).unwrap();
     engine.run().unwrap();
 
+    let elapsed = before.elapsed();
+    assert!(elapsed.as_millis() >= (data_len * 1_000 / sample_rate) as u128);
     {
         // Check if `test_data` is in all output channels. TODO:
         // Test with different data in the channels
         let ab = jack_sink.output.lock().unwrap();
+
         let test_cl = |one: &[f32], another: &[f32]| -> bool {
             // Remove all zeros.  This destroys the integrity of
             // audio, but strips leading and trailing zeros, and
@@ -209,7 +218,29 @@ fn play_by_step() {
             let channel_data = ab.get_channel(c).unwrap();
             let test_data = test_data[c].clone();
             if !test_cl(&channel_data, &test_data) {
-                panic!("Channel {c} not same as test_data");
+                let lim = f32::EPSILON;
+                let a = channel_data
+                    .iter()
+                    .filter(|s| s.abs() > lim)
+                    .collect::<Vec<&f32>>();
+                let b = test_data
+                    .iter()
+                    .filter(|s| s.abs() > lim)
+                    .collect::<Vec<&f32>>();
+                let z = a.iter().zip(b.iter()).collect::<Vec<(&&f32, &&f32)>>();
+                let z = z
+                    .iter()
+                    .enumerate()
+                    .collect::<Vec<(usize, &(&&f32, &&f32))>>();
+                let z = z
+                    .iter()
+                    .map(|&(u, &(&&a, &&b))| (u, a, b))
+                    .collect::<Vec<(usize, f32, f32)>>();
+                let z = z
+                    .iter()
+                    .filter(|(_, a, b)| (a - b).abs() > lim)
+                    .collect::<Vec<&(usize, f32, f32)>>();
+                panic!("Channel {c} not same as test_data: {z:?}");
             }
         }
     }

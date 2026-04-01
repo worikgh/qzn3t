@@ -36,7 +36,7 @@ impl Player {
 }
 
 impl Stepper for Player {
-    fn step(&mut self) -> Result<StepResult, Qzn3tError> {
+    fn step(&mut self, step_ns: u128) -> Result<StepResult, Qzn3tError> {
         let mut ret = StepResult::Continue;
         if self.position == 0 {
             // Initial call.  set last to 10ms ago to kick things off
@@ -44,9 +44,8 @@ impl Stepper for Player {
                 .checked_sub(Duration::from_millis(10))
                 .unwrap();
         }
-        let samples_to_play = (self.last.elapsed().as_millis()
-            * self.sample_rate as u128
-            / 1000) as usize;
+        let samples_to_play =
+            (self.sample_rate as u128 * 1_000_000_000_000 / step_ns) as usize;
         let samples_to_play =
             if self.position + samples_to_play < self.audio_buffer.len() {
                 samples_to_play
@@ -54,7 +53,6 @@ impl Stepper for Player {
                 ret = StepResult::Complete;
                 (self.audio_buffer.len() - 1) - self.position
             };
-
         for (c, s) in self.senders.iter().enumerate() {
             let data = self.audio_buffer.get_slice(
                 c,

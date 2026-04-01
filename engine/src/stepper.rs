@@ -10,6 +10,6 @@ pub enum StepResult {
     Continue,
 }
 pub trait Stepper {
-    fn step(&mut self) -> Result<StepResult, Qzn3tError>;
+    fn step(&mut self, step_ns: u128) -> Result<StepResult, Qzn3tError>;
     fn channels(&self) -> usize;
 }

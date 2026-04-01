@@ -9,6 +9,7 @@ use qzn3t_audio_buffer::AudioBuffer;
 use qzn3t_audio_buffer::get_sample_rate;
 use qzn3terror::Qzn3tError;
 pub mod stepper;
+use crate::process_audio::{Notifications, ProcessAudio};
 use std::fmt::{self, Debug, Formatter};
 use std::{
     path::Path,
@@ -22,8 +23,7 @@ use std::{
     thread::{self},
     time::{Duration, Instant},
 };
-
-use crate::process_audio::{Notifications, ProcessAudio};
+pub mod converter;
 pub mod player;
 mod process_audio;
 
@@ -35,7 +35,7 @@ pub struct Engine {
     receivers: Vec<mpsc::Receiver<f32>>,
 
     /// Audio data output from engine (recording)
-    senders: Vec<mpsc::Sender<f32>>,
+    senders: Option<Vec<mpsc::Sender<f32>>>,
 
     /// "Power" switch.  When reset the Jack client shuts down
     run_f: Arc<AtomicBool>,
@@ -48,7 +48,8 @@ pub struct Engine {
     set_f: Arc<AtomicBool>,
 
     /// Function object driven by the main loop.
-    stepper: Option<Box<dyn Stepper>>,
+    /// TODO: pub for debugging
+    pub stepper: Option<Box<dyn Stepper>>,
 }
 impl Debug for Engine {
     fn fmt(&self, _f: &mut Formatter) -> fmt::Result {
@@ -68,7 +69,7 @@ impl Engine {
     pub fn new() -> Result<Self, Qzn3tError> {
         Ok(Self {
             client: None,
-            senders: vec![],
+            senders: None,
             receivers: vec![],
             run_f: Arc::new(AtomicBool::new(true)),
             running_f: Arc::new(AtomicBool::new(false)),
@@ -114,7 +115,7 @@ impl Engine {
         let async_client =
             client.activate_async(Notifications, process_audio)?;
         self.client = Some(async_client);
-        self.senders = senders;
+        self.senders = Some(senders);
         self.receivers = receivers;
         Ok(())
     }
@@ -124,7 +125,7 @@ impl Engine {
         if let Some(c) = self.client.take() {
             c.deactivate()?;
         }
-        self.senders.clear();
+        self.senders = None;
         self.receivers.clear();
         Ok(())
     }
@@ -172,7 +173,9 @@ impl Engine {
         // For maintaining timing in the loop
         let mut now = Instant::now();
         loop {
-            if self.stepper.as_mut().unwrap().step()? == StepResult::Complete {
+            if self.stepper.as_mut().unwrap().step(NANO_SEC_LOOP)?
+                == StepResult::Complete
+            {
                 break;
             }
 
@@ -190,6 +193,10 @@ impl Engine {
                 );
             }
             now = Instant::now();
+        }
+        self.stepper = None;
+        while self.running_f.load(Ordering::Relaxed) {
+            thread::sleep(Duration::from_secs_f32(1.0));
         }
         Ok(())
     }
@@ -210,8 +217,8 @@ impl Engine {
         Ok(())
     }
     /// Steppers.
-    pub fn get_player(&self, audio_buffer: AudioBuffer) -> Player {
-        Player::new(audio_buffer, self.senders.clone())
+    pub fn get_player(&mut self, audio_buffer: AudioBuffer) -> Player {
+        Player::new(audio_buffer, self.senders.take().unwrap())
     }
 }
 
@@ -281,11 +288,10 @@ impl Engine {
     }
 }
 
-#[allow(unused)]
 pub struct Session<'a> {
-    in_ports: &'a [&'a str],
-    out_ports: &'a [&'a str],
-    path: &'a Path,
+    pub in_ports: &'a [&'a str],
+    pub out_ports: &'a [&'a str],
+    pub path: &'a Path,
 }
 
 impl<'a> Session<'a> {
@@ -308,20 +314,36 @@ impl<'a> Session<'a> {
             path,
         }
     }
+    pub fn default_mono_play(path: &'a Path) -> Session<'a> {
+        Self {
+            in_ports: &[],
+            out_ports: &["system:playback_1"],
+            path,
+        }
+    }
+
+    // To do this need to change typf of `out_ports` to Vec<String>
+    // pub fn default_channels(path: &'a Path, nchan:usize,) -> Session<'a> {
+    //	let out_ports:Vec<String> = (0..nchan).map(|c| format!("system:playpack_{c}")).collect();
+    //	Self {
+    //	    in_ports: &[],
+    //	    out_ports: &out_ports,
+    //	    path,
+    //	}
+    // }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[allow(unused)]
-    use qzn3t_audio_buffer::file_backer::{FileBacker, Metadata};
+
     use std::path::{Path, PathBuf};
     #[test]
     fn engine_creation() {
         let engine = Engine::new().expect("Failed to create Engine");
         assert!(engine.client.is_none()); // Ensures the client is initially None
         assert!(engine.receivers.is_empty()); // Receivers should be empty
-        assert!(engine.senders.is_empty()); // Senders should be empty
+        assert!(engine.senders.is_none()); // Senders should be None
     }
 
     #[test]
@@ -336,7 +358,7 @@ mod tests {
         let mut engine = Engine::new().expect("Failed to create Engine");
         assert!(engine.get_client().is_none());
         assert!(engine.receivers.is_empty());
-        assert!(engine.senders.is_empty());
+        assert!(engine.senders.is_none());
         assert!(engine.run_f.load(Ordering::Relaxed));
         assert!(engine.name().is_none());
 
@@ -351,7 +373,7 @@ mod tests {
         assert!(result.is_ok()); // The session should start without error
         assert!(engine.client.is_some()); // Client should be created
         assert_eq!(engine.receivers.len(), 1); // One receiver for the input port
-        assert_eq!(engine.senders.len(), 1); // One sender for the output port
+        assert_eq!(engine.senders.as_ref().unwrap().len(), 1); // One sender for the output port
     }
 
     #[test]

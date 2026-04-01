@@ -13,6 +13,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
+    time::Instant,
 };
 
 #[derive(Debug)]
@@ -74,9 +75,10 @@ impl jack::ProcessHandler for ProcessAudio {
         for (port, receiver) in self.ports_receivers.iter_mut() {
             let port_name = port.name().expect("No name for port");
             let out = port.as_mut_slice(ps);
-            for s in out.iter_mut() {
-                *s = match receiver.try_recv() {
+            for o in out.iter_mut() {
+                *o = match receiver.try_recv() {
                     Ok(s) => s,
+
                     Err(mpsc::TryRecvError::Empty) => 0.0,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         self.receiver_state.insert(port_name.clone(), false);

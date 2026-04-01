@@ -160,7 +160,7 @@ impl AudioBuffer {
     ) -> Result<&[f32], Qzn3tError> {
         if channel >= self.data.len() {
             Err(Qzn3tError::InvalidChannel)
-        } else if start + len >= self.data[channel].len() {
+        } else if start + len > self.data[channel].len() {
             Err(Qzn3tError::InvalidIndex)
         } else {
             Ok(&self.data[channel][start..(start + len)])
@@ -179,6 +179,7 @@ impl AudioBuffer {
         }
         Ok(ret)
     }
+
     /// Writing data.  A channel at a time
     #[allow(dead_code)]
     pub fn add_samples(

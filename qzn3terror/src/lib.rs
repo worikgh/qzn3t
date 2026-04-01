@@ -6,7 +6,6 @@ use std::{
     io::{self},
     path::PathBuf,
 };
-
 #[derive(Debug, PartialEq)]
 pub enum Qzn3tError {
     ChannelOutOfBound(usize),
@@ -27,6 +26,7 @@ pub enum Qzn3tError {
     NumericError(String),
     SampleIndexOutOfBound(usize),
     SendError(String),
+    SymphoniaError(String),
 }
 impl From<io::Error> for Qzn3tError {
     fn from(error: io::Error) -> Self {
@@ -43,6 +43,12 @@ impl From<jack::Error> for Qzn3tError {
         Qzn3tError::JackClient(format!("Jack Error: {err}"))
     }
 }
+impl From<symphonia_core::errors::Error> for Qzn3tError {
+    fn from(err: symphonia_core::errors::Error) -> Self {
+        Qzn3tError::SymphoniaError(format!("Symphonia: {err}"))
+    }
+}
+
 impl Display for Qzn3tError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -61,6 +67,7 @@ impl Display for Qzn3tError {
             | Qzn3tError::InvalidIndex
             | Qzn3tError::NoAudioBuffer
             | Qzn3tError::InvalidSessionMode => write!(f, "{self:?}"),
+
             Qzn3tError::JsonError(reason)
             | Qzn3tError::CpalError(reason)
             | Qzn3tError::EngineNotReady(reason)
@@ -68,7 +75,8 @@ impl Display for Qzn3tError {
             | Qzn3tError::FileBackerNotReady(reason)
             | Qzn3tError::NoDevice(reason)
             | Qzn3tError::NumericError(reason)
-            | Qzn3tError::SendError(reason) => {
+            | Qzn3tError::SendError(reason)
+            | Qzn3tError::SymphoniaError(reason) => {
                 write!(f, "{self:?} {reason}")
             }
         }
