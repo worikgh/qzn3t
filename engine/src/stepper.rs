@@ -9,7 +9,7 @@ pub enum StepResult {
     Complete,
     Continue,
 }
-pub trait Stepper {
+pub trait Stepper: Send {
     fn step(&mut self, step_ns: u128) -> Result<StepResult, Qzn3tError>;
     fn channels(&self) -> usize;
 }

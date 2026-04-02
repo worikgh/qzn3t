@@ -51,7 +51,6 @@ pub fn decode_audio<P: AsRef<Path> + std::fmt::Debug>(
     let track = match tracks.first() {
         Some(&t) => t,
         None => {
-            dbg!();
             return Err(Qzn3tError::SymphoniaError(format!(
                 "All tracks in {path:?} have Null codec after probe"
             )));
@@ -65,8 +64,6 @@ pub fn decode_audio<P: AsRef<Path> + std::fmt::Debug>(
         Some(c) => c,
         None => panic!("Do not know how many channels"),
     };
-
-    dbg!(num_channels,);
 
     let mut channels: Vec<Vec<f32>> = vec![Vec::new(); num_channels];
 
@@ -134,23 +131,6 @@ pub fn decode_audio<P: AsRef<Path> + std::fmt::Debug>(
     }
     Ok(channels)
 }
-// ```
-
-// Add these dependencies to your `Cargo.toml`:
-
-// ```toml
-// [dependencies]
-// symphonia = { version = "0.5", features = ["all"] }
-// ```
-
-// Or for specific formats only:
-
-// ```toml
-// [dependencies]
-// symphonia = { version = "0.5", features = ["mp3", "ogg", "flac", "wav"] }
-// ```
-
-// Write a test for process_audio
 
 #[cfg(test)]
 mod tests {
@@ -176,11 +156,9 @@ mod tests {
         // Check samples are in valid range [-1.0, 1.0]
         for channel in &channels {
             for &sample in channel {
-                assert!(
-                    (-1.0..1.0).contains(&sample),
-                    "Sample out of range: {}",
-                    sample
-                );
+                if !(-1.0..1.0).contains(&sample) {
+                    panic!("Sample out of range: {}", sample);
+                }
             }
         }
     }

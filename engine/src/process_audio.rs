@@ -13,14 +13,13 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
-    time::Instant,
 };
 
 #[derive(Debug)]
 pub struct ProcessAudio {
-    run_f: Arc<AtomicBool>,     // Off switch
-    set_f: Arc<AtomicBool>,     // Set when client is running
-    running_f: Arc<AtomicBool>, // Reset when client stops
+    run_jack_f: Arc<AtomicBool>, // Off switch
+    set_f: Arc<AtomicBool>,      // Set when client is running
+    running_f: Arc<AtomicBool>,  // Reset when client stops
 
     /// Receive Audiop from the code that owns this `Engine` and send
     /// it out on Jack outputs
@@ -37,9 +36,9 @@ pub struct ProcessAudio {
 
 impl ProcessAudio {
     pub fn new(
-        run_f: Arc<AtomicBool>,     // Off switch
-        running_f: Arc<AtomicBool>, // Indicates process finished when reset
-        set_f: Arc<AtomicBool>,     // Set when client set up
+        run_jack_f: Arc<AtomicBool>, // Off switch
+        running_f: Arc<AtomicBool>,  // Indicates process finished when reset
+        set_f: Arc<AtomicBool>,      // Set when client set up
         ports_senders: Vec<(jack::Port<jack::AudioIn>, mpsc::Sender<f32>)>,
         ports_receivers: Vec<(jack::Port<jack::AudioOut>, mpsc::Receiver<f32>)>,
     ) -> Self {
@@ -49,7 +48,7 @@ impl ProcessAudio {
             receiver_state.insert(n, true);
         }
         Self {
-            run_f,
+            run_jack_f,
             set_f,
             running_f,
             ports_receivers,
@@ -105,7 +104,7 @@ impl jack::ProcessHandler for ProcessAudio {
                 }
             }
         }
-        if !self.run_f.load(Ordering::Relaxed) {
+        if !self.run_jack_f.load(Ordering::Relaxed) {
             self.running_f.store(false, Ordering::Relaxed);
             jack::Control::Quit
         } else {

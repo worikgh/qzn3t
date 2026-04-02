@@ -14,7 +14,8 @@ use std::{
     io::Write,
     path::PathBuf,
     sync::{Arc, Mutex},
-    time::Instant,
+    thread,
+    time::Duration,
 };
 
 /// For a Jack client that receives audio data on its `in_ports` and
@@ -181,16 +182,28 @@ fn play_by_step() {
     let mut engine = Engine::new().unwrap();
     engine.start_session(session).unwrap();
 
-    let before = Instant::now();
-
     let player = engine.get_player(audio_data);
     engine.add_stepper(Box::new(player));
 
     engine.connect_outputs(&sink_port_names).unwrap();
-    engine.run().unwrap();
+    let handle = engine.run().unwrap();
+    // Allow the engine to run until it has completed the output
+    // (using `data_len` and `sample_rate`) and then shut it down to
+    // test the output
+    let wait_ms = data_len * 1_000 / sample_rate;
+    thread::sleep(Duration::from_millis(wait_ms as u64));
+    engine.shut_down().unwrap();
 
-    let elapsed = before.elapsed();
-    assert!(elapsed.as_millis() >= (data_len * 1_000 / sample_rate) as u128);
+    // Timeout in this loop so it does not fail in an infinite loop
+    let mut timeout_guard: u32 = 0;
+    let timeout_limit = 100;
+    while !handle.is_finished() {
+        thread::sleep(Duration::from_nanos(1));
+        timeout_guard += 1;
+        assert!(timeout_guard < timeout_limit);
+    }
+
+    // Test state
     {
         // Check if `test_data` is in all output channels. TODO:
         // Test with different data in the channels
