@@ -7,7 +7,7 @@ use jack::{
     NotificationHandler, Port, PortFlags, ProcessHandler,
 };
 use qzn3t_audio_buffer::AudioBuffer;
-use qzn3t_engine::{Engine, Session};
+use qzn3t_engine::{Engine, Session, stepper::StepCommand};
 use std::{
     f32,
     fs::{OpenOptions, create_dir_all},
@@ -179,14 +179,16 @@ fn play_by_step() {
 
     let p = make_test_file("play_by_step");
     let session = Session::new(&[], &out_ports_str, &p);
-    let mut engine = Engine::new().unwrap();
+    let mut engine = Engine::new();
     engine.start_session(session).unwrap();
-
-    let player = engine.get_player(audio_data);
-    engine.add_stepper(Box::new(player));
 
     engine.connect_outputs(&sink_port_names).unwrap();
     let handle = engine.run().unwrap();
+    let player = engine.get_player(audio_data);
+    engine
+        .send_to_loop(StepCommand::NewStepper(Box::new(player)))
+        .unwrap();
+
     // Allow the engine to run until it has completed the output
     // (using `data_len` and `sample_rate`) and then shut it down to
     // test the output

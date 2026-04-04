@@ -2,7 +2,7 @@
 // License: GPL-3.0
 
 use crate::player::Player;
-use crate::stepper::{StepResult, Stepper};
+use crate::stepper::{StepCommand, StepResult, Stepper};
 use jack::PortFlags;
 use jack::{AsyncClient, AudioIn, AudioOut, Client, ClientOptions};
 use qzn3t_audio_buffer::AudioBuffer;
@@ -52,9 +52,12 @@ pub struct Engine {
 
     /// Function object driven by the main loop.
     stepper: Option<Box<dyn Stepper>>,
-    // /// Stepper receiver
-    // stepper_rx: mpsc::Receiver<Box<dyn Stepper>>,
+
+    /// Passing commands into the main loop.  Instantiated when main
+    /// loop kicks off
+    stepper_tx: Option<mpsc::Sender<StepCommand>>,
 }
+
 impl Debug for Engine {
     fn fmt(&self, _f: &mut Formatter) -> fmt::Result {
         _f.debug_struct("Engine")
@@ -69,9 +72,15 @@ impl Debug for Engine {
 }
 
 impl Engine {
-    /// The `Engine` constructor.
-    pub fn new() -> Result<Self, Qzn3tError> {
-        Ok(Self {
+    /// Create a new Engine instance.
+    ///
+    /// The engine is initialized in a stopped state with no audio ports.
+    ///
+    /// # Errors
+    /// Returns `Qzn3tError` if the engine's internal state cannot be initialized.
+    /// This is rare but may occur with memory allocation failures.
+    pub fn new() -> Self {
+        Self {
             client: None,
             senders: vec![],
             receivers: vec![],
@@ -80,11 +89,24 @@ impl Engine {
             running_f: Arc::new(AtomicBool::new(false)),
             set_f: Arc::new(AtomicBool::new(false)),
             stepper: None,
-        })
+            stepper_tx: None,
+        }
     }
 
-    /// A session defines input and output ports, the path to file
-    /// backing.
+    /// Create a JACK client with the given ports and blocks until the client
+    /// is fully initialized and ready to process audio.
+    ///
+    /// Precondition: The engine must not already have an active
+    /// client.
+    ///
+    /// # Parameters
+    /// - `session`: Configuration specifying ports and backing file path
+    ///
+    /// # Errors
+    /// Returns `Qzn3tError` if:
+    /// - JACK client creation fails
+    /// - Port registration fails
+    /// - Timeout occurs waiting for client initialization
     pub fn start_session(
         &mut self,
         session: Session,
@@ -94,10 +116,13 @@ impl Engine {
         while !self.set_f.load(Ordering::Relaxed) {
             thread::sleep(Duration::from_millis(3));
         }
+        dbg!(self.get_sample_rate());
         Ok(())
     }
 
-    /// Set up a new AsyncClient.
+    /// Set up a new JACK Client with specified ports.
+    ///
+    /// If a client already exists, it is deactivated and replaced.
     pub fn add_client(
         &mut self,
         in_p: &[&str],
@@ -109,7 +134,7 @@ impl Engine {
         let name = "Qzn3t";
         let (client, _status) =
             Client::new(name, ClientOptions::NO_START_SERVER)?;
-        let (process_audio, senders, receivers) = Self::create_process(
+        let process_data = Self::create_process(
             &client,
             in_p,
             out_p,
@@ -117,6 +142,9 @@ impl Engine {
             self.running_f.clone(),
             self.set_f.clone(),
         )?;
+        let process_audio = process_data.process;
+        let senders = process_data.senders;
+        let receivers = process_data.receivers;
         let async_client =
             client.activate_async(Notifications, process_audio)?;
         self.client = Some(async_client);
@@ -162,60 +190,103 @@ impl Engine {
         self.stepper = Some(stepper);
     }
 
-    /// Main event loop.
-    pub fn run(&mut self) -> Result<thread::JoinHandle<()>, Qzn3tError> {
-        assert!(self.stepper.is_some());
+    pub fn send_to_loop(&self, cmd: StepCommand) -> Result<(), Qzn3tError> {
+        if let Some(sender) = self.stepper_tx.as_ref() {
+            if let Err(err) = sender.send(cmd) {
+                Err(Qzn3tError::SendError(format!("send_to_loop: {err}")))
+            } else {
+                Ok(())
+            }
+        } else {
+            Err(Qzn3tError::NoCommandChannel)
+        }
+    }
 
-        // Timing for the loop, in nano-seconds and samples
-        const NANO_SEC_LOOP: u128 = 10_000_000;
-        let samples_per_loop = (NANO_SEC_LOOP * get_sample_rate() as u128
-            / 1_000_000_000) as usize;
+    /// Start the main event loop in a separate thread.
+    ///
+    /// The loop runs in real-time, processing audio frames.
+    ///
+    /// # Returns
+    /// Returns a `JoinHandle` to the spawned thread.
+    pub fn run(
+        &mut self,
+    ) -> Result<thread::JoinHandle<Result<(), Qzn3tError>>, Qzn3tError> {
+        // Timing for the loop, in micro-seconds and samples
+        const US_PER_LOOP: u64 = 100_000;
+        let samples_per_loop = (US_PER_LOOP
+            * self.get_sample_rate().unwrap() as u64
+            / 1_000_000) as usize;
         assert_eq!(
-            samples_per_loop as u128 * 1_000_000_000
-                / get_sample_rate() as u128,
-            NANO_SEC_LOOP,
+            samples_per_loop as u64 * 1_000_000 / get_sample_rate() as u64,
+            US_PER_LOOP,
             "The sampling rate does not divide nicely"
         );
 
         // For maintaining timing in the loop
         let mut now = Instant::now();
 
+        // Communitation with loop
+        let (stepper_tx, stepper_rx) = mpsc::channel::<StepCommand>();
+        self.stepper_tx = Some(stepper_tx);
+
+        // Handle being paused
+        let mut paused = false;
+
         let run_f = self.run_f.clone();
-        let mut stepper = Some(self.stepper.take().unwrap());
-        let handle = thread::spawn(move || {
+        let mut stepper = None; 
+        let handle = thread::spawn(move || -> Result<(), Qzn3tError> {
+            let mut timing: Vec<u128> = vec![];
+
             loop {
+                match stepper_rx.try_recv() {
+                    Ok(cmd) => {
+                        match cmd {
+                            StepCommand::Pause => paused = true,
+                            StepCommand::Start => paused = false,
+                            StepCommand::NewStepper(mut new_stepper) => {
+                                new_stepper.step(samples_per_loop)?;
+                                stepper = Some(new_stepper)
+                            }
+                            StepCommand::Exit => break,
+                        };
+                    }
+                    Err(mpsc::TryRecvError::Empty) => (),
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        // This is a non-standard way to break
+                        // from the main loop.
+                        eprintln!("Command channel disconnected");
+                        break;
+                    }
+                };
                 if !run_f.load(Ordering::Relaxed) {
                     break;
                 }
-                match stepper.as_mut() {
-                    Some(s) => {
-                        match s.step(NANO_SEC_LOOP) {
-                            Ok(StepResult::Complete) => {
-                                // Finished.  Get rid of the stepper
-                                stepper = None;
-                            }
-                            Ok(StepResult::Continue) => (),
-                            Err(err) => panic!("{err}"),
-                        };
-                    }
-                    None => continue,
-                };
-
+                if !paused && let Some(s) = stepper.as_mut() {
+                    match s.step(samples_per_loop) {
+                        Ok(StepResult::Complete) => {
+                            // Finished.  Get rid of the stepper
+                            stepper = None;
+                        }
+                        Ok(StepResult::Continue) => (),
+                        Err(err) => panic!("{err}"),
+                    };
+                }
                 let elapsed = now.elapsed();
-                if elapsed.as_nanos() < NANO_SEC_LOOP {
-                    thread::sleep(Duration::from_nanos_u128(
-                        NANO_SEC_LOOP - elapsed.as_nanos(),
-                    ));
+                let elapsed = elapsed.as_micros() as u64;
+                if elapsed < US_PER_LOOP {
+                    let sleep_us = US_PER_LOOP - elapsed;
+                    thread::sleep(Duration::from_micros(sleep_us));
                 } else {
                     eprintln!(
                         "Qzn3t Xrun: {:?}",
-                        Duration::from_nanos_u128(
-                            elapsed.as_nanos() - NANO_SEC_LOOP
-                        )
+                        Duration::from_millis(elapsed - US_PER_LOOP)
                     );
                 }
+                timing.push(now.elapsed().as_micros());
                 now = Instant::now();
             }
+            dbg!(timing.iter().sum::<u128>() as f32 / timing.len() as f32);
+            Ok(())
         });
         // self.stepper = None;
         // while self.running_f.load(Ordering::Relaxed) {
@@ -229,7 +300,7 @@ impl Engine {
         &self,
         dst_ports: &[String],
     ) -> Result<(), Qzn3tError> {
-        let source_port_names = self.all_ports().unwrap();
+        let source_port_names = self.all_ports();
         assert_eq!(dst_ports.len(), source_port_names.len());
         for (source, sink) in source_port_names.iter().zip(dst_ports.iter()) {
             if let Err(err) = self
@@ -248,11 +319,17 @@ impl Engine {
     }
 }
 
-/// Private methods
+/// Result for `create_process`.  Contains the `jack::ProcessHandler`
+/// for the Jack client and `mpsc::Sender<f32>` channels to pass audio
+/// data to and from the main loop
+struct ProcessData {
+    process: ProcessAudio,
+    senders: Vec<mpsc::Sender<f32>>,
+    receivers: Vec<mpsc::Receiver<f32>>,
+}
+
 impl Engine {
-    /// Set up the Process structure for Jack.  Return the
-    /// `mpsc::Sender<f32>` to send audio data (play) and receivers
-    /// for recording audio data
+    /// Create the data needed to create a Jack client
     #[allow(clippy::type_complexity)]
     fn create_process(
         client: &Client,
@@ -261,14 +338,7 @@ impl Engine {
         run_jack_f: Arc<AtomicBool>,
         running_f: Arc<AtomicBool>,
         set_f: Arc<AtomicBool>,
-    ) -> Result<
-        (
-            ProcessAudio,
-            Vec<mpsc::Sender<f32>>,
-            Vec<mpsc::Receiver<f32>>,
-        ),
-        Qzn3tError,
-    > {
+    ) -> Result<ProcessData, Qzn3tError> {
         let mut ports_receivers = vec![];
         let mut ports_senders = vec![];
         let mut senders = vec![];
@@ -293,15 +363,18 @@ impl Engine {
             ports_senders,
             ports_receivers,
         );
-        Ok((
+        Ok(ProcessData {
             process, // For owner to use to send/reveive data
-            senders, receivers,
-        ))
+            senders,
+            receivers,
+        })
     }
 
-    /// List all the names of all Jack ports the engine  is using
-    fn all_ports(&self) -> Result<Vec<String>, Qzn3tError> {
-        let ret = if let Some(client) = self.get_client() {
+    /// List all the names of all Jack ports the engine
+    /// # Errors:
+    ///
+    fn all_ports(&self) -> Vec<String> {
+        if let Some(client) = self.get_client() {
             client.ports(
                 Some(format!("{}:", client.name()).as_str()),
                 None,
@@ -309,8 +382,19 @@ impl Engine {
             )
         } else {
             vec![]
-        };
-        Ok(ret)
+        }
+    }
+
+    fn get_sample_rate(&self) -> Option<u32> {
+        self.client
+            .as_ref()
+            .map(|c| c.as_client().sample_rate() as u32)
+    }
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -366,7 +450,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     #[test]
     fn engine_creation() {
-        let engine = Engine::new().expect("Failed to create Engine");
+        let engine = Engine::new();
         assert!(engine.client.is_none()); // Ensures the client is initially None
         assert!(engine.receivers.is_empty()); // Receivers should be empty
         assert!(engine.senders.is_empty()); // Senders should be None
@@ -374,14 +458,14 @@ mod tests {
 
     #[test]
     fn client() {
-        let engine = Engine::new().unwrap();
+        let engine = Engine::new();
         let client = engine.get_client();
         assert!(client.is_none());
     }
 
     #[test]
     fn start_session() {
-        let mut engine = Engine::new().expect("Failed to create Engine");
+        let mut engine = Engine::new();
         assert!(engine.get_client().is_none());
         assert!(engine.receivers.is_empty());
         assert!(engine.senders.is_empty());
@@ -404,7 +488,7 @@ mod tests {
 
     #[test]
     fn add_client() {
-        let mut engine = Engine::new().expect("Creating Engine");
+        let mut engine = Engine::new();
         assert!(engine.get_client().is_none());
         let session = Session::new(
             &["input_port"],
